@@ -1,0 +1,61 @@
+version: "2026-10-30.1"     # stored on every decision; bump on any change
+mode: enforce               # enforce | shadow
+
+scoring:
+  timeout_ms: 200
+  max_score: 100
+
+thresholds:
+  flag: 30
+  hold: 60
+  block: 80
+  block_min_categories: 2
+  single_category_cap: flag           # cap when only one category fired...
+  single_category_exempt: [content]   # ...except these
+
+baseline:
+  min_events: 50
+  max_known_domains: 5000
+
+network:
+  min_key_events: 20
+  points:
+    new_asn: 30
+
+velocity:
+  window: 1h
+  multiplier: 3
+  min_hourly_baseline: 10
+  min_active_hours: 24
+  ewma_alpha: 0.1
+  points:
+    recipient_spike: 15
+
+content:
+  young_days: 30
+  lookalike_max_distance: 2
+  lookalike_min_len: 4
+  points:
+    new_domain: 25
+    young_domain: 20
+    lookalike_domain: 30
+    freemail_reply_to: 15
+  freemail_domains: [gmail.com, googlemail.com, outlook.com, hotmail.com, live.com,
+                     yahoo.com, icloud.com, proton.me, protonmail.com, aol.com, gmx.com, mail.com]
+  domain_ages:              # stands in for RDAP; unlisted = not young
+    invoice-portal.net: "2026-10-26"
+    acrne.com: "2026-10-20"
+    betta.io: "2026-10-22"
+
+account:
+  window: 24h
+  recon_resources: [contacts, audiences, domains]
+  first_read_min_account_age: 168h   # 7 days
+  points:
+    recent_account_change: 20
+    first_read: 20
+
+hold:
+  ttl: 24h
+  tick: 1m
+  expire_action: drop
