@@ -1,7 +1,7 @@
 -include .env
 export
 
-.PHONY: db-up db-down db-reset migrate run test psql
+.PHONY: db-up db-down db-reset migrate run test psql seed
 
 db-up:
 	docker compose up -d --wait db
@@ -28,6 +28,10 @@ test: db-up
 	@docker compose exec -T db psql -U ato -d ato -tAc "select 1 from pg_database where datname = 'ato_test'" | grep -q 1 \
 		|| docker compose exec -T db createdb -U ato ato_test
 	TEST_DATABASE_URL=$(TEST_DATABASE_URL) go test ./...
+
+# Needs `make run` in another terminal. Use `make db-reset` first for a fresh demo.
+seed:
+	go run ./cmd/seed
 
 psql:
 	docker compose exec db psql -U ato -d ato
