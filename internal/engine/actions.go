@@ -89,8 +89,11 @@ func (s *Service) apply(ctx context.Context, decisionID, action, actor, reason s
 			if pending {
 				hold = ptr("released")
 			}
-			if err := s.learnFromStoredEvent(ctx, tx, d.AccountID, d.EventID); err != nil {
-				return err
+			// Allowed events already taught the baseline during ingestion.
+			if d.Action != Allow.String() {
+				if err := s.learnFromStoredEvent(ctx, tx, d.AccountID, d.EventID); err != nil {
+					return err
+				}
 			}
 			if err := store.ResolveDecision(ctx, tx, d.DecisionID, hold, ptr("legitimate")); err != nil {
 				return err

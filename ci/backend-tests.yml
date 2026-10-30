@@ -1,0 +1,48 @@
+# Activate as .github/workflows/backend-tests.yml after authorizing workflow writes.
+name: Backend tests
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ato
+          POSTGRES_PASSWORD: ato
+          POSTGRES_DB: ato_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ato -d ato_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 15
+    env:
+      TEST_DATABASE_URL: postgres://ato:ato@localhost:5432/ato_test?sslmode=disable
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Check formatting
+        run: |
+          unformatted_files="$(gofmt -l cmd internal migrations)"
+          if [ -n "$unformatted_files" ]; then
+            printf '%s\n' "$unformatted_files"
+            exit 1
+          fi
+      - name: Vet
+        run: go vet ./...
+      - name: Test with PostgreSQL and race detection
+        run: go test -race -count=1 ./...
+      - name: Build deployment image
+        run: docker build -t resend-ato:test .
