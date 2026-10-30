@@ -11,7 +11,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/poojadesai14/resend-ato/internal/api"
 	"github.com/poojadesai14/resend-ato/internal/config"
+	"github.com/poojadesai14/resend-ato/internal/engine"
 	"github.com/poojadesai14/resend-ato/internal/store"
 )
 
@@ -43,18 +45,17 @@ func run() error {
 	}
 	defer db.Close()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, r *http.Request) {
-		if err := db.Ping(r.Context()); err != nil {
-			http.Error(w, "db unavailable", http.StatusServiceUnavailable)
-			return
-		}
-		w.Write([]byte("ok"))
-	})
+	apiServer := &api.Server{
+		Store:        db,
+		Service:      &engine.Service{Store: db, Config: cfg},
+		Config:       cfg,
+		IngestToken:  os.Getenv("INGEST_TOKEN"),
+		AnalystToken: os.Getenv("ANALYST_TOKEN"),
+	}
 
 	srv := &http.Server{
 		Addr:              ":" + envOr("PORT", "8080"),
-		Handler:           mux,
+		Handler:           apiServer.Routes(),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	errc := make(chan error, 1)
