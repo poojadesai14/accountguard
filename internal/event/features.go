@@ -4,7 +4,6 @@ import (
 	"net"
 	"net/mail"
 	"net/url"
-	"path"
 	"regexp"
 	"sort"
 	"strings"
@@ -17,11 +16,9 @@ import (
 type Features struct {
 	SenderDomain     string
 	RecipientCount   int
-	RecipientDomains []string
 	LinkDomains      []string
 	ReplyToDomains   []string
 	BodyEmailDomains []string
-	AttachmentExts   []string
 }
 
 // Candidates is every domain the content signal checks: links, Reply-To and addresses in the body.
@@ -50,13 +47,7 @@ func Extract(ev *Event) Features {
 
 	f.SenderDomain = addrDomain(e.From)
 
-	recipients := newSet()
-	for _, list := range []StringList{e.To, e.CC, e.BCC} {
-		f.RecipientCount += len(list)
-		for _, r := range list {
-			recipients.add(addrDomain(r))
-		}
-	}
+	f.RecipientCount = len(e.To) + len(e.CC) + len(e.BCC)
 
 	links, bodyEmails := newSet(), newSet()
 	if e.HTML != "" {
@@ -86,21 +77,14 @@ func Extract(ev *Event) Features {
 		}
 	}
 
-	exts := newSet()
-	for _, a := range e.Attachments {
-		exts.add(strings.ToLower(strings.TrimPrefix(path.Ext(a.Filename), ".")))
-	}
-
 	// The sender's own domain is never suspicious content.
 	for _, s := range []set{links, replyTo, bodyEmails} {
 		delete(s, f.SenderDomain)
 	}
 
-	f.RecipientDomains = recipients.sorted()
 	f.LinkDomains = links.sorted()
 	f.ReplyToDomains = replyTo.sorted()
 	f.BodyEmailDomains = bodyEmails.sorted()
-	f.AttachmentExts = exts.sorted()
 	return f
 }
 

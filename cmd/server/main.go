@@ -45,9 +45,12 @@ func run() error {
 	}
 	defer db.Close()
 
+	svc := &engine.Service{Store: db, Config: cfg}
+	go expireHolds(ctx, db, cfg.Hold.Tick)
+
 	apiServer := &api.Server{
 		Store:        db,
-		Service:      &engine.Service{Store: db, Config: cfg},
+		Service:      svc,
 		Config:       cfg,
 		IngestToken:  os.Getenv("INGEST_TOKEN"),
 		AnalystToken: os.Getenv("ANALYST_TOKEN"),
@@ -70,6 +73,25 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
+}
+
+// expireHolds marks holds nobody answered as expired (SPEC §7). Uses wall clock.
+func expireHolds(ctx context.Context, db *store.Store, every time.Duration) {
+	t := time.NewTicker(every)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			n, err := store.ExpireHolds(ctx, db.Pool)
+			if err != nil {
+				slog.Error("expire holds", "err", err)
+			} else if n > 0 {
+				slog.Info("holds expired", "count", n)
+			}
+		}
+	}
 }
 
 func envOr(key, def string) string {

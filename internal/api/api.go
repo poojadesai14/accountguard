@@ -30,6 +30,7 @@ func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.healthz)
 	mux.Handle("POST /v1/events", bearer(s.IngestToken, http.HandlerFunc(s.postEvent)))
+	s.analystRoutes(mux)
 	return mux
 }
 
@@ -90,7 +91,7 @@ func (s *Server) postEvent(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, DecisionResponse{
 		EventID: d.EventID, DecisionID: d.DecisionID, Action: action, Enforced: d.Enforced,
-		Score: d.Score, Hits: d.Hits, Reason: d.Reason, Unscored: d.Unscored,
+		Score: d.Score, Hits: d.Hits, Reason: d.Reason,
 		ConfigVersion: d.ConfigVersion, LatencyUS: d.LatencyUS,
 	})
 }

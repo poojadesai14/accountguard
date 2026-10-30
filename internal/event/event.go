@@ -40,10 +40,9 @@ type Event struct {
 }
 
 type Network struct {
-	IP      string `json:"ip"`
-	ASN     int    `json:"asn"`
-	ASNOrg  string `json:"asn_org"`
-	Country string `json:"country"`
+	IP     string `json:"ip"`
+	ASN    int    `json:"asn"`
+	ASNOrg string `json:"asn_org"`
 }
 
 type Client struct {
@@ -51,22 +50,14 @@ type Client struct {
 }
 
 type Email struct {
-	BatchID     string            `json:"batch_id"`
-	From        string            `json:"from"`
-	To          StringList        `json:"to"`
-	CC          StringList        `json:"cc"`
-	BCC         StringList        `json:"bcc"`
-	ReplyTo     StringList        `json:"reply_to"`
-	Headers     map[string]string `json:"headers"`
-	Subject     string            `json:"subject"`
-	HTML        string            `json:"html"`
-	Text        string            `json:"text"`
-	Attachments []Attachment      `json:"attachments"`
-}
-
-type Attachment struct {
-	Filename    string `json:"filename"`
-	ContentType string `json:"content_type"`
+	From    string            `json:"from"`
+	To      StringList        `json:"to"`
+	CC      StringList        `json:"cc"`
+	BCC     StringList        `json:"bcc"`
+	ReplyTo StringList        `json:"reply_to"`
+	Headers map[string]string `json:"headers"`
+	HTML    string            `json:"html"`
+	Text    string            `json:"text"`
 }
 
 type Change struct {

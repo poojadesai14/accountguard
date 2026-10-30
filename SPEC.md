@@ -70,14 +70,13 @@ One JSON object per request to `POST /v1/events`. Three types share an envelope.
 | `network.ip` | string | yes | |
 | `network.asn` | int | yes | Enriched by the pipeline (A2). |
 | `network.asn_org` | string | no | For display only. |
-| `network.country` | string | no | For display only. |
 | `client.user_agent` | string | no | Stored, not scored (README §4). |
 
 Unknown fields are ignored. Missing required fields -> `400`.
 
 ### 2.2 `email.send`
 
-One event per email. A batch request produces one event per item, sharing a `batch_id`.
+One event per email. A batch request produces one event per item.
 
 ```json
 {
@@ -87,20 +86,17 @@ One event per email. A batch request produces one event per item, sharing a `bat
   "account_id": "acc_acme",
   "api_key_id": "key_prod_1",
   "source": "api",
-  "network": { "ip": "203.0.113.9", "asn": 14061, "asn_org": "DIGITALOCEAN-ASN", "country": "NL" },
+  "network": { "ip": "203.0.113.9", "asn": 14061, "asn_org": "DIGITALOCEAN-ASN" },
   "client": { "user_agent": "resend-node:4.0.0" },
   "email": {
-    "batch_id": null,
     "from": "Acme Billing <billing@acme.com>",
     "to": ["a@example.org"],
     "cc": [],
     "bcc": [],
     "reply_to": ["support@acme.com"],
     "headers": { "X-Entity-Ref-ID": "123" },
-    "subject": "Your invoice",
     "html": "<p>Pay here: <a href=\"https://invoice-portal.net/pay\">link</a></p>",
-    "text": null,
-    "attachments": [{ "filename": "invoice.pdf", "content_type": "application/pdf" }]
+    "text": null
   }
 }
 ```
@@ -150,11 +146,9 @@ Done in memory on arrival. **Bodies, subjects and full recipient addresses are n
 |---|---|
 | `sender_domain` | Registrable domain (eTLD+1) of the `from` address. |
 | `recipient_count` | `len(to) + len(cc) + len(bcc)`. |
-| `recipient_domains` | Distinct registrable domains of all recipients. |
 | `link_domains` | Registrable domains of every `href`/`src` URL in `html`, and every `http(s)://` URL in `text` and `html` text nodes. |
 | `reply_to_domains` | Registrable domains from `reply_to[]` and any header named `Reply-To` (case-insensitive), merged. |
 | `body_email_domains` | Registrable domains of email addresses found by regex in `text`/`html` (not in headers). |
-| `attachment_exts` | Lowercased file extensions. Stored; not scored in v1. |
 
 All domains are lowercased and reduced with `publicsuffix.EffectiveTLDPlusOne`; failures are dropped.
 `app.acme.com` and `acme.com` are the same domain. The sender's own domain is excluded from
@@ -167,10 +161,12 @@ All domains are lowercased and reduced with `publicsuffix.EffectiveTLDPlusOne`; 
 Each signal is a value of:
 
 ```go
+type EvalFunc func(in *Input) []Hit
+
 type Signal struct {
-    Name     string   // e.g. "new_asn"
+    Name     string   // e.g. "network"
     Category string   // network | velocity | content | account
-    Eval     func(ctx EvalContext) []Hit
+    Eval     EvalFunc
 }
 type Hit struct {
     Name, Category string
@@ -279,8 +275,8 @@ if len(cats) == 1 and cats[0] != "content" and action > flag:  action = flag
 Defaults: `flag: 30`, `hold: 60`, `block: 80`. Content alone can reach `hold`, never `block`.
 
 Side effects of the action:
-- `hold`: decision gets `hold_status = pending`, `hold_expires_at = now() + hold.ttl`; record an owner
-  notification (`owner_notified_at`).
+- `hold`: decision gets `hold_status = pending`, `hold_expires_at = now() + hold.ttl`. The owner is
+  notified out-of-band (A4); the demo doesn't send or record a notification.
 - `block`: upsert `key_status` to `suspended` (`reason = auto`). The account and other keys are untouched.
 - Events with an empty `api_key_id` are never `block`ed (no key to suspend); they cap at `hold`.
 
@@ -315,98 +311,91 @@ Side effects of the action:
 
 ```sql
 create table events (
-  event_id          text primary key,
-  type              text not null check (type in ('email.send','account.change','api.read')),
-  occurred_at       timestamptz not null,
-  received_at       timestamptz not null default now(),
-  account_id        text not null,
-  api_key_id        text,
-  source            text not null,
-  ip                inet,
-  asn               int,
-  asn_org           text,
-  country           text,
-  user_agent        text,
-  -- email.send features only (no bodies, no addresses)
-  batch_id          text,
-  sender_domain     text,
-  recipient_count   int not null default 0,
-  recipient_domains text[] not null default '{}',
-  link_domains      text[] not null default '{}',
-  reply_to_domains  text[] not null default '{}',
+  event_id           text primary key,
+  type               text not null check (type in ('email.send','account.change','api.read')),
+  occurred_at        timestamptz not null,
+  received_at        timestamptz not null default now(),
+  account_id         text not null,
+  api_key_id         text,
+  source             text not null check (source in ('api','smtp','dashboard')),
+  ip                 inet,
+  asn                int,
+  asn_org            text,
+  user_agent         text,
+  -- email.send features only
+  sender_domain      text,
+  recipient_count    int not null default 0,
+  link_domains       text[] not null default '{}',
+  reply_to_domains   text[] not null default '{}',
   body_email_domains text[] not null default '{}',
-  attachment_exts   text[] not null default '{}',
   -- account.change / api.read
-  change_kind       text,
-  change_target_id  text,
-  read_resource     text,
-  read_status       int
+  change_kind        text,
+  change_target_id   text,
+  read_resource      text,
+  read_status        int
 );
 create index events_account_time on events (account_id, occurred_at);
 
 create table profiles (
-  account_id          text primary key,
-  first_seen_at       timestamptz not null,
-  events_seen         int not null default 0,     -- allowed events folded into the baseline
-  key_asns            jsonb not null default '{}', -- {"key_prod_1": {"16509": 912}}
-  key_events          jsonb not null default '{}', -- {"key_prod_1": 912}
-  known_domains       jsonb not null default '{}', -- {"stripe.com": 40}
-  sender_domains      text[] not null default '{}',
+  account_id             text primary key,
+  first_seen_at          timestamptz not null,
+  events_seen            int not null default 0,      -- allowed events folded into the baseline
+  key_asns               jsonb not null default '{}', -- {"key_prod_1": {"16509": 912}}
+  known_domains          jsonb not null default '{}', -- {"stripe.com": 40}
+  sender_domains         text[] not null default '{}',
   used_freemail_reply_to boolean not null default false,
-  hourly_ewma         double precision not null default 0,
-  active_hours        int not null default 0,
-  hour_bucket_start   timestamptz,
+  hourly_ewma            double precision not null default 0,
+  active_hours           int not null default 0,
+  hour_bucket_start      timestamptz,
   hour_bucket_recipients int not null default 0,
-  read_resources      text[] not null default '{}', -- resources ever read
-  last_change_at      timestamptz,   -- any account.change, any decision
-  last_first_read_at  timestamptz,   -- any first-ever read, any decision
-  updated_at          timestamptz not null default now()
+  read_resources         text[] not null default '{}', -- resources ever read
+  last_change_at         timestamptz,                  -- any account.change, any decision
+  last_first_read_at     timestamptz,                  -- any first-ever read, any decision
+  updated_at             timestamptz not null default now()
 );
 
 create table decisions (
-  decision_id      uuid primary key default gen_random_uuid(),
-  event_id         text not null unique references events(event_id),
-  account_id       text not null,
-  api_key_id       text,
-  occurred_at      timestamptz not null,
-  decided_at       timestamptz not null default now(),
-  action           text not null check (action in ('allow','flag','hold','block')),
-  enforced         boolean not null,
-  score            int not null,
-  hits             jsonb not null,   -- [{"name","category","points","detail"}]
-  reason           text,             -- e.g. key_suspended
-  unscored         boolean not null default false,
-  config_version   text not null,
-  latency_us       int,
-  hold_status      text check (hold_status in ('pending','released','dropped','expired')),
-  hold_expires_at  timestamptz,
-  owner_notified_at timestamptz,
-  review_status    text not null default 'none' check (review_status in ('none','open','resolved')),
-  label            text check (label in ('takeover','legitimate'))
+  decision_id       uuid primary key default gen_random_uuid(),
+  event_id          text not null unique references events(event_id),
+  account_id        text not null,
+  api_key_id        text,
+  occurred_at       timestamptz not null,
+  decided_at        timestamptz not null default now(),
+  action            text not null check (action in ('allow','flag','hold','block')),
+  enforced          boolean not null,
+  score             int not null,
+  hits              jsonb not null,  -- [{"name","category","points","detail"}]
+  reason            text,            -- e.g. key_suspended
+  config_version    text not null,
+  latency_us        int,
+  hold_status       text check (hold_status in ('pending','released','dropped','expired')),
+  hold_expires_at   timestamptz,
+  review_status     text not null default 'none' check (review_status in ('none','open','resolved')),
+  label             text check (label in ('takeover','legitimate'))
 );
 create index decisions_account_time on decisions (account_id, occurred_at);
 create index decisions_review on decisions (review_status) where review_status = 'open';
 create index decisions_hold_pending on decisions (hold_expires_at) where hold_status = 'pending';
 
 create table key_status (
-  api_key_id   text primary key,
-  account_id   text not null,
-  status       text not null check (status in ('active','suspended')),
-  reason       text not null,       -- auto | analyst | owner
-  decision_id  uuid references decisions(decision_id),
-  updated_at   timestamptz not null default now()
+  api_key_id  text primary key,
+  account_id  text not null,
+  status      text not null check (status in ('active','suspended')),
+  reason      text not null check (reason in ('auto','analyst','owner')),
+  decision_id uuid references decisions(decision_id),
+  updated_at  timestamptz not null default now()
 );
 
 create table analyst_actions (
-  id           bigserial primary key,
-  decision_id  uuid references decisions(decision_id),
-  api_key_id   text,
-  action       text not null check (action in
-                 ('confirm_takeover','mark_legitimate','release_hold','unblock_key',
-                  'owner_this_was_me','owner_not_me')),
-  actor        text not null,
-  reason       text not null,
-  created_at   timestamptz not null default now()
+  id          bigserial primary key,
+  decision_id uuid references decisions(decision_id),
+  api_key_id  text,
+  action      text not null check (action in
+                ('confirm_takeover','mark_legitimate','release_hold','unblock_key',
+                 'owner_this_was_me','owner_not_me')),
+  actor       text not null,
+  reason      text not null,
+  created_at  timestamptz not null default now()
 );
 ```
 
@@ -442,7 +431,7 @@ Always (every decision, so the attacker can't hide changes by getting held):
   set `last_first_read_at = occurred_at`.
 
 Only when the final action is `allow` (or later, on `mark_legitimate` / `owner_this_was_me`):
-- `events_seen += 1`; `key_events[key] += 1`; `key_asns[key][asn] += 1`.
+- `events_seen += 1`; `key_asns[key][asn] += 1` (a key's event count is the sum over its ASNs).
 - `email.send`: add candidate domains to `known_domains` (cap `baseline.max_known_domains`, default 5000,
   evict lowest count); add `sender_domain` to `sender_domains`; set `used_freemail_reply_to` if applicable.
 - `email.send` velocity bucket, with `h = date_trunc('hour', occurred_at)`:
@@ -501,10 +490,10 @@ Duplicate `event_id` -> same body, `200`. Body limit 1 MB.
 
 | Method + path | Returns |
 |---|---|
-| `GET /v1/stats?from&to&bucket=1h\|1d` | `totals` {events, allow, flag, hold, block, unscored}; `series` [{t, flag, hold, block}]; `top_signals` [{name, count}]; `review_queue` [{account_id, open_count, max_action, last_at}] |
+| `GET /v1/stats?from&to&bucket=1h\|1d` | `totals` {events, allow, flag, hold, block} (unscored events have no decision row; count them from the `ato_unscored_total` metric); `series` [{t, flag, hold, block}]; `top_signals` [{name, count}]; `review_queue` [{account_id, open_count, max_action, last_at}] |
 | `GET /v1/accounts?q&needs_review=true` | account list: id, events, last action, open reviews |
 | `GET /v1/accounts/{id}/timeline?from&to` | events joined with decisions, ordered by `occurred_at`; each row has event metadata (no bodies), action, score, hits |
-| `GET /v1/accounts/{id}/series?from&to` | per hour: `recipients`, `baseline` (hourly_ewma at that time, or current value if not tracked historically), `asns` [{asn, first_seen: bool}], `content_hits`, `account_changes`, `actions` |
+| `GET /v1/accounts/{id}/series?from&to` | `baseline_hourly` and `spike_threshold` (current values; baseline history isn't stored), plus `points` per hour: `recipients`, `asns` [{asn, org, first_seen}], `content_hits` [names], `account_changes`, `actions` {action: count} |
 | `GET /v1/accounts/{id}/profile` | current profile, `key_status` for its keys |
 | `GET /v1/decisions/{id}` | decision + event + analyst_actions for it |
 | `POST /v1/decisions/{id}/actions` | body `{"action": "confirm_takeover\|mark_legitimate\|release_hold", "actor": "pooja", "reason": "..."}` |

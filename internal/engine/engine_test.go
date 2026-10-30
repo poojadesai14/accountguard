@@ -27,7 +27,6 @@ func testConfig(t *testing.T) *config.Config {
 func established() *profile.Profile {
 	p := profile.New("acc_acme", now.AddDate(-1, 0, 0))
 	p.EventsSeen = 1000
-	p.KeyEvents["key_prod_1"] = 1000
 	p.KeyASNs["key_prod_1"] = map[string]int{"16509": 1000}
 	p.KnownDomains = map[string]int{"stripe.com": 500, "twitter.com": 500, "acmecdn.com": 300}
 	p.SenderDomains = []string{"acme.com"}

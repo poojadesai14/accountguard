@@ -82,10 +82,10 @@ func (s *Service) Handle(ctx context.Context, ev *event.Event) (*store.Decision,
 			dec.ReviewStatus = "open"
 		}
 		if enforced && res.Action == Hold {
-			now := time.Now()
-			expires := now.Add(cfg.Hold.TTL)
+			// The owner is notified out-of-band (A4); the demo only records the hold.
+			expires := time.Now().Add(cfg.Hold.TTL)
 			pending := "pending"
-			dec.HoldStatus, dec.HoldExpiresAt, dec.OwnerNotifiedAt = &pending, &expires, &now
+			dec.HoldStatus, dec.HoldExpiresAt = &pending, &expires
 		}
 		dec.LatencyUS = int(time.Since(start).Microseconds())
 		if err := store.InsertDecision(ctx, tx, dec); err != nil {

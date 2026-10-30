@@ -11,17 +11,13 @@ create table events (
   ip                 inet,
   asn                int,
   asn_org            text,
-  country            text,
   user_agent         text,
   -- email.send features only
-  batch_id           text,
   sender_domain      text,
   recipient_count    int not null default 0,
-  recipient_domains  text[] not null default '{}',
   link_domains       text[] not null default '{}',
   reply_to_domains   text[] not null default '{}',
   body_email_domains text[] not null default '{}',
-  attachment_exts    text[] not null default '{}',
   -- account.change / api.read
   change_kind        text,
   change_target_id   text,
@@ -35,7 +31,6 @@ create table profiles (
   first_seen_at          timestamptz not null,
   events_seen            int not null default 0,      -- allowed events folded into the baseline
   key_asns               jsonb not null default '{}', -- {"key_prod_1": {"16509": 912}}
-  key_events             jsonb not null default '{}', -- {"key_prod_1": 912}
   known_domains          jsonb not null default '{}', -- {"stripe.com": 40}
   sender_domains         text[] not null default '{}',
   used_freemail_reply_to boolean not null default false,
@@ -61,12 +56,10 @@ create table decisions (
   score             int not null,
   hits              jsonb not null,  -- [{"name","category","points","detail"}]
   reason            text,            -- e.g. key_suspended
-  unscored          boolean not null default false,
   config_version    text not null,
   latency_us        int,
   hold_status       text check (hold_status in ('pending','released','dropped','expired')),
   hold_expires_at   timestamptz,
-  owner_notified_at timestamptz,
   review_status     text not null default 'none' check (review_status in ('none','open','resolved')),
   label             text check (label in ('takeover','legitimate'))
 );

@@ -21,25 +21,23 @@ type DBTX interface {
 }
 
 type Decision struct {
-	DecisionID      string       `json:"decision_id"`
-	EventID         string       `json:"event_id"`
-	AccountID       string       `json:"account_id"`
-	APIKeyID        *string      `json:"api_key_id"`
-	OccurredAt      time.Time    `json:"occurred_at"`
-	DecidedAt       time.Time    `json:"decided_at"`
-	Action          string       `json:"action"`
-	Enforced        bool         `json:"enforced"`
-	Score           int          `json:"score"`
-	Hits            []signal.Hit `json:"hits"`
-	Reason          *string      `json:"reason"`
-	Unscored        bool         `json:"unscored"`
-	ConfigVersion   string       `json:"config_version"`
-	LatencyUS       int          `json:"latency_us"`
-	HoldStatus      *string      `json:"hold_status"`
-	HoldExpiresAt   *time.Time   `json:"hold_expires_at"`
-	OwnerNotifiedAt *time.Time   `json:"owner_notified_at"`
-	ReviewStatus    string       `json:"review_status"`
-	Label           *string      `json:"label"`
+	DecisionID    string       `json:"decision_id"`
+	EventID       string       `json:"event_id"`
+	AccountID     string       `json:"account_id"`
+	APIKeyID      *string      `json:"api_key_id"`
+	OccurredAt    time.Time    `json:"occurred_at"`
+	DecidedAt     time.Time    `json:"decided_at"`
+	Action        string       `json:"action"`
+	Enforced      bool         `json:"enforced"`
+	Score         int          `json:"score"`
+	Hits          []signal.Hit `json:"hits"`
+	Reason        *string      `json:"reason"`
+	ConfigVersion string       `json:"config_version"`
+	LatencyUS     int          `json:"latency_us"`
+	HoldStatus    *string      `json:"hold_status"`
+	HoldExpiresAt *time.Time   `json:"hold_expires_at"`
+	ReviewStatus  string       `json:"review_status"`
+	Label         *string      `json:"label"`
 }
 
 // InsertEvent stores the event's metadata and extracted features (never the body).
@@ -53,24 +51,17 @@ func InsertEvent(ctx context.Context, db DBTX, ev *event.Event, f event.Features
 	if ev.Read != nil {
 		readResource, readStatus = &ev.Read.Resource, &ev.Read.Status
 	}
-	var batchID *string
-	if ev.Email != nil {
-		batchID = nullStr(ev.Email.BatchID)
-	}
-
 	tag, err := db.Exec(ctx, `
 		insert into events (
 			event_id, type, occurred_at, account_id, api_key_id, source,
-			ip, asn, asn_org, country, user_agent,
-			batch_id, sender_domain, recipient_count, recipient_domains, link_domains,
-			reply_to_domains, body_email_domains, attachment_exts,
+			ip, asn, asn_org, user_agent,
+			sender_domain, recipient_count, link_domains, reply_to_domains, body_email_domains,
 			change_kind, change_target_id, read_resource, read_status)
-		values ($1,$2,$3,$4,$5,$6, $7::text::inet,$8,$9,$10,$11, $12,$13,$14,$15,$16, $17,$18,$19, $20,$21,$22,$23)
+		values ($1,$2,$3,$4,$5,$6, $7::text::inet,$8,$9,$10, $11,$12,$13,$14,$15, $16,$17,$18,$19)
 		on conflict (event_id) do nothing`,
 		ev.EventID, ev.Type, ev.OccurredAt, ev.AccountID, nullStr(ev.APIKeyID), ev.Source,
-		ev.Network.IP, ev.Network.ASN, nullStr(ev.Network.ASNOrg), nullStr(ev.Network.Country), nullStr(ev.Client.UserAgent),
-		batchID, nullStr(f.SenderDomain), f.RecipientCount, nonNil(f.RecipientDomains), nonNil(f.LinkDomains),
-		nonNil(f.ReplyToDomains), nonNil(f.BodyEmailDomains), nonNil(f.AttachmentExts),
+		ev.Network.IP, ev.Network.ASN, nullStr(ev.Network.ASNOrg), nullStr(ev.Client.UserAgent),
+		nullStr(f.SenderDomain), f.RecipientCount, nonNil(f.LinkDomains), nonNil(f.ReplyToDomains), nonNil(f.BodyEmailDomains),
 		changeKind, changeTarget, readResource, readStatus,
 	)
 	if err != nil {
@@ -80,14 +71,14 @@ func InsertEvent(ctx context.Context, db DBTX, ev *event.Event, f event.Features
 }
 
 const decisionCols = `decision_id::text, event_id, account_id, api_key_id, occurred_at, decided_at,
-	action, enforced, score, hits, reason, unscored, config_version, coalesce(latency_us, 0),
-	hold_status, hold_expires_at, owner_notified_at, review_status, label`
+	action, enforced, score, hits, reason, config_version, coalesce(latency_us, 0),
+	hold_status, hold_expires_at, review_status, label`
 
 func scanDecision(row pgx.Row) (*Decision, error) {
 	var d Decision
 	err := row.Scan(&d.DecisionID, &d.EventID, &d.AccountID, &d.APIKeyID, &d.OccurredAt, &d.DecidedAt,
-		&d.Action, &d.Enforced, &d.Score, &d.Hits, &d.Reason, &d.Unscored, &d.ConfigVersion, &d.LatencyUS,
-		&d.HoldStatus, &d.HoldExpiresAt, &d.OwnerNotifiedAt, &d.ReviewStatus, &d.Label)
+		&d.Action, &d.Enforced, &d.Score, &d.Hits, &d.Reason, &d.ConfigVersion, &d.LatencyUS,
+		&d.HoldStatus, &d.HoldExpiresAt, &d.ReviewStatus, &d.Label)
 	if d.Hits == nil {
 		d.Hits = []signal.Hit{}
 	}
@@ -103,11 +94,11 @@ func InsertDecision(ctx context.Context, db DBTX, d *Decision) error {
 	return db.QueryRow(ctx, `
 		insert into decisions (
 			event_id, account_id, api_key_id, occurred_at, action, enforced, score, hits, reason,
-			unscored, config_version, latency_us, hold_status, hold_expires_at, owner_notified_at, review_status)
-		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+			config_version, latency_us, hold_status, hold_expires_at, review_status)
+		values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
 		returning decision_id::text, decided_at`,
 		d.EventID, d.AccountID, d.APIKeyID, d.OccurredAt, d.Action, d.Enforced, d.Score, d.Hits, d.Reason,
-		d.Unscored, d.ConfigVersion, d.LatencyUS, d.HoldStatus, d.HoldExpiresAt, d.OwnerNotifiedAt, d.ReviewStatus,
+		d.ConfigVersion, d.LatencyUS, d.HoldStatus, d.HoldExpiresAt, d.ReviewStatus,
 	).Scan(&d.DecisionID, &d.DecidedAt)
 }
 
@@ -119,13 +110,23 @@ func LockProfile(ctx context.Context, tx pgx.Tx, accountID string, firstSeen tim
 		accountID, firstSeen); err != nil {
 		return nil, err
 	}
+	return scanProfile(tx.QueryRow(ctx, profileSelect+` for update`, accountID))
+}
+
+// GetProfile reads a profile without locking it. Returns pgx.ErrNoRows if the account is unknown.
+func GetProfile(ctx context.Context, db DBTX, accountID string) (*profile.Profile, error) {
+	return scanProfile(db.QueryRow(ctx, profileSelect, accountID))
+}
+
+const profileSelect = `
+	select account_id, first_seen_at, events_seen, key_asns, known_domains, sender_domains,
+	       used_freemail_reply_to, hourly_ewma, active_hours, hour_bucket_start, hour_bucket_recipients,
+	       read_resources, last_change_at, last_first_read_at
+	from profiles where account_id = $1`
+
+func scanProfile(row pgx.Row) (*profile.Profile, error) {
 	var p profile.Profile
-	err := tx.QueryRow(ctx, `
-		select account_id, first_seen_at, events_seen, key_asns, key_events, known_domains, sender_domains,
-		       used_freemail_reply_to, hourly_ewma, active_hours, hour_bucket_start, hour_bucket_recipients,
-		       read_resources, last_change_at, last_first_read_at
-		from profiles where account_id = $1 for update`, accountID,
-	).Scan(&p.AccountID, &p.FirstSeenAt, &p.EventsSeen, &p.KeyASNs, &p.KeyEvents, &p.KnownDomains, &p.SenderDomains,
+	err := row.Scan(&p.AccountID, &p.FirstSeenAt, &p.EventsSeen, &p.KeyASNs, &p.KnownDomains, &p.SenderDomains,
 		&p.UsedFreemailReplyTo, &p.HourlyEWMA, &p.ActiveHours, &p.HourBucketStart, &p.HourBucketRecipients,
 		&p.ReadResources, &p.LastChangeAt, &p.LastFirstReadAt)
 	if err != nil {
@@ -138,15 +139,48 @@ func LockProfile(ctx context.Context, tx pgx.Tx, accountID string, firstSeen tim
 func SaveProfile(ctx context.Context, db DBTX, p *profile.Profile) error {
 	_, err := db.Exec(ctx, `
 		update profiles set
-			events_seen = $2, key_asns = $3, key_events = $4, known_domains = $5, sender_domains = $6,
-			used_freemail_reply_to = $7, hourly_ewma = $8, active_hours = $9, hour_bucket_start = $10,
-			hour_bucket_recipients = $11, read_resources = $12, last_change_at = $13, last_first_read_at = $14,
+			events_seen = $2, key_asns = $3, known_domains = $4, sender_domains = $5,
+			used_freemail_reply_to = $6, hourly_ewma = $7, active_hours = $8, hour_bucket_start = $9,
+			hour_bucket_recipients = $10, read_resources = $11, last_change_at = $12, last_first_read_at = $13,
 			updated_at = now()
 		where account_id = $1`,
-		p.AccountID, p.EventsSeen, p.KeyASNs, p.KeyEvents, p.KnownDomains, p.SenderDomains,
+		p.AccountID, p.EventsSeen, p.KeyASNs, p.KnownDomains, p.SenderDomains,
 		p.UsedFreemailReplyTo, p.HourlyEWMA, p.ActiveHours, p.HourBucketStart,
 		p.HourBucketRecipients, p.ReadResources, p.LastChangeAt, p.LastFirstReadAt)
 	return err
+}
+
+// ResolveDecision marks a decision reviewed, optionally changing its hold status and label.
+func ResolveDecision(ctx context.Context, db DBTX, decisionID string, holdStatus, label *string) error {
+	_, err := db.Exec(ctx, `
+		update decisions
+		set hold_status = coalesce($2, hold_status), label = coalesce($3, label), review_status = 'resolved'
+		where decision_id = $1::uuid`, decisionID, holdStatus, label)
+	return err
+}
+
+// DropPendingHolds drops every pending hold for a key (confirmed takeover).
+func DropPendingHolds(ctx context.Context, db DBTX, apiKeyID string) (int64, error) {
+	tag, err := db.Exec(ctx, `
+		update decisions set hold_status = 'dropped'
+		where api_key_id = $1 and hold_status = 'pending'`, apiKeyID)
+	return tag.RowsAffected(), err
+}
+
+// ActivateKey un-suspends a key. found is false if the key has no status row.
+func ActivateKey(ctx context.Context, db DBTX, apiKeyID string) (wasSuspended, found bool, err error) {
+	var status string
+	err = db.QueryRow(ctx, `select status from key_status where api_key_id = $1 for update`, apiKeyID).Scan(&status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, false, nil
+	}
+	if err != nil {
+		return false, true, err
+	}
+	_, err = db.Exec(ctx, `
+		update key_status set status = 'active', reason = 'analyst', updated_at = now()
+		where api_key_id = $1`, apiKeyID)
+	return status == "suspended", true, err
 }
 
 func KeySuspended(ctx context.Context, db DBTX, apiKeyID string) (bool, error) {

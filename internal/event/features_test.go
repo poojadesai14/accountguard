@@ -24,18 +24,15 @@ func TestExtract(t *testing.T) {
 		       <img src="//cdn.acme.com/logo.png"> <a href="/relative">r</a>
 		       <a href="mailto:billing@acme-secure.com?subject=hi">mail</a>
 		       Visit www.evil.co.uk, or write to boss@ceo-mail.com.</p>`,
-		Text:        "Plain https://bit.ly/abc).",
-		Attachments: []Attachment{{Filename: "Invoice.PDF"}, {Filename: "x.html"}},
+		Text: "Plain https://bit.ly/abc).",
 	}))
 
 	want := Features{
 		SenderDomain:     "acme.com",
 		RecipientCount:   4,
-		RecipientDomains: []string{"example.org", "other.net"},
 		LinkDomains:      []string{"bit.ly", "evil.co.uk", "invoice-portal.net"},
 		ReplyToDomains:   []string{"gmail.com", "zendesk.com"},
 		BodyEmailDomains: []string{"acme-secure.com", "ceo-mail.com"},
-		AttachmentExts:   []string{"html", "pdf"},
 	}
 	if !reflect.DeepEqual(f, want) {
 		t.Errorf("got  %+v\nwant %+v", f, want)

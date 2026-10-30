@@ -13,21 +13,20 @@ import (
 )
 
 type Profile struct {
-	AccountID            string
-	FirstSeenAt          time.Time
-	EventsSeen           int                       // allowed events folded into the baseline
-	KeyASNs              map[string]map[string]int // key id -> ASN -> allowed events
-	KeyEvents            map[string]int            // key id -> allowed events
-	KnownDomains         map[string]int            // content domain -> allowed sends using it
-	SenderDomains        []string
-	UsedFreemailReplyTo  bool
-	HourlyEWMA           float64 // recipients per active hour
-	ActiveHours          int
-	HourBucketStart      *time.Time
-	HourBucketRecipients int
-	ReadResources        []string
-	LastChangeAt         *time.Time // set on every account.change, whatever the decision
-	LastFirstReadAt      *time.Time // set on every first-ever recon read, whatever the decision
+	AccountID            string                    `json:"account_id"`
+	FirstSeenAt          time.Time                 `json:"first_seen_at"`
+	EventsSeen           int                       `json:"events_seen"`   // allowed events folded into the baseline
+	KeyASNs              map[string]map[string]int `json:"key_asns"`      // key id -> ASN -> allowed events
+	KnownDomains         map[string]int            `json:"known_domains"` // content domain -> allowed sends using it
+	SenderDomains        []string                  `json:"sender_domains"`
+	UsedFreemailReplyTo  bool                      `json:"used_freemail_reply_to"`
+	HourlyEWMA           float64                   `json:"hourly_ewma"` // recipients per active hour
+	ActiveHours          int                       `json:"active_hours"`
+	HourBucketStart      *time.Time                `json:"hour_bucket_start"`
+	HourBucketRecipients int                       `json:"hour_bucket_recipients"`
+	ReadResources        []string                  `json:"read_resources"`
+	LastChangeAt         *time.Time                `json:"last_change_at"`     // set on every account.change, whatever the decision
+	LastFirstReadAt      *time.Time                `json:"last_first_read_at"` // set on every first-ever recon read, whatever the decision
 }
 
 func New(accountID string, firstSeen time.Time) *Profile {
@@ -40,9 +39,6 @@ func New(accountID string, firstSeen time.Time) *Profile {
 func (p *Profile) Normalize() {
 	if p.KeyASNs == nil {
 		p.KeyASNs = map[string]map[string]int{}
-	}
-	if p.KeyEvents == nil {
-		p.KeyEvents = map[string]int{}
 	}
 	if p.KnownDomains == nil {
 		p.KnownDomains = map[string]int{}
@@ -65,7 +61,7 @@ func (p *Profile) ColdStart(cfg *config.Config) bool {
 // scope describes what was compared, for the hit detail.
 func (p *Profile) KnownASN(key string, asn int, cfg *config.Config) (known bool, scope string) {
 	a := strconv.Itoa(asn)
-	if p.KeyEvents[key] >= cfg.Network.MinKeyEvents {
+	if p.KeyEvents(key) >= cfg.Network.MinKeyEvents {
 		_, known = p.KeyASNs[key][a]
 		return known, "key " + key
 	}
@@ -75,6 +71,15 @@ func (p *Profile) KnownASN(key string, asn int, cfg *config.Config) (known bool,
 		}
 	}
 	return false, "account"
+}
+
+// KeyEvents is how many allowed events this key has: the sum over its ASNs.
+func (p *Profile) KeyEvents(key string) int {
+	n := 0
+	for _, c := range p.KeyASNs[key] {
+		n += c
+	}
+	return n
 }
 
 // IsFirstRead is true when ev is the account's first-ever read of a recon resource.
@@ -106,7 +111,6 @@ func (p *Profile) RecordAlways(ev *event.Event, cfg *config.Config) {
 func (p *Profile) Learn(ev *event.Event, f event.Features, cfg *config.Config) {
 	p.EventsSeen++
 	if key := ev.APIKeyID; key != "" {
-		p.KeyEvents[key]++
 		if p.KeyASNs[key] == nil {
 			p.KeyASNs[key] = map[string]int{}
 		}

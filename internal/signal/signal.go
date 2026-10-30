@@ -31,10 +31,13 @@ type Input struct {
 	Config           *config.Config
 }
 
+// EvalFunc checks one event against the account's baseline and returns its hits.
+type EvalFunc func(in *Input) []Hit
+
 type Signal struct {
 	Name     string
 	Category string
-	Eval     func(in *Input) []Hit
+	Eval     EvalFunc
 }
 
 var All = []Signal{

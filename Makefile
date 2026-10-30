@@ -21,8 +21,13 @@ migrate:
 run:
 	go run ./cmd/server
 
-test:
-	go test ./...
+TEST_DATABASE_URL ?= postgres://ato:ato@localhost:5432/ato_test?sslmode=disable
+
+# Unit tests + DB integration tests against a separate ato_test database.
+test: db-up
+	@docker compose exec -T db psql -U ato -d ato -tAc "select 1 from pg_database where datname = 'ato_test'" | grep -q 1 \
+		|| docker compose exec -T db createdb -U ato ato_test
+	TEST_DATABASE_URL=$(TEST_DATABASE_URL) go test ./...
 
 psql:
 	docker compose exec db psql -U ato -d ato

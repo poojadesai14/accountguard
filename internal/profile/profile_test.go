@@ -86,7 +86,6 @@ func TestKnownASNFallsBackToAccountForNewKeys(t *testing.T) {
 	cfg := testConfig(t)
 	p := New("a", time.Now())
 	p.KeyASNs["old"] = map[string]int{"16509": 500}
-	p.KeyEvents["old"] = 500
 
 	if known, scope := p.KnownASN("new", 16509, cfg); !known || scope != "account" {
 		t.Errorf("new key on account ASN: known=%v scope=%s", known, scope)
