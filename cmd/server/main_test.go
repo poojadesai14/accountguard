@@ -6,22 +6,50 @@ import (
 )
 
 func TestHostedModeOverride(t *testing.T) {
-	t.Setenv("CONFIG_PATH", "../../config.yaml")
-	for _, mode := range []string{"shadow", "enforce", "invalid"} {
-		t.Run(mode, func(t *testing.T) {
-			t.Setenv("ATO_MODE", mode)
+	tests := []struct {
+		name              string
+		mode              string
+		wantMode          string
+		wantVersionSuffix string
+		wantError         string
+	}{
+		{
+			name:              "shadow override",
+			mode:              "shadow",
+			wantMode:          "shadow",
+			wantVersionSuffix: ".mode-shadow",
+		},
+		{
+			name:              "enforcement override",
+			mode:              "enforce",
+			wantMode:          "enforce",
+			wantVersionSuffix: ".mode-enforce",
+		},
+		{
+			name:      "invalid override prevents startup",
+			mode:      "invalid",
+			wantError: "ATO_MODE",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("CONFIG_PATH", "../../config.yaml")
+			t.Setenv("ATO_MODE", tt.mode)
 			cfg, err := loadConfig()
-			if mode == "invalid" {
-				if err == nil || !strings.Contains(err.Error(), "ATO_MODE") {
-					t.Fatalf("invalid mode must prevent startup: %v", err)
+			if tt.wantError != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantError) {
+					t.Fatalf("loadConfig() error = %v, want containing %q", err, tt.wantError)
 				}
 				return
 			}
 			if err != nil {
 				t.Fatal(err)
 			}
-			if cfg.Mode != mode || !strings.HasSuffix(cfg.Version, ".mode-"+mode) {
-				t.Fatalf("mode override must be traceable in decisions: %+v", cfg)
+			if cfg.Mode != tt.wantMode {
+				t.Errorf("mode = %q, want %q", cfg.Mode, tt.wantMode)
+			}
+			if !strings.HasSuffix(cfg.Version, tt.wantVersionSuffix) {
+				t.Errorf("version = %q, want suffix %q", cfg.Version, tt.wantVersionSuffix)
 			}
 		})
 	}

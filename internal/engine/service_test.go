@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/rand/v2"
 	"os"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -92,96 +93,176 @@ func (f *fixture) profileRow() (eventsSeen int, keyASNs map[string]map[string]in
 }
 
 func TestServiceIdempotent(t *testing.T) {
-	f := newFixture(t)
-	ev := f.send(now, 16509, "stripe.com")
-	first, second := f.handle(ev), f.handle(ev)
-	if first.DecisionID == "" || first.DecisionID != second.DecisionID {
-		t.Errorf("duplicate event got a new decision: %s vs %s", first.DecisionID, second.DecisionID)
+	tests := []struct {
+		name       string
+		deliveries int
+	}{
+		{
+			name:       "one retry reuses the decision",
+			deliveries: 2,
+		},
+		{
+			name:       "repeated retries learn the event only once",
+			deliveries: 5,
+		},
 	}
-	if seen, _, _ := f.profileRow(); seen != 1 {
-		t.Errorf("events_seen = %d after duplicate, want 1", seen)
-	}
-}
-
-func TestServiceTakeoverHoldsThenBlocksAndDoesNotLearn(t *testing.T) {
-	f := newFixture(t)
-	t0 := f.history(now.AddDate(0, 0, -5))
-
-	hold := f.handle(f.send(t0, 14061, "invoice-portal.net"))
-	if hold.Action != "hold" || hold.Score != 75 || hold.HoldStatus == nil || *hold.HoldStatus != "pending" {
-		t.Fatalf("takeover send: %s %d hold_status=%v hits=%+v", hold.Action, hold.Score, hold.HoldStatus, hold.Hits)
-	}
-	seen, asns, _ := f.profileRow()
-	if seen != 60 || asns[f.account+"_key"]["14061"] != 0 {
-		t.Errorf("held event changed the baseline: events_seen=%d asns=%v", seen, asns)
-	}
-
-	// The same attacker repeats; the held sends count toward the velocity window.
-	var last *store.Decision
-	for i := 1; i <= 40 && (last == nil || last.Action != "block"); i++ {
-		ev := f.send(t0.Add(time.Duration(i)*time.Second), 14061, "invoice-portal.net")
-		ev.Email.To = event.StringList{"a@x.org", "b@x.org", "c@x.org", "d@x.org", "e@x.org"}
-		last = f.handle(ev)
-	}
-	if last.Action != "block" || last.Score != 90 {
-		t.Fatalf("spike never blocked: %s %d %+v", last.Action, last.Score, last.Hits)
-	}
-
-	next := f.handle(f.send(t0.Add(time.Minute), 16509, "stripe.com"))
-	if next.Action != "block" || next.Reason == nil || *next.Reason != ReasonKeySuspended {
-		t.Errorf("event after block: %s reason=%v", next.Action, next.Reason)
-	}
-}
-
-func TestServiceRecordsAccountChangeEvenWhenNotAllowed(t *testing.T) {
-	f := newFixture(t)
-	t0 := f.history(now.AddDate(0, 0, -5))
-
-	change := f.send(t0, 14061, "")
-	change.Type, change.Email, change.Change = event.TypeAccountChange, nil, &event.Change{Kind: "api_key.created"}
-	d := f.handle(change)
-	if d.Action != "flag" || d.Score != 50 {
-		t.Fatalf("new-network key creation: %s %d %+v", d.Action, d.Score, d.Hits)
-	}
-	_, asns, lastChange := f.profileRow()
-	if lastChange == nil || !lastChange.Equal(t0) {
-		t.Errorf("last_change_at = %v, want %v", lastChange, t0)
-	}
-	if asns[f.account+"_key"]["14061"] != 0 {
-		t.Error("flagged event taught the baseline its ASN")
-	}
-
-	// A normal-looking send 10 minutes later still carries the account-change points.
-	d = f.handle(f.send(t0.Add(10*time.Minute), 16509, "stripe.com"))
-	if d.Score != 20 || len(d.Hits) != 1 || d.Hits[0].Name != "recent_account_change" {
-		t.Errorf("send after change: %d %+v", d.Score, d.Hits)
-	}
-}
-
-func TestServiceConcurrentEventsOnOneAccount(t *testing.T) {
-	f := newFixture(t)
-	const n = 20
-	evs := make([]*event.Event, n)
-	for i := range evs {
-		evs[i] = f.send(now.Add(time.Duration(i)*time.Second), 16509, "stripe.com")
-	}
-	var wg sync.WaitGroup
-	errs := make(chan error, n)
-	for _, ev := range evs {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if _, err := f.svc.Handle(context.Background(), ev); err != nil {
-				errs <- err
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture(t)
+			ev := f.send(now, 16509, "stripe.com")
+			first := f.handle(ev)
+			if first.DecisionID == "" {
+				t.Fatal("first delivery has no decision ID")
 			}
-		}()
+			for attempt := 1; attempt < tt.deliveries; attempt++ {
+				if got := f.handle(ev); got.DecisionID != first.DecisionID {
+					t.Errorf("delivery %d decision = %q, want %q", attempt+1, got.DecisionID, first.DecisionID)
+				}
+			}
+			if seen, _, _ := f.profileRow(); seen != 1 {
+				t.Errorf("learned events = %d, want 1", seen)
+			}
+		})
 	}
-	wg.Wait()
-	close(errs)
-	for err := range errs {
-		t.Error(err)
+}
+func TestServiceTakeoverHoldsThenBlocksAndDoesNotLearn(t *testing.T) {
+	tests := []struct {
+		name              string
+		recipientsPerSend int
+	}{
+		{
+			name:              "repeated single-recipient attack",
+			recipientsPerSend: 1,
+		},
+		{
+			name:              "repeated batch attack",
+			recipientsPerSend: 5,
+		},
 	}
-	if seen, _, _ := f.profileRow(); seen != n {
-		t.Errorf("events_seen = %d, want %d (lost updates)", seen, n)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture(t)
+			at := f.history(now.AddDate(0, 0, -5))
+			hold := f.handle(f.send(at, 14061, "invoice-portal.net"))
+			if hold.Action != "hold" || hold.Score != 75 || hold.HoldStatus == nil || *hold.HoldStatus != "pending" {
+				t.Fatalf("first attack = %s/%d, hold status %v; want hold/75/pending", hold.Action, hold.Score, hold.HoldStatus)
+			}
+			if seen, asns, _ := f.profileRow(); seen != 60 || asns[f.account+"_key"]["14061"] != 0 {
+				t.Errorf("held event changed baseline: events=%d ASNs=%v", seen, asns)
+			}
+			// Held sends contribute to velocity even though they do not teach the baseline.
+			var blocked *store.Decision
+			for attempt := 1; attempt <= 40; attempt++ {
+				ev := f.send(at.Add(time.Duration(attempt)*time.Second), 14061, "invoice-portal.net")
+				ev.Email.To = make(event.StringList, tt.recipientsPerSend)
+				for i := range ev.Email.To {
+					ev.Email.To[i] = fmt.Sprintf("recipient%d@example.org", i)
+				}
+				got := f.handle(ev)
+				if got.Action == "block" {
+					blocked = got
+					break
+				}
+			}
+			if blocked == nil {
+				t.Fatal("attack never reached block")
+			}
+			if blocked.Score != 90 {
+				t.Errorf("blocked score = %d, want 90", blocked.Score)
+			}
+			next := f.handle(f.send(at.Add(time.Minute), 16509, "stripe.com"))
+			if next.Action != "block" || next.Reason == nil || *next.Reason != ReasonKeySuspended {
+				t.Errorf("event after suspension = %s, reason %v; want block/key_suspended", next.Action, next.Reason)
+			}
+		})
+	}
+}
+func TestServiceRecordsAccountChangeEvenWhenNotAllowed(t *testing.T) {
+	tests := []struct {
+		name                                 string
+		asn                                  int
+		wantAction                           string
+		wantScore, wantLearned, wantASNCount int
+	}{
+		{
+			name:         "allowed change on known network",
+			asn:          16509,
+			wantAction:   "allow",
+			wantScore:    20,
+			wantLearned:  61,
+			wantASNCount: 61,
+		},
+		{
+			name:         "flagged change on new network",
+			asn:          14061,
+			wantAction:   "flag",
+			wantScore:    50,
+			wantLearned:  60,
+			wantASNCount: 0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture(t)
+			at := f.history(now.AddDate(0, 0, -5))
+			change := f.send(at, tt.asn, "")
+			change.Type, change.Email, change.Change = event.TypeAccountChange, nil, &event.Change{Kind: "api_key.created"}
+			got := f.handle(change)
+			if got.Action != tt.wantAction || got.Score != tt.wantScore {
+				t.Fatalf("change decision = %s/%d, want %s/%d", got.Action, got.Score, tt.wantAction, tt.wantScore)
+			}
+			seen, asns, lastChange := f.profileRow()
+			if lastChange == nil || !lastChange.Equal(at) {
+				t.Errorf("last change = %v, want %v", lastChange, at)
+			}
+			if seen != tt.wantLearned || asns[f.account+"_key"][strconv.Itoa(tt.asn)] != tt.wantASNCount {
+				t.Errorf("baseline = events:%d ASNs:%v, want events:%d ASN count:%d", seen, asns, tt.wantLearned, tt.wantASNCount)
+			}
+			next := f.handle(f.send(at.Add(10*time.Minute), 16509, "stripe.com"))
+			if next.Score != 20 || len(next.Hits) != 1 || next.Hits[0].Name != "recent_account_change" {
+				t.Errorf("send after change = score:%d hits:%+v, want recent_account_change/20", next.Score, next.Hits)
+			}
+		})
+	}
+}
+func TestServiceConcurrentEventsOnOneAccount(t *testing.T) {
+	tests := []struct {
+		name    string
+		workers int
+	}{
+		{
+			name:    "single event control",
+			workers: 1,
+		},
+		{
+			name:    "twenty simultaneous events do not lose updates",
+			workers: 20,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newFixture(t)
+			events := make([]*event.Event, tt.workers)
+			for i := range events {
+				events[i] = f.send(now.Add(time.Duration(i)*time.Second), 16509, "stripe.com")
+			}
+			var group sync.WaitGroup
+			errs := make(chan error, tt.workers)
+			for _, ev := range events {
+				group.Go(func() {
+					if _, err := f.svc.Handle(context.Background(), ev); err != nil {
+						errs <- err
+					}
+				})
+			}
+			group.Wait()
+			close(errs)
+			for err := range errs {
+				t.Error(err)
+			}
+			if seen, _, _ := f.profileRow(); seen != tt.workers {
+				t.Errorf("learned events = %d, want %d", seen, tt.workers)
+			}
+		})
 	}
 }

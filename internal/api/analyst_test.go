@@ -150,296 +150,710 @@ func TestAnalystReadEndpoints(t *testing.T) {
 	hold := f.ingest(f.email(testNow.Add(time.Minute), 14061, "invoice-portal.net"), "hold")
 	block := f.ingest(f.email(testNow.Add(2*time.Minute), 14061, "acrne.com"), "block")
 
-	stats := decodeResponse[store.Stats](t, f.get("/v1/stats"))
-	if stats.Totals != (store.Totals{Events: 63, Allow: 60, Flag: 1, Hold: 1, Block: 1}) {
-		t.Fatalf("totals: %+v", stats.Totals)
+	// These cases share a read-only fixture; each checks one HTTP response.
+	tests := []struct {
+		name, path string
+		public     bool
+		check      func(*testing.T, *httptest.ResponseRecorder)
+	}{
+		{
+			name: "statistics include totals series queue and top signals",
+			path: "/v1/stats",
+			check: func(t *testing.T, w *httptest.ResponseRecorder) {
+				got := decodeResponse[store.Stats](t, w)
+				if got.Totals != (store.Totals{Events: 63, Allow: 60, Flag: 1, Hold: 1, Block: 1}) {
+					t.Errorf("totals = %+v, want 63 events with 60 allow and one of each elevated action", got.Totals)
+				}
+				if len(got.Series) != 1 || got.Series[0].Flag != 1 || got.Series[0].Hold != 1 || got.Series[0].Block != 1 {
+					t.Errorf("series = %+v, want one bucket with flag:1 hold:1 block:1", got.Series)
+				}
+				if len(got.ReviewQueue) != 1 || got.ReviewQueue[0].OpenCount != 3 || got.ReviewQueue[0].MaxAction != "block" {
+					t.Errorf("review queue = %+v, want one account with three open reviews and maximum block", got.ReviewQueue)
+				}
+				if len(got.TopSignals) != 4 || got.TopSignals[0] != (store.SignalCount{Name: "new_asn", Count: 3}) {
+					t.Errorf("top signals = %+v, want four signals led by new_asn:3", got.TopSignals)
+				}
+			},
+		},
+		{
+			name: "hourly range includes from and excludes to",
+			path: "/v1/stats?bucket=1h&from=" + testNow.Format(time.RFC3339) + "&to=" + testNow.Add(time.Minute).Format(time.RFC3339),
+			check: func(t *testing.T, w *httptest.ResponseRecorder) {
+				got := decodeResponse[store.Stats](t, w)
+				if got.Totals != (store.Totals{Events: 1, Flag: 1}) {
+					t.Errorf("totals = %+v, want one flagged event", got.Totals)
+				}
+			},
+		},
+		{
+			name: "daily range includes from and excludes to",
+			path: "/v1/stats?bucket=1d&from=" + testNow.Format(time.RFC3339) + "&to=" + testNow.Add(time.Minute).Format(time.RFC3339),
+			check: func(t *testing.T, w *httptest.ResponseRecorder) {
+				got := decodeResponse[store.Stats](t, w)
+				if got.Totals != (store.Totals{Events: 1, Flag: 1}) {
+					t.Errorf("totals = %+v, want one flagged event", got.Totals)
+				}
+			},
+		},
+		{
+			name: "account search includes review counts and latest action",
+			path: "/v1/accounts?q=account&needs_review=true",
+			check: func(t *testing.T, w *httptest.ResponseRecorder) {
+				got := decodeResponse[[]store.AccountSummary](t, w)
+				if len(got) != 1 {
+					t.Fatalf("accounts = %d, want 1", len(got))
+				}
+				if got[0].OpenReviews != 3 || got[0].Decisions != 63 || got[0].LastAction == nil || *got[0].LastAction != "block" {
+					t.Errorf("account = %+v, want 63 decisions, 3 open reviews, latest block", got[0])
+				}
+			},
+		},
+		{
+			name: "unmatched account search is empty",
+			path: "/v1/accounts?q=missing",
+			check: func(t *testing.T, w *httptest.ResponseRecorder) {
+				if got := decodeResponse[[]store.AccountSummary](t, w); len(got) != 0 {
+					t.Errorf("accounts = %+v, want empty", got)
+				}
+			},
+		},
+		{
+			name: "timeline returns latest events chronologically without private email data",
+			path: "/v1/accounts/account/timeline?limit=2",
+			check: func(t *testing.T, w *httptest.ResponseRecorder) {
+				got := decodeResponse[[]store.TimelineRow](t, w)
+				if len(got) != 2 {
+					t.Fatalf("timeline rows = %d, want 2", len(got))
+				}
+				if got[0].DecisionID == nil || *got[0].DecisionID != hold.DecisionID || got[1].DecisionID == nil || *got[1].DecisionID != block.DecisionID {
+					t.Errorf("timeline = %+v, want hold then block", got)
+				}
+				for _, secret := range []string{"private-recipient", "private-body-marker", "private-path", "billing@acme.com"} {
+					if strings.Contains(w.Body.String(), secret) {
+						t.Errorf("timeline leaked %q", secret)
+					}
+				}
+			},
+		},
+		{
+			name: "series aggregates recipients actions network and content",
+			path: "/v1/accounts/account/series?from=" + testNow.Format(time.RFC3339),
+			check: func(t *testing.T, w *httptest.ResponseRecorder) {
+				got := decodeResponse[struct {
+					Baseline float64       `json:"baseline_hourly"`
+					Spike    float64       `json:"spike_threshold"`
+					Points   []seriesPoint `json:"points"`
+				}](t, w)
+				if got.Baseline != 1 || got.Spike != 30 || len(got.Points) != 1 {
+					t.Fatalf("series = %+v, want baseline:1 spike:30 one hourly point", got)
+				}
+				point := got.Points[0]
+				if point.Recipients != 3 || point.Actions["block"] != 1 || len(point.ASNs) != 1 || !point.ASNs[0].FirstSeen || !slices.Contains(point.ContentHits, "lookalike_domain") {
+					t.Errorf("point = %+v, want three recipients, one block, a new ASN and lookalike hit", point)
+				}
+			},
+		},
+		{
+			name: "profile keeps allowed history separate from suspended key",
+			path: "/v1/accounts/account/profile",
+			check: func(t *testing.T, w *httptest.ResponseRecorder) {
+				got := decodeResponse[struct {
+					Profile profile.Profile   `json:"profile"`
+					Keys    []store.KeyStatus `json:"key_status"`
+				}](t, w)
+				if got.Profile.EventsSeen != 60 || len(got.Keys) != 1 || got.Keys[0].Status != "suspended" {
+					t.Errorf("profile response = %+v, want 60 learned events and one suspended key", got)
+				}
+			},
+		},
+		{
+			name: "decision detail includes its event and empty audit history",
+			path: "/v1/decisions/" + block.DecisionID,
+			check: func(t *testing.T, w *httptest.ResponseRecorder) {
+				got := decodeResponse[decisionDetail](t, w)
+				if got.Decision.Score != 100 || got.Event.EventID != block.EventID || len(got.Actions) != 0 {
+					t.Errorf("decision detail = %+v, want score:100, original event and no audit entries", got)
+				}
+			},
+		},
+		{
+			name:   "health does not require an analyst token",
+			path:   "/healthz",
+			public: true,
+		},
 	}
-	if len(stats.Series) != 1 || stats.Series[0].Flag != 1 || stats.Series[0].Hold != 1 || stats.Series[0].Block != 1 {
-		t.Errorf("stats series: %+v", stats.Series)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			token := testAnalystToken
+			if tt.public {
+				token = ""
+			}
+			response := request(t, f.handler, "GET", tt.path, token, nil)
+			requireStatus(t, response, 200)
+			if tt.check != nil {
+				tt.check(t, response)
+			}
+		})
 	}
-	if len(stats.ReviewQueue) != 1 || stats.ReviewQueue[0].OpenCount != 3 || stats.ReviewQueue[0].MaxAction != "block" {
-		t.Errorf("review queue: %+v", stats.ReviewQueue)
-	}
-	if len(stats.TopSignals) != 4 || stats.TopSignals[0] != (store.SignalCount{Name: "new_asn", Count: 3}) {
-		t.Errorf("top signals: %+v", stats.TopSignals)
-	}
-	for _, bucket := range []string{"1h", "1d"} {
-		ranged := decodeResponse[store.Stats](t, f.get("/v1/stats?bucket="+bucket+"&from="+testNow.Format(time.RFC3339)+"&to="+testNow.Add(time.Minute).Format(time.RFC3339)))
-		if ranged.Totals != (store.Totals{Events: 1, Flag: 1}) {
-			t.Errorf("range must include from and exclude to: %+v", ranged.Totals)
-		}
-	}
-	accounts := decodeResponse[[]store.AccountSummary](t, f.get("/v1/accounts?q=account&needs_review=true"))
-	if len(accounts) != 1 || accounts[0].OpenReviews != 3 || accounts[0].Decisions != 63 || accounts[0].LastAction == nil || *accounts[0].LastAction != "block" {
-		t.Fatalf("accounts: %+v", accounts)
-	}
-	if got := decodeResponse[[]store.AccountSummary](t, f.get("/v1/accounts?q=missing")); len(got) != 0 {
-		t.Errorf("search returned unrelated accounts: %+v", got)
-	}
-	timelineResponse := f.get("/v1/accounts/account/timeline?limit=2")
-	timeline := decodeResponse[[]store.TimelineRow](t, timelineResponse)
-	if len(timeline) != 2 || *timeline[0].DecisionID != hold.DecisionID || *timeline[1].DecisionID != block.DecisionID {
-		t.Fatalf("latest two events should be chronological: %+v", timeline)
-	}
-	for _, secret := range []string{"private-recipient", "private-body-marker", "private-path", "billing@acme.com"} {
-		if strings.Contains(timelineResponse.Body.String(), secret) {
-			t.Errorf("timeline leaked email data: %s", secret)
-		}
-	}
-	series := decodeResponse[struct {
-		Baseline float64       `json:"baseline_hourly"`
-		Spike    float64       `json:"spike_threshold"`
-		Points   []seriesPoint `json:"points"`
-	}](t, f.get("/v1/accounts/account/series?from="+testNow.Format(time.RFC3339)))
-	if series.Baseline != 1 || series.Spike != 30 || len(series.Points) != 1 {
-		t.Fatalf("series: %+v", series)
-	}
-	pt := series.Points[0]
-	if pt.Recipients != 3 || pt.Actions["block"] != 1 || len(pt.ASNs) != 1 || !pt.ASNs[0].FirstSeen || !slices.Contains(pt.ContentHits, "lookalike_domain") {
-		t.Errorf("series aggregation: %+v", pt)
-	}
-	keys := decodeResponse[struct {
-		Profile profile.Profile   `json:"profile"`
-		Keys    []store.KeyStatus `json:"key_status"`
-	}](t, f.get("/v1/accounts/account/profile"))
-	if keys.Profile.EventsSeen != 60 || len(keys.Keys) != 1 || keys.Keys[0].Status != "suspended" {
-		t.Errorf("profile and keys: %+v", keys)
-	}
-	detail := f.detail(block.DecisionID)
-	if detail.Decision.Score != 100 || detail.Event.EventID != block.EventID || len(detail.Actions) != 0 {
-		t.Errorf("decision detail: %+v", detail)
-	}
-	requireStatus(t, request(t, f.handler, "GET", "/healthz", "", nil), 200)
 }
 
 func TestAnalystEmptyAndMissingResources(t *testing.T) {
 	f := newAPIFixture(t)
-	stats := decodeResponse[store.Stats](t, f.get("/v1/stats"))
-	if stats.Totals.Events != 0 || len(stats.ReviewQueue) != 0 || len(stats.Series) != 0 {
-		t.Errorf("empty stats: %+v", stats)
+	tests := []struct {
+		name, method, path            string
+		body                          any
+		wantStatus                    int
+		wantEmptyStats, wantEmptyList bool
+	}{
+		{
+			name:           "empty statistics",
+			method:         "GET",
+			path:           "/v1/stats",
+			wantStatus:     200,
+			wantEmptyStats: true,
+		},
+		{
+			name:          "empty accounts",
+			method:        "GET",
+			path:          "/v1/accounts",
+			wantStatus:    200,
+			wantEmptyList: true,
+		},
+		{
+			name:          "unknown account has empty timeline",
+			method:        "GET",
+			path:          "/v1/accounts/missing/timeline",
+			wantStatus:    200,
+			wantEmptyList: true,
+		},
+		{
+			name:       "unknown profile",
+			method:     "GET",
+			path:       "/v1/accounts/missing/profile",
+			wantStatus: 404,
+		},
+		{
+			name:       "unknown series",
+			method:     "GET",
+			path:       "/v1/accounts/missing/series",
+			wantStatus: 404,
+		},
+		{
+			name:       "unknown decision",
+			method:     "GET",
+			path:       "/v1/decisions/" + testDecisionID,
+			wantStatus: 404,
+		},
+		{
+			name:       "action on unknown decision",
+			method:     "POST",
+			path:       "/v1/decisions/" + testDecisionID + "/actions",
+			body:       actionRequest{Action: engine.ActReleaseHold, Actor: "reviewer", Reason: "reviewed evidence"},
+			wantStatus: 404,
+		},
+		{
+			name:       "restore unknown key",
+			method:     "POST",
+			path:       "/v1/keys/missing/unblock",
+			body:       actionRequest{Actor: "reviewer", Reason: "reviewed"},
+			wantStatus: 404,
+		},
+		{
+			name:       "owner response for unknown decision",
+			method:     "POST",
+			path:       "/v1/holds/" + testDecisionID + "/owner-response",
+			body:       map[string]string{"response": "not_me"},
+			wantStatus: 404,
+		},
 	}
-	for _, path := range []string{"/v1/accounts", "/v1/accounts/missing/timeline"} {
-		if got := decodeResponse[[]any](t, f.get(path)); len(got) != 0 {
-			t.Errorf("%s: %+v", path, got)
-		}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			response := request(t, f.handler, tt.method, tt.path, testAnalystToken, tt.body)
+			requireStatus(t, response, tt.wantStatus)
+			if tt.wantEmptyStats {
+				got := decodeResponse[store.Stats](t, response)
+				if got.Totals.Events != 0 || len(got.ReviewQueue) != 0 || len(got.Series) != 0 {
+					t.Errorf("empty stats = %+v", got)
+				}
+			}
+			if tt.wantEmptyList {
+				if got := decodeResponse[[]any](t, response); len(got) != 0 {
+					t.Errorf("response = %+v, want empty list", got)
+				}
+			}
+		})
 	}
-	for _, path := range []string{"/v1/accounts/missing/profile", "/v1/accounts/missing/series", "/v1/decisions/" + testDecisionID} {
-		requireStatus(t, f.get(path), 404)
-	}
-	requireStatus(t, f.action(testDecisionID, engine.ActReleaseHold), 404)
-	requireStatus(t, f.post("/v1/keys/missing/unblock", actionRequest{Actor: "reviewer", Reason: "reviewed"}), 404)
-	requireStatus(t, f.post("/v1/holds/"+testDecisionID+"/owner-response", `{"response":"not_me"}`), 404)
 }
 
 func TestAnalystSeriesPreservesASNHistoryOutsideRange(t *testing.T) {
-	f := newAPIFixture(t)
-	f.history()
-	f.ingest(f.email(testNow, 16509, "stripe.com"), "allow")
-	change := f.email(testNow.Add(time.Minute), 16509, "")
-	change.Type, change.Email, change.Change = event.TypeAccountChange, nil, &event.Change{Kind: "api_key.created", TargetID: "new-key"}
-	f.ingest(change, "allow")
-	read := f.email(testNow.Add(2*time.Minute), 16509, "")
-	read.Type, read.Email, read.Read = event.TypeAPIRead, nil, &event.Read{Resource: "contacts", Status: 403}
-	f.ingest(read, "allow")
-	series := decodeResponse[struct {
-		Points []seriesPoint `json:"points"`
-	}](t, f.get("/v1/accounts/account/series?from="+testNow.Format(time.RFC3339)))
-	if len(series.Points) != 1 {
-		t.Fatalf("series: %+v", series)
+	tests := []struct {
+		name                        string
+		fromAfter                   time.Duration
+		wantRecipients, wantAllowed int
+	}{
+		{
+			name:           "range includes the normal send",
+			fromAfter:      0,
+			wantRecipients: 1,
+			wantAllowed:    3,
+		},
+		{
+			name:           "range starts at account change",
+			fromAfter:      time.Minute,
+			wantRecipients: 0,
+			wantAllowed:    2,
+		},
 	}
-	pt := series.Points[0]
-	if pt.Recipients != 1 || pt.AccountChanges != 1 || pt.Actions["allow"] != 3 || len(pt.ASNs) != 1 || pt.ASNs[0].FirstSeen {
-		t.Errorf("same ASN should remain familiar outside query range: %+v", pt)
-	}
-	timeline := decodeResponse[[]store.TimelineRow](t, f.get("/v1/accounts/account/timeline?from="+change.OccurredAt.Format(time.RFC3339)+"&to="+read.OccurredAt.Format(time.RFC3339)))
-	if len(timeline) != 1 || timeline[0].ChangeKind == nil || *timeline[0].ChangeKind != "api_key.created" {
-		t.Errorf("timeline bounds and account-change metadata: %+v", timeline)
-	}
-	p := f.learned()
-	if p.LastChangeAt == nil || !p.LastChangeAt.Equal(change.OccurredAt) || !slices.Contains(p.ReadResources, "contacts") {
-		t.Errorf("change/read profile: %+v", p)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newAPIFixture(t)
+			f.history()
+			f.ingest(f.email(testNow, 16509, "stripe.com"), "allow")
+			change := f.email(testNow.Add(time.Minute), 16509, "")
+			change.Type, change.Email, change.Change = event.TypeAccountChange, nil, &event.Change{Kind: "api_key.created", TargetID: "new-key"}
+			f.ingest(change, "allow")
+			read := f.email(testNow.Add(2*time.Minute), 16509, "")
+			read.Type, read.Email, read.Read = event.TypeAPIRead, nil, &event.Read{Resource: "contacts", Status: 403}
+			f.ingest(read, "allow")
+			got := decodeResponse[struct {
+				Points []seriesPoint `json:"points"`
+			}](t, f.get("/v1/accounts/account/series?from="+testNow.Add(tt.fromAfter).Format(time.RFC3339)))
+			if len(got.Points) != 1 {
+				t.Fatalf("series buckets = %d, want 1", len(got.Points))
+			}
+			point := got.Points[0]
+			if point.Recipients != tt.wantRecipients || point.AccountChanges != 1 || point.Actions["allow"] != tt.wantAllowed || len(point.ASNs) != 1 || point.ASNs[0].FirstSeen {
+				t.Errorf("series point = %+v, want recipients:%d changes:1 allows:%d familiar ASN", point, tt.wantRecipients, tt.wantAllowed)
+			}
+			timeline := decodeResponse[[]store.TimelineRow](t, f.get("/v1/accounts/account/timeline?from="+change.OccurredAt.Format(time.RFC3339)+"&to="+read.OccurredAt.Format(time.RFC3339)))
+			if len(timeline) != 1 || timeline[0].ChangeKind == nil || *timeline[0].ChangeKind != "api_key.created" {
+				t.Errorf("timeline = %+v, want only the account change", timeline)
+			}
+			learned := f.learned()
+			if learned.LastChangeAt == nil || !learned.LastChangeAt.Equal(change.OccurredAt) || !slices.Contains(learned.ReadResources, "contacts") {
+				t.Errorf("change/read profile = %+v", learned)
+			}
+		})
 	}
 }
 
 func TestAnalystReleaseConfirmAndUnblock(t *testing.T) {
-	f := newAPIFixture(t)
-	f.history()
-	h1 := f.ingest(f.email(testNow, 14061, "invoice-portal.net"), "hold")
-	h2 := f.ingest(f.email(testNow.Add(time.Second), 14061, "invoice-portal.net"), "hold")
-	h3 := f.ingest(f.email(testNow.Add(2*time.Second), 14061, "invoice-portal.net"), "hold")
-	d := decodeResponse[store.Decision](t, f.action(h1.DecisionID, engine.ActReleaseHold))
-	if d.HoldStatus == nil || *d.HoldStatus != "released" || d.ReviewStatus != "resolved" || d.Label != nil || f.learned().EventsSeen != 60 {
-		t.Fatalf("release changed baseline or wrong status: %+v", d)
+	tests := []struct {
+		name, action, wantHold, wantLabel, wantOtherHold string
+		releaseFirst, restoreKey                         bool
+	}{
+		{
+			name:          "release resolves only the selected hold",
+			action:        engine.ActReleaseHold,
+			wantHold:      "released",
+			wantOtherHold: "pending",
+		},
+		{
+			name:          "confirm drops remaining holds and key access can be restored",
+			action:        engine.ActConfirmTakeover,
+			releaseFirst:  true,
+			wantHold:      "dropped",
+			wantLabel:     "takeover",
+			wantOtherHold: "dropped",
+			restoreKey:    true,
+		},
 	}
-	requireStatus(t, f.action(h1.DecisionID, engine.ActReleaseHold), 409)
-	d = decodeResponse[store.Decision](t, f.action(h2.DecisionID, engine.ActConfirmTakeover))
-	if d.Label == nil || *d.Label != "takeover" || *f.detail(h3.DecisionID).Decision.HoldStatus != "dropped" {
-		t.Fatalf("confirm didn't drop pending holds: %+v", d)
-	}
-	requireStatus(t, f.action(h2.DecisionID, engine.ActConfirmTakeover), 409)
-	f.ingest(f.email(testNow.Add(time.Minute), 16509, "stripe.com"), "block")
-	requireStatus(t, f.post("/v1/keys/key/unblock", actionRequest{Actor: "reviewer", Reason: "owner rotated key"}), 200)
-	f.ingest(f.email(testNow.Add(2*time.Minute), 16509, "stripe.com"), "allow")
-	requireStatus(t, f.post("/v1/keys/key/unblock", actionRequest{Actor: "reviewer", Reason: "again"}), 409)
-	detail := f.detail(h2.DecisionID)
-	if len(detail.Actions) != 1 || detail.Actions[0].Action != engine.ActConfirmTakeover || detail.Actions[0].Actor != "reviewer" || detail.Actions[0].Reason != "reviewed evidence" {
-		t.Errorf("audit history: %+v", detail.Actions)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newAPIFixture(t)
+			f.history()
+			first := f.ingest(f.email(testNow, 14061, "invoice-portal.net"), "hold")
+			selected := f.ingest(f.email(testNow.Add(time.Second), 14061, "invoice-portal.net"), "hold")
+			other := f.ingest(f.email(testNow.Add(2*time.Second), 14061, "invoice-portal.net"), "hold")
+			if tt.releaseFirst {
+				requireStatus(t, f.action(first.DecisionID, engine.ActReleaseHold), 200)
+			}
+			got := decodeResponse[store.Decision](t, f.action(selected.DecisionID, tt.action))
+			if got.HoldStatus == nil || *got.HoldStatus != tt.wantHold || got.ReviewStatus != "resolved" {
+				t.Errorf("decision state = hold:%v review:%s, want %s/resolved", got.HoldStatus, got.ReviewStatus, tt.wantHold)
+			}
+			if tt.wantLabel == "" {
+				if got.Label != nil {
+					t.Errorf("label = %v, want none", got.Label)
+				}
+			} else if got.Label == nil || *got.Label != tt.wantLabel {
+				t.Errorf("label = %v, want %q", got.Label, tt.wantLabel)
+			}
+			if sibling := f.detail(other.DecisionID).Decision; sibling.HoldStatus == nil || *sibling.HoldStatus != tt.wantOtherHold {
+				t.Errorf("other hold = %v, want %q", sibling.HoldStatus, tt.wantOtherHold)
+			}
+			if tt.releaseFirst {
+				if previous := f.detail(first.DecisionID).Decision; previous.HoldStatus == nil || *previous.HoldStatus != "released" {
+					t.Errorf("previously released hold changed: %+v", previous)
+				}
+			}
+			if seen := f.learned().EventsSeen; seen != 60 {
+				t.Errorf("action learned %d events, want 60", seen)
+			}
+			requireStatus(t, f.action(selected.DecisionID, tt.action), 409)
+			if tt.restoreKey {
+				f.ingest(f.email(testNow.Add(time.Minute), 16509, "stripe.com"), "block")
+				requireStatus(t, f.post("/v1/keys/key/unblock", actionRequest{Actor: "reviewer", Reason: "owner rotated key"}), 200)
+				f.ingest(f.email(testNow.Add(2*time.Minute), 16509, "stripe.com"), "allow")
+				requireStatus(t, f.post("/v1/keys/key/unblock", actionRequest{Actor: "reviewer", Reason: "again"}), 409)
+			}
+			audit := f.detail(selected.DecisionID).Actions
+			if len(audit) != 1 || audit[0].Action != tt.action || audit[0].Actor != "reviewer" || audit[0].Reason != "reviewed evidence" {
+				t.Errorf("audit = %+v, want one %q by reviewer with its reason", audit, tt.action)
+			}
+		})
 	}
 }
 
-func TestAnalystMarkLegitimateLearnsExactlyOnce(t *testing.T) {
-	f := newAPIFixture(t)
-	f.history()
-	d := f.ingest(f.email(testNow, 14061, "stripe.com"), "flag")
-	requireStatus(t, f.action(d.DecisionID, engine.ActMarkLegitimate), 200)
-	requireStatus(t, f.action(d.DecisionID, engine.ActMarkLegitimate), 409)
-	p := f.learned()
-	if p.EventsSeen != 61 || p.KeyASNs["key"]["14061"] != 1 || p.KnownDomains["stripe.com"] != 61 {
-		t.Fatalf("baseline after review: %+v", p)
+func TestAnalystMarkLegitimate(t *testing.T) {
+	tests := []struct {
+		name                       string
+		withHistory                bool
+		asn                        int
+		initialAction              string
+		wantEvents, wantDomainUses int
+	}{
+		{
+			name:           "flagged migration learns exactly once",
+			withHistory:    true,
+			asn:            14061,
+			initialAction:  "flag",
+			wantEvents:     61,
+			wantDomainUses: 61,
+		},
+		{
+			name:           "already allowed event is not learned twice",
+			asn:            16509,
+			initialAction:  "allow",
+			wantEvents:     1,
+			wantDomainUses: 1,
+		},
 	}
-	f.ingest(f.email(testNow.Add(time.Minute), 14061, "stripe.com"), "allow")
-}
-
-func TestAnalystMarkAlreadyAllowedDoesNotDoubleLearn(t *testing.T) {
-	f := newAPIFixture(t)
-	d := f.ingest(f.email(testNow, 16509, "stripe.com"), "allow")
-	requireStatus(t, f.action(d.DecisionID, engine.ActMarkLegitimate), 200)
-	p := f.learned()
-	if p.EventsSeen != 1 || p.KnownDomains["stripe.com"] != 1 || p.HourBucketRecipients != 1 {
-		t.Fatalf("already allowed event was learned twice: %+v", p)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newAPIFixture(t)
+			if tt.withHistory {
+				f.history()
+			}
+			original := f.ingest(f.email(testNow, tt.asn, "stripe.com"), tt.initialAction)
+			requireStatus(t, f.action(original.DecisionID, engine.ActMarkLegitimate), 200)
+			requireStatus(t, f.action(original.DecisionID, engine.ActMarkLegitimate), 409)
+			learned := f.learned()
+			if learned.EventsSeen != tt.wantEvents {
+				t.Errorf("learned events = %d, want %d", learned.EventsSeen, tt.wantEvents)
+			}
+			if got := learned.KeyASNs["key"][fmt.Sprint(tt.asn)]; got != 1 {
+				t.Errorf("new network uses = %d, want 1", got)
+			}
+			if got := learned.KnownDomains["stripe.com"]; got != tt.wantDomainUses {
+				t.Errorf("domain uses = %d, want %d", got, tt.wantDomainUses)
+			}
+			if learned.HourBucketRecipients != 1 {
+				t.Errorf("open bucket recipients = %d, want 1", learned.HourBucketRecipients)
+			}
+			f.ingest(f.email(testNow.Add(time.Minute), tt.asn, "stripe.com"), "allow")
+		})
 	}
 }
 
 func TestOwnerResponsesAndExpiredHold(t *testing.T) {
-	for _, response := range []string{"this_was_me", "not_me", "expired"} {
-		t.Run(response, func(t *testing.T) {
+	tests := []struct {
+		name, response, wantHold, wantLabel, wantReview, wantAudit string
+		expired, wantSuspended                                     bool
+		wantStatus, wantLearned, wantDomainUses                    int
+	}{
+		{
+			name:           "owner recognizes legitimate activity",
+			response:       "this_was_me",
+			wantStatus:     200,
+			wantHold:       "released",
+			wantLabel:      "legitimate",
+			wantReview:     "resolved",
+			wantAudit:      "owner_this_was_me",
+			wantLearned:    61,
+			wantDomainUses: 1,
+		},
+		{
+			name:          "owner reports takeover",
+			response:      "not_me",
+			wantStatus:    200,
+			wantHold:      "dropped",
+			wantLabel:     "takeover",
+			wantReview:    "resolved",
+			wantAudit:     "owner_not_me",
+			wantLearned:   60,
+			wantSuspended: true,
+		},
+		{
+			name:        "expired hold rejects owner and analyst release",
+			response:    "this_was_me",
+			expired:     true,
+			wantStatus:  409,
+			wantHold:    "expired",
+			wantReview:  "open",
+			wantLearned: 60,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
 			f := newAPIFixture(t)
 			f.history()
-			h := f.ingest(f.email(testNow, 14061, "invoice-portal.net"), "hold")
-			path := "/v1/holds/" + h.DecisionID + "/owner-response"
-			if response == "expired" {
-				_, err := f.server.Store.Pool.Exec(context.Background(), `update decisions set hold_expires_at = now() - interval '1 minute' where decision_id = $1::uuid`, h.DecisionID)
-				if err != nil {
+			hold := f.ingest(f.email(testNow, 14061, "invoice-portal.net"), "hold")
+			if tt.expired {
+				if _, err := f.server.Store.Pool.Exec(context.Background(), `update decisions set hold_expires_at = now() - interval '1 minute' where decision_id = $1::uuid`, hold.DecisionID); err != nil {
 					t.Fatal(err)
 				}
 				if _, err := store.ExpireHolds(context.Background(), f.server.Store.Pool); err != nil {
 					t.Fatal(err)
 				}
-				requireStatus(t, f.post(path, `{"response":"this_was_me"}`), 409)
-				requireStatus(t, f.action(h.DecisionID, engine.ActReleaseHold), 409)
-				if d := f.detail(h.DecisionID).Decision; *d.HoldStatus != "expired" || d.ReviewStatus != "open" {
-					t.Errorf("expired decision: %+v", d)
-				}
-				return
 			}
-			d := decodeResponse[store.Decision](t, f.post(path, map[string]string{"response": response}))
-			if response == "this_was_me" {
-				p := f.learned()
-				if *d.HoldStatus != "released" || *d.Label != "legitimate" || p.EventsSeen != 61 || p.KnownDomains["invoice-portal.net"] != 1 {
-					t.Fatalf("owner confirmation: %+v profile=%+v", d, p)
+			path := "/v1/holds/" + hold.DecisionID + "/owner-response"
+			requireStatus(t, f.post(path, map[string]string{"response": tt.response}), tt.wantStatus)
+			detail := f.detail(hold.DecisionID)
+			got := detail.Decision
+			if got.HoldStatus == nil || *got.HoldStatus != tt.wantHold || got.ReviewStatus != tt.wantReview {
+				t.Errorf("owner result = hold:%v review:%s, want %s/%s", got.HoldStatus, got.ReviewStatus, tt.wantHold, tt.wantReview)
+			}
+			if tt.wantLabel == "" {
+				if got.Label != nil {
+					t.Errorf("label = %v, want none", got.Label)
 				}
-			} else {
-				if *d.HoldStatus != "dropped" || *d.Label != "takeover" || f.learned().EventsSeen != 60 {
-					t.Fatalf("owner denial: %+v", d)
+			} else if got.Label == nil || *got.Label != tt.wantLabel {
+				t.Errorf("label = %v, want %q", got.Label, tt.wantLabel)
+			}
+			learned := f.learned()
+			if learned.EventsSeen != tt.wantLearned || learned.KnownDomains["invoice-portal.net"] != tt.wantDomainUses {
+				t.Errorf("baseline = events:%d domain uses:%d, want %d/%d", learned.EventsSeen, learned.KnownDomains["invoice-portal.net"], tt.wantLearned, tt.wantDomainUses)
+			}
+			if tt.wantAudit == "" {
+				if len(detail.Actions) != 0 {
+					t.Errorf("rejected response wrote audit entries: %+v", detail.Actions)
 				}
+			} else if len(detail.Actions) != 1 || detail.Actions[0].Actor != "owner" || detail.Actions[0].Action != tt.wantAudit {
+				t.Errorf("audit = %+v, want one owner/%s entry", detail.Actions, tt.wantAudit)
+			}
+			if tt.wantSuspended {
 				f.ingest(f.email(testNow.Add(time.Minute), 16509, "stripe.com"), "block")
 			}
-			detail := f.detail(h.DecisionID)
-			wantAction := map[string]string{"this_was_me": "owner_this_was_me", "not_me": "owner_not_me"}[response]
-			if len(detail.Actions) != 1 || detail.Actions[0].Actor != "owner" || detail.Actions[0].Action != wantAction {
-				t.Errorf("owner audit: %+v", detail.Actions)
+			requireStatus(t, f.post(path, map[string]string{"response": tt.response}), 409)
+			if tt.expired {
+				requireStatus(t, f.action(hold.DecisionID, engine.ActReleaseHold), 409)
 			}
-			requireStatus(t, f.post(path, map[string]string{"response": response}), 409)
 		})
 	}
 }
 
 func TestConcurrentAnalystReviewsTeachOnce(t *testing.T) {
-	f := newAPIFixture(t)
-	f.history()
-	d := f.ingest(f.email(testNow, 14061, "stripe.com"), "flag")
-	var wg sync.WaitGroup
-	codes := make(chan int, 2)
-	for range 2 {
-		wg.Go(func() { codes <- f.action(d.DecisionID, engine.ActMarkLegitimate).Code })
+	tests := []struct {
+		name      string
+		reviewers int
+	}{
+		{
+			name:      "two reviewers",
+			reviewers: 2,
+		},
+		{
+			name:      "five reviewers",
+			reviewers: 5,
+		},
 	}
-	wg.Wait()
-	close(codes)
-	var got []int
-	for code := range codes {
-		got = append(got, code)
-	}
-	slices.Sort(got)
-	if !slices.Equal(got, []int{200, 409}) || f.learned().EventsSeen != 61 || len(f.detail(d.DecisionID).Actions) != 1 {
-		t.Errorf("concurrent reviews: statuses=%v", got)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newAPIFixture(t)
+			f.history()
+			original := f.ingest(f.email(testNow, 14061, "stripe.com"), "flag")
+			var group sync.WaitGroup
+			statuses := make(chan int, tt.reviewers)
+			for range tt.reviewers {
+				group.Go(func() { statuses <- f.action(original.DecisionID, engine.ActMarkLegitimate).Code })
+			}
+			group.Wait()
+			close(statuses)
+			successes, conflicts := 0, 0
+			for status := range statuses {
+				switch status {
+				case 200:
+					successes++
+				case 409:
+					conflicts++
+				default:
+					t.Errorf("unexpected concurrent response: HTTP %d", status)
+				}
+			}
+			if successes != 1 || conflicts != tt.reviewers-1 {
+				t.Errorf("responses = success:%d conflict:%d, want 1/%d", successes, conflicts, tt.reviewers-1)
+			}
+			if learned := f.learned().EventsSeen; learned != 61 {
+				t.Errorf("learned events = %d, want 61", learned)
+			}
+			if audit := f.detail(original.DecisionID).Actions; len(audit) != 1 {
+				t.Errorf("audit entries = %d, want 1", len(audit))
+			}
+		})
 	}
 }
 
 func TestIngestDuplicateAndShadowMode(t *testing.T) {
-	f := newAPIFixture(t)
-	f.history()
-	f.server.Config.Mode = "shadow"
-	ev := f.email(testNow, 14061, "acrne.com")
-	first := f.ingest(ev, "allow")
-	second := f.ingest(ev, "allow")
-	if first.DecisionID != second.DecisionID || first.Enforced || first.Score != 100 || second.LatencyUS != first.LatencyUS {
-		t.Fatalf("shadow or duplicate response: first=%+v second=%+v", first, second)
+	tests := []struct {
+		name, mode, wantResponseAction string
+		wantEnforced, wantSuspended    bool
+	}{
+		{
+			name:               "enforcement blocks and suspends once",
+			mode:               "enforce",
+			wantResponseAction: "block",
+			wantEnforced:       true,
+			wantSuspended:      true,
+		},
+		{
+			name:               "shadow computes block without enforcement",
+			mode:               "shadow",
+			wantResponseAction: "allow",
+		},
 	}
-	d := f.detail(first.DecisionID).Decision
-	if d.Action != "block" || d.Enforced || d.HoldStatus != nil || f.learned().EventsSeen != 60 {
-		t.Fatalf("shadow decision: %+v", d)
-	}
-	suspended, err := store.KeySuspended(context.Background(), f.server.Store.Pool, "key")
-	if err != nil || suspended {
-		t.Fatalf("shadow suspended key: %v, %v", suspended, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newAPIFixture(t)
+			f.history()
+			f.server.Config.Mode = tt.mode
+			ev := f.email(testNow, 14061, "acrne.com")
+			first := f.ingest(ev, tt.wantResponseAction)
+			second := f.ingest(ev, tt.wantResponseAction)
+			if first.DecisionID != second.DecisionID || first.Enforced != tt.wantEnforced || first.Score != 100 || second.LatencyUS != first.LatencyUS {
+				t.Errorf("responses differ from expected idempotent result: first=%+v second=%+v", first, second)
+			}
+			stored := f.detail(first.DecisionID).Decision
+			if stored.Action != "block" || stored.Enforced != tt.wantEnforced || stored.HoldStatus != nil {
+				t.Errorf("stored decision = %+v, want block with enforced:%v and no hold", stored, tt.wantEnforced)
+			}
+			if learned := f.learned().EventsSeen; learned != 60 {
+				t.Errorf("attack learned %d events, want baseline unchanged at 60", learned)
+			}
+			suspended, err := store.KeySuspended(context.Background(), f.server.Store.Pool, "key")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if suspended != tt.wantSuspended {
+				t.Errorf("key suspended = %v, want %v", suspended, tt.wantSuspended)
+			}
+		})
 	}
 }
 
 func TestDatabaseOutageFailsOpenOnlyForIngest(t *testing.T) {
-	f := newAPIFixture(t)
-	f.server.Store.Close()
-	d := decodeResponse[DecisionResponse](t, request(t, f.handler, "POST", "/v1/events", testIngestToken, f.email(testNow, 16509, "stripe.com")))
-	if d.Action != "allow" || !d.Unscored || d.Enforced || d.DecisionID != "" || len(d.Hits) != 0 {
-		t.Errorf("fail-open response: %+v", d)
+	tests := []struct {
+		name, method, path, token   string
+		wantStatus                  int
+		wantUnscored, wantPlainText bool
+	}{
+		{
+			name:         "ingestion fails open",
+			method:       "POST",
+			path:         "/v1/events",
+			token:        testIngestToken,
+			wantStatus:   200,
+			wantUnscored: true,
+		},
+		{
+			name:       "statistics fail closed",
+			method:     "GET",
+			path:       "/v1/stats",
+			token:      testAnalystToken,
+			wantStatus: 500,
+		},
+		{
+			name:       "dashboard fails closed",
+			method:     "GET",
+			path:       "/v1/dashboard",
+			token:      testAnalystToken,
+			wantStatus: 500,
+		},
+		{
+			name:       "audit feed fails closed",
+			method:     "GET",
+			path:       "/v1/analyst-actions",
+			token:      testAnalystToken,
+			wantStatus: 500,
+		},
+		{
+			name:          "health reports database outage",
+			method:        "GET",
+			path:          "/healthz",
+			wantStatus:    503,
+			wantPlainText: true,
+		},
 	}
-	requireStatus(t, f.get("/v1/stats"), 500)
-	w := request(t, f.handler, "GET", "/healthz", "", nil)
-	if w.Code != 503 {
-		t.Errorf("health status = %d, want 503", w.Code)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newAPIFixture(t)
+			f.server.Store.Close()
+			var body any
+			if tt.wantUnscored {
+				body = f.email(testNow, 16509, "stripe.com")
+			}
+			response := request(t, f.handler, tt.method, tt.path, tt.token, body)
+			if tt.wantPlainText {
+				if response.Code != tt.wantStatus {
+					t.Errorf("HTTP %d, want %d", response.Code, tt.wantStatus)
+				}
+				return
+			}
+			requireStatus(t, response, tt.wantStatus)
+			if tt.wantUnscored {
+				got := decodeResponse[DecisionResponse](t, response)
+				if got.Action != "allow" || !got.Unscored || got.Enforced || got.DecisionID != "" || len(got.Hits) != 0 {
+					t.Errorf("fail-open response = %+v, want unscored allow with no enforcement, decision or hits", got)
+				}
+			}
+		})
 	}
 }
 
 func TestScoringTimeoutRollsBackAndCanBeRetried(t *testing.T) {
-	f := newAPIFixture(t)
-	f.ingest(f.email(testNow, 16509, "stripe.com"), "allow")
-	tx, err := f.server.Store.Pool.Begin(context.Background())
-	if err != nil {
-		t.Fatal(err)
+	tests := []struct{ name, blockingSQL string }{
+		{
+			name:        "waiting for profile row lock",
+			blockingSQL: `select account_id from profiles where account_id = 'account' for update`,
+		},
+		{
+			name:        "waiting to insert event",
+			blockingSQL: `lock table events in access exclusive mode`,
+		},
 	}
-	defer tx.Rollback(context.Background())
-	if _, err := tx.Exec(context.Background(), `select account_id from profiles where account_id = 'account' for update`); err != nil {
-		t.Fatal(err)
-	}
-	originalTimeoutMS := f.server.Config.Scoring.TimeoutMS
-	f.server.Config.Scoring.TimeoutMS = 30
-	ev := f.email(testNow.Add(time.Minute), 16509, "stripe.com")
-	d := decodeResponse[DecisionResponse](t, request(t, f.handler, "POST", "/v1/events", testIngestToken, ev))
-	if !d.Unscored || d.Action != "allow" || d.DecisionID != "" {
-		t.Fatalf("timed-out request: %+v", d)
-	}
-	if err := tx.Rollback(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	var persisted bool
-	if err := f.server.Store.Pool.QueryRow(context.Background(), `select exists(select 1 from events where event_id = $1)`, ev.EventID).Scan(&persisted); err != nil {
-		t.Fatal(err)
-	}
-	if persisted || f.learned().EventsSeen != 1 {
-		t.Fatal("timed-out transaction persisted the event or changed the baseline")
-	}
-	f.server.Config.Scoring.TimeoutMS = originalTimeoutMS
-	f.ingest(ev, "allow")
-	if f.learned().EventsSeen != 2 {
-		t.Fatal("retry was not learned exactly once")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newAPIFixture(t)
+			f.ingest(f.email(testNow, 16509, "stripe.com"), "allow")
+			tx, err := f.server.Store.Pool.Begin(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer tx.Rollback(context.Background())
+			if _, err := tx.Exec(context.Background(), tt.blockingSQL); err != nil {
+				t.Fatal(err)
+			}
+			originalTimeout := f.server.Config.Scoring.TimeoutMS
+			f.server.Config.Scoring.TimeoutMS = 30
+			ev := f.email(testNow.Add(time.Minute), 16509, "stripe.com")
+			timedOut := decodeResponse[DecisionResponse](t, request(t, f.handler, "POST", "/v1/events", testIngestToken, ev))
+			if !timedOut.Unscored || timedOut.Action != "allow" || timedOut.DecisionID != "" {
+				t.Errorf("timed-out response = %+v, want unscored allow without decision", timedOut)
+			}
+			if err := tx.Rollback(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			var persisted bool
+			if err := f.server.Store.Pool.QueryRow(context.Background(), `select exists(select 1 from events where event_id = $1)`, ev.EventID).Scan(&persisted); err != nil {
+				t.Fatal(err)
+			}
+			if persisted || f.learned().EventsSeen != 1 {
+				t.Fatal("timed-out transaction persisted the event or changed the baseline")
+			}
+			f.server.Config.Scoring.TimeoutMS = originalTimeout
+			f.ingest(ev, "allow")
+			if learned := f.learned().EventsSeen; learned != 2 {
+				t.Errorf("learned events after retry = %d, want 2", learned)
+			}
+		})
 	}
 }

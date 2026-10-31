@@ -62,22 +62,100 @@ func decodeResponse[T any](t *testing.T, w *httptest.ResponseRecorder) T {
 
 func TestRouteAuthentication(t *testing.T) {
 	handler := (&Server{IngestToken: testIngestToken, AnalystToken: testAnalystToken}).Routes()
-	routes := []struct{ method, path, otherToken string }{
-		{"POST", "/v1/events", testAnalystToken},
-		{"GET", "/v1/stats", testIngestToken},
-		{"GET", "/v1/accounts", testIngestToken},
-		{"GET", "/v1/accounts/account/timeline", testIngestToken},
-		{"GET", "/v1/accounts/account/series", testIngestToken},
-		{"GET", "/v1/accounts/account/profile", testIngestToken},
-		{"GET", "/v1/decisions/" + testDecisionID, testIngestToken},
-		{"POST", "/v1/decisions/" + testDecisionID + "/actions", testIngestToken},
-		{"POST", "/v1/keys/key/unblock", testIngestToken},
-		{"POST", "/v1/holds/" + testDecisionID + "/owner-response", testIngestToken},
+	routes := []struct{ name, method, path, otherToken string }{
+		{
+			name:       "event ingestion",
+			method:     "POST",
+			path:       "/v1/events",
+			otherToken: testAnalystToken,
+		},
+		{
+			name:       "dashboard",
+			method:     "GET",
+			path:       "/v1/dashboard",
+			otherToken: testIngestToken,
+		},
+		{
+			name:       "global audit feed",
+			method:     "GET",
+			path:       "/v1/analyst-actions",
+			otherToken: testIngestToken,
+		},
+		{
+			name:       "statistics",
+			method:     "GET",
+			path:       "/v1/stats",
+			otherToken: testIngestToken,
+		},
+		{
+			name:       "accounts",
+			method:     "GET",
+			path:       "/v1/accounts",
+			otherToken: testIngestToken,
+		},
+		{
+			name:       "timeline",
+			method:     "GET",
+			path:       "/v1/accounts/account/timeline",
+			otherToken: testIngestToken,
+		},
+		{
+			name:       "series",
+			method:     "GET",
+			path:       "/v1/accounts/account/series",
+			otherToken: testIngestToken,
+		},
+		{
+			name:       "profile",
+			method:     "GET",
+			path:       "/v1/accounts/account/profile",
+			otherToken: testIngestToken,
+		},
+		{
+			name:       "decision",
+			method:     "GET",
+			path:       "/v1/decisions/" + testDecisionID,
+			otherToken: testIngestToken,
+		},
+		{
+			name:       "analyst actions",
+			method:     "POST",
+			path:       "/v1/decisions/" + testDecisionID + "/actions",
+			otherToken: testIngestToken,
+		},
+		{
+			name:       "restore key",
+			method:     "POST",
+			path:       "/v1/keys/key/unblock",
+			otherToken: testIngestToken,
+		},
+		{
+			name:       "owner response",
+			method:     "POST",
+			path:       "/v1/holds/" + testDecisionID + "/owner-response",
+			otherToken: testIngestToken,
+		},
 	}
 	for _, route := range routes {
-		t.Run(route.method+" "+route.path, func(t *testing.T) {
-			for _, token := range []string{"", "wrong", route.otherToken} {
-				requireStatus(t, request(t, handler, route.method, route.path, token, nil), http.StatusUnauthorized)
+		t.Run(route.name, func(t *testing.T) {
+			tokens := []struct{ name, value string }{
+				{
+					name:  "missing token",
+					value: "",
+				},
+				{
+					name:  "invalid token",
+					value: "wrong",
+				},
+				{
+					name:  "token for the other role",
+					value: route.otherToken,
+				},
+			}
+			for _, token := range tokens {
+				t.Run(token.name, func(t *testing.T) {
+					requireStatus(t, request(t, handler, route.method, route.path, token.value, nil), http.StatusUnauthorized)
+				})
 			}
 		})
 	}
@@ -89,30 +167,156 @@ func TestRequestValidation(t *testing.T) {
 	ownerPath := "/v1/holds/" + testDecisionID + "/owner-response"
 	tests := []struct {
 		name, method, path, token, body string
-		status                          int
+		wantStatus                      int
 	}{
-		{"event JSON", "POST", "/v1/events", testIngestToken, "{", 400},
-		{"event required fields", "POST", "/v1/events", testIngestToken, "{}", 400},
-		{"event size", "POST", "/v1/events", testIngestToken, `{"padding":"` + strings.Repeat("x", maxEventBytes) + `"}`, 413},
-		{"from", "GET", "/v1/stats?from=bad", testAnalystToken, "", 400},
-		{"to", "GET", "/v1/accounts/account/series?to=bad", testAnalystToken, "", 400},
-		{"bucket", "GET", "/v1/stats?bucket=1m", testAnalystToken, "", 400},
-		{"zero limit", "GET", "/v1/accounts/account/timeline?limit=0", testAnalystToken, "", 400},
-		{"large limit", "GET", "/v1/accounts/account/timeline?limit=5001", testAnalystToken, "", 400},
-		{"noninteger limit", "GET", "/v1/accounts/account/timeline?limit=x", testAnalystToken, "", 400},
-		{"decision ID", "GET", "/v1/decisions/invalid", testAnalystToken, "", 404},
-		{"action ID", "POST", "/v1/decisions/invalid/actions", testAnalystToken, "{}", 404},
-		{"owner ID", "POST", "/v1/holds/invalid/owner-response", testAnalystToken, "{}", 404},
-		{"action JSON", "POST", actionPath, testAnalystToken, "{", 400},
-		{"action name", "POST", actionPath, testAnalystToken, `{"action":"unknown","actor":"analyst","reason":"review"}`, 400},
-		{"action actor", "POST", actionPath, testAnalystToken, `{"action":"release_hold","actor":"  ","reason":"review"}`, 400},
-		{"action reason", "POST", actionPath, testAnalystToken, `{"action":"release_hold","actor":"analyst"}`, 400},
-		{"unblock reason", "POST", "/v1/keys/key/unblock", testAnalystToken, `{"actor":"analyst","reason":" "}`, 400},
-		{"owner response", "POST", ownerPath, testAnalystToken, `{"response":"maybe"}`, 400},
+		{
+			name:       "event JSON",
+			method:     "POST",
+			path:       "/v1/events",
+			token:      testIngestToken,
+			body:       "{",
+			wantStatus: 400,
+		},
+		{
+			name:       "event required fields",
+			method:     "POST",
+			path:       "/v1/events",
+			token:      testIngestToken,
+			body:       "{}",
+			wantStatus: 400,
+		},
+		{
+			name:       "event size",
+			method:     "POST",
+			path:       "/v1/events",
+			token:      testIngestToken,
+			body:       `{"padding":"` + strings.Repeat("x", maxEventBytes) + `"}`,
+			wantStatus: 413,
+		},
+		{
+			name:       "from",
+			method:     "GET",
+			path:       "/v1/stats?from=bad",
+			token:      testAnalystToken,
+			body:       "",
+			wantStatus: 400,
+		},
+		{
+			name:       "to",
+			method:     "GET",
+			path:       "/v1/accounts/account/series?to=bad",
+			token:      testAnalystToken,
+			body:       "",
+			wantStatus: 400,
+		},
+		{
+			name:       "bucket",
+			method:     "GET",
+			path:       "/v1/stats?bucket=1m",
+			token:      testAnalystToken,
+			body:       "",
+			wantStatus: 400,
+		},
+		{
+			name:       "zero limit",
+			method:     "GET",
+			path:       "/v1/accounts/account/timeline?limit=0",
+			token:      testAnalystToken,
+			body:       "",
+			wantStatus: 400,
+		},
+		{
+			name:       "large limit",
+			method:     "GET",
+			path:       "/v1/accounts/account/timeline?limit=5001",
+			token:      testAnalystToken,
+			body:       "",
+			wantStatus: 400,
+		},
+		{
+			name:       "noninteger limit",
+			method:     "GET",
+			path:       "/v1/accounts/account/timeline?limit=x",
+			token:      testAnalystToken,
+			body:       "",
+			wantStatus: 400,
+		},
+		{
+			name:       "decision ID",
+			method:     "GET",
+			path:       "/v1/decisions/invalid",
+			token:      testAnalystToken,
+			body:       "",
+			wantStatus: 404,
+		},
+		{
+			name:       "action ID",
+			method:     "POST",
+			path:       "/v1/decisions/invalid/actions",
+			token:      testAnalystToken,
+			body:       "{}",
+			wantStatus: 404,
+		},
+		{
+			name:       "owner ID",
+			method:     "POST",
+			path:       "/v1/holds/invalid/owner-response",
+			token:      testAnalystToken,
+			body:       "{}",
+			wantStatus: 404,
+		},
+		{
+			name:       "action JSON",
+			method:     "POST",
+			path:       actionPath,
+			token:      testAnalystToken,
+			body:       "{",
+			wantStatus: 400,
+		},
+		{
+			name:       "action name",
+			method:     "POST",
+			path:       actionPath,
+			token:      testAnalystToken,
+			body:       `{"action":"unknown","actor":"analyst","reason":"review"}`,
+			wantStatus: 400,
+		},
+		{
+			name:       "action actor",
+			method:     "POST",
+			path:       actionPath,
+			token:      testAnalystToken,
+			body:       `{"action":"release_hold","actor":"  ","reason":"review"}`,
+			wantStatus: 400,
+		},
+		{
+			name:       "action reason",
+			method:     "POST",
+			path:       actionPath,
+			token:      testAnalystToken,
+			body:       `{"action":"release_hold","actor":"analyst"}`,
+			wantStatus: 400,
+		},
+		{
+			name:       "unblock reason",
+			method:     "POST",
+			path:       "/v1/keys/key/unblock",
+			token:      testAnalystToken,
+			body:       `{"actor":"analyst","reason":" "}`,
+			wantStatus: 400,
+		},
+		{
+			name:       "owner response",
+			method:     "POST",
+			path:       ownerPath,
+			token:      testAnalystToken,
+			body:       `{"response":"maybe"}`,
+			wantStatus: 400,
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			requireStatus(t, request(t, handler, tt.method, tt.path, tt.token, tt.body), tt.status)
+			requireStatus(t, request(t, handler, tt.method, tt.path, tt.token, tt.body), tt.wantStatus)
 		})
 	}
 }
