@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, ArrowUpRight, Inbox, TriangleAlert } from "lucide-react";
 import type { Action } from "@/lib/types";
 import { humanize } from "@/lib/format";
+import { ACTION_LABELS } from "@/lib/decisions";
 
 export function Badge({
   action,
@@ -13,7 +14,10 @@ export function Badge({
   return (
     <span className={`badge badge-${action ?? "neutral"}`}>
       <span className="badge-dot" />
-      {children ?? humanize(action ?? "unscored")}
+      {children ??
+        (action && Object.hasOwn(ACTION_LABELS, action)
+          ? ACTION_LABELS[action as Action]
+          : humanize(action ?? "unscored"))}
     </span>
   );
 }
@@ -24,15 +28,17 @@ export function PageHeader({
   description,
   children,
   back,
+  compact = false,
 }: {
   eyebrow: string;
   title: string;
   description?: string;
   children?: React.ReactNode;
   back?: { href: string; label: string };
+  compact?: boolean;
 }) {
   return (
-    <header className="page-header">
+    <header className={`page-header${compact ? " page-header-compact" : ""}`}>
       <div>
         {back && (
           <Link href={back.href} className="back-link">

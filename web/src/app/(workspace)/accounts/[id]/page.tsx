@@ -16,6 +16,7 @@ import { AccountCharts } from "@/components/charts";
 import { PeriodFilter } from "@/components/period-filter";
 import { RefreshButton } from "@/components/navigation";
 import { UnblockForm } from "@/components/forms";
+import { InvestigationWorkspace } from "@/components/investigation-workspace";
 
 export const metadata = { title: "Account investigation" };
 export default async function AccountPage({
@@ -38,10 +39,11 @@ export default async function AccountPage({
   if (profile.status === 404) notFound();
   const header = (
     <PageHeader
+      compact
       back={{ href: "/accounts", label: "All accounts" }}
       eyebrow="ACCOUNT INVESTIGATION"
       title={id}
-      description="The context around each change, on one shared timeline."
+      description="Inspect each event, understand its signals, and review the evidence."
     >
       <RefreshButton />
       <PeriodFilter period={period} />
@@ -60,6 +62,11 @@ export default async function AccountPage({
   return (
     <>
       {header}
+      {timeline.error ? (
+        <ApiError message={timeline.error} />
+      ) : (
+        <InvestigationWorkspace rows={rows} />
+      )}
       <div className="account-summary">
         <span>
           <ShieldCheck size={15} />
@@ -183,7 +190,9 @@ export default async function AccountPage({
                       <span className="mono">
                         {row.asn ? `AS${row.asn}` : "—"}
                       </span>
-                      <small>{row.asn_org ?? row.ip}</small>
+                      <small className={row.asn_org ? undefined : "mono"}>
+                        {row.asn_org ?? row.ip}
+                      </small>
                     </td>
                     <td>
                       <div className="signal-tags">

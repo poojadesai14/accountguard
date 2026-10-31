@@ -29,7 +29,7 @@ export default async function Accounts({
     <>
       <PageHeader
         eyebrow="INVESTIGATIONS"
-        title="Know the account. See the change."
+        title="Accounts"
         description="Find an account and trace its activity from baseline to decision."
       >
         <RefreshButton />
