@@ -31,11 +31,11 @@ input validation, stats and time ranges, account search, timelines, chart series
 profiles and key status, decision details, release/confirm/unblock actions,
 legitimate-event learning, owner responses, expired holds, concurrent reviews,
 audit records, metadata privacy, shadow mode, duplicate events, and database
-failure behavior. The CI template in `ci/backend-tests.yml` runs against
-PostgreSQL 16 and builds the deployment image. To enable it on pushes and pull
-requests, install it as `.github/workflows/backend-tests.yml`. The current GitHub
-CLI login has repository access but lacks workflow-write permission, so the
-template is not active yet.
+failure behavior. The workflow in `.github/workflows/backend-tests.yml` runs
+against PostgreSQL 16 and builds the deployment image on pushes and pull
+requests. Publishing this workflow requires GitHub's `workflow` permission.
+The current CLI login lacks that permission, so the workflow is prepared locally
+and still needs to be published before CI can run.
 
 ### Local verification on 2026-10-30
 
@@ -135,8 +135,11 @@ database in US East. After 15 minutes without traffic, Render puts the service
 to sleep; the next request wakes it with a cold-start delay. The hold-expiry
 ticker pauses while the service sleeps and resumes after startup.
 The definition uses Docker, `/app/server` for startup, `/healthz` for readiness,
-and a 15-second shutdown window. Deploys are
-manual until the CI workflow is enabled. See Render's
+and a 15-second shutdown window. Auto-deploy is set to **After CI Checks Pass**.
+Render waits for GitHub checks on each new commit; it does not auto-deploy commits
+with no checks. Publish the CI workflow before expecting automatic deploys.
+For a service created manually, select the same auto-deploy option in its Render
+settings. See Render's
 [Blueprint reference](https://render.com/docs/blueprint-spec).
 
 Free web services do not support Render's pre-deploy command. Supabase is
@@ -186,6 +189,7 @@ its `branch` setting to `main` and sync the Blueprint. `ATO_MODE` controls the
 server only; run the deterministic seed in a separate disposable enforcement
 environment.
 
-After publishing the CI workflow through GitHub or authorizing the CLI's
-`workflow` scope, change `autoDeployTrigger` to `checksPass` to require passing
-checks before automatic deploys.
+Publish `.github/workflows/backend-tests.yml` through GitHub or authorize the
+CLI's `workflow` scope so it can be pushed. Then verify that **Backend tests**
+passes on the deployment branch. `autoDeployTrigger: checksPass` is already
+configured; Render automatically deploys subsequent commits after CI succeeds.

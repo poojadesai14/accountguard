@@ -11,7 +11,7 @@ services:
     dockerCommand: /app/server
     healthCheckPath: /healthz
     maxShutdownDelaySeconds: 15
-    autoDeployTrigger: "off"
+    autoDeployTrigger: checksPass
     envVars:
       - key: ATO_MODE
         value: shadow
