@@ -4,6 +4,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -29,7 +30,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	cfg, err := config.Load(envOr("CONFIG_PATH", "config.yaml"))
+	cfg, err := loadConfig()
 	if err != nil {
 		return err
 	}
@@ -73,6 +74,23 @@ func run() error {
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	return srv.Shutdown(shutdownCtx)
+}
+
+// loadConfig allows the hosted service to switch enforcement modes without
+// rebuilding the image. Record the override in the decision's config version.
+func loadConfig() (*config.Config, error) {
+	cfg, err := config.Load(envOr("CONFIG_PATH", "config.yaml"))
+	if err != nil {
+		return nil, err
+	}
+	if mode := os.Getenv("ATO_MODE"); mode != "" {
+		cfg.Mode = mode
+		if err := cfg.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid ATO_MODE: %w", err)
+		}
+		cfg.Version += ".mode-" + mode
+	}
+	return cfg, nil
 }
 
 // expireHolds marks holds nobody answered as expired (SPEC §7). Uses wall clock.

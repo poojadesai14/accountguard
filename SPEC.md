@@ -665,21 +665,23 @@ This gives the README's arc: flag 50 -> hold 75 -> block 90 -> key_suspended. Re
 `acc_acme` arc on purpose: `first_read` stays active for 24h and would add 20 to every later event
 (the first send would score 95 and block straight away). The sim covers recon separately.
 
-### 11.2 `cmd/sim` (labeled scenarios for evaluation)
+### 11.2 `cmd/sim` (simulator + evaluation in one)
 
-N accounts (default 200) with randomized normal profiles. Each account gets one scenario, labeled in
-`sim_labels(account_id, scenario, is_takeover, start_at)`:
-- legit: none, campaign spike, cloud migration, SDK upgrade, new helpdesk Reply-To (e.g. zendesk.com)
-- takeover: fast, slow (no spike), same-cloud attacker, compromised server (same ASN, new content),
-  link-free BEC (free-mail Reply-To), clean-history account
+`make sim` generates N accounts (default 200), posts their events to a running server in time order, and
+prints the report. Labels stay in memory, so no `sim_labels` table is needed.
 
-### 11.3 `cmd/eval`
+- Kinds: **historical** (30-45 days of normal sending) and **clean** (2-4 days, cold start). Default 30% clean.
+- Each account gets one scenario on day 0. Default 40% takeovers (far above real life, to get enough examples).
+  - legit: normal, campaign, cloud migration, new helpdesk Reply-To, new partner link, new API key,
+    new member then campaign, owner uses gmail Reply-To
+  - takeover: fast, slow, same cloud, compromised server (aged domain), BEC gmail Reply-To (new network and
+    same cloud), recon then send, brand lookalike, known-domain abuse (expected miss)
+- Young domains come from `content.domain_ages` in the config, so they must be young relative to today.
 
-Reads decisions + `sim_labels`. Prints, per threshold (`flag`, `hold`, `block`) and per signal:
-precision, recall, false positives per 1,000 active accounts, and for each takeover the number of emails
-`allow`ed before the first `hold`/`block` (time to detection). Output as a markdown table to paste into the README.
-
----
+Report: precision and recall per action threshold (historical / clean / all); per takeover scenario the share
+flagged and stopped and attacker emails delivered; per legit scenario the share flagged, held, blocked;
+false positives per 1,000 legitimate accounts; per-signal precision; owner emails blocked because their key
+was suspended (the cost of key suspension); scoring latency.
 
 ## 12. Tests
 

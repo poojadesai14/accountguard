@@ -12,9 +12,12 @@ import (
 
 func main() {
 	ctx := context.Background()
-	url := os.Getenv("DATABASE_URL")
+	url := os.Getenv("MIGRATION_DATABASE_URL")
 	if url == "" {
-		slog.Error("DATABASE_URL is not set")
+		url = os.Getenv("DATABASE_URL")
+	}
+	if url == "" {
+		slog.Error("DATABASE_URL or MIGRATION_DATABASE_URL must be set")
 		os.Exit(1)
 	}
 	s, err := store.Open(ctx, url)

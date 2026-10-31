@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: resend-ato-api
+    runtime: docker
+    repo: https://github.com/poojadesai14/resend-ato
+    branch: render-deployment
+    region: virginia
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: /app/server
+    healthCheckPath: /healthz
+    maxShutdownDelaySeconds: 15
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: ATO_MODE
+        value: shadow
+      - key: CONFIG_PATH
+        value: /app/config.yaml
+      - key: DATABASE_URL
+        sync: false
+      - key: INGEST_TOKEN
+        sync: false
+      - key: ANALYST_TOKEN
+        sync: false

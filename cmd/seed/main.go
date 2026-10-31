@@ -20,15 +20,17 @@ import (
 	"github.com/poojadesai14/resend-ato/internal/event"
 )
 
+type hit struct {
+	Name string `json:"name"`
+}
+
 type response struct {
 	Action    string `json:"action"`
 	Score     int    `json:"score"`
 	Reason    string `json:"reason"`
 	Unscored  bool   `json:"unscored"`
 	LatencyUS int    `json:"latency_us"`
-	Hits      []struct {
-		Name string `json:"name"`
-	} `json:"hits"`
+	Hits      []hit  `json:"hits"`
 }
 
 func (r response) String() string {
@@ -140,7 +142,7 @@ func main() {
 					if r.Action != "allow" {
 						fail("campaign %s: %s", id, r)
 					}
-					if slices.ContainsFunc(r.Hits, func(h struct{ Name string `json:"name"` }) bool { return h.Name == "recipient_spike" }) {
+					if slices.ContainsFunc(r.Hits, func(h hit) bool { return h.Name == "recipient_spike" }) {
 						campaignSpikes++
 					}
 				}
