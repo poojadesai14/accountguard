@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useId, useRef } from "react";
-import { ArrowRight, Check, LockKeyhole } from "lucide-react";
+import { ArrowRight, Check, ChevronDown, LockKeyhole } from "lucide-react";
 import {
   login,
   ownerResponse,
@@ -137,22 +137,25 @@ export function ReviewForm({
     >
       <input type="hidden" name="decision_id" value={decision.decision_id} />
       <label htmlFor="action">Review outcome</label>
-      <select
-        name="action"
-        id="action"
-        required
-        defaultValue={
-          !labeled ? (initialAction ?? "mark_legitimate") : "release_hold"
-        }
-      >
-        {!labeled && <option value="mark_legitimate">Mark legitimate</option>}
-        {!labeled && decision.api_key_id && (
-          <option value="confirm_takeover">Confirm takeover</option>
-        )}
-        {canRelease && (
-          <option value="release_hold">Release hold without labeling</option>
-        )}
-      </select>
+      <div className="review-select">
+        <select
+          name="action"
+          id="action"
+          required
+          defaultValue={
+            !labeled ? (initialAction ?? "mark_legitimate") : "release_hold"
+          }
+        >
+          {!labeled && <option value="mark_legitimate">Mark legitimate</option>}
+          {!labeled && decision.api_key_id && (
+            <option value="confirm_takeover">Confirm takeover</option>
+          )}
+          {canRelease && (
+            <option value="release_hold">Release hold without labeling</option>
+          )}
+        </select>
+        <ChevronDown size={16} aria-hidden="true" />
+      </div>
       <ReviewIdentity />
       <p className="form-help">
         Affected key:{" "}

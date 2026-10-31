@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowUpRight, Network, ShieldCheck } from "lucide-react";
 import { analystApi } from "@/lib/api";
 import { dateTime, humanize, number, periodQuery } from "@/lib/format";
+import { riskClassName } from "@/lib/decisions";
 import type { AccountSeries, ProfileResponse, TimelineRow } from "@/lib/types";
 import {
   ApiError,
@@ -209,7 +210,7 @@ export default async function AccountPage({
                     </td>
                     <td>
                       <span
-                        className={`score-number ${Number(row.score) >= 60 ? "elevated" : ""}`}
+                        className={`score-number ${riskClassName(row.score)}`}
                       >
                         {row.score ?? "—"}
                       </span>

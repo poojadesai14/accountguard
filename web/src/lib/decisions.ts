@@ -7,6 +7,12 @@ export const ACTION_LABELS: Record<Action, string> = {
   block: "BLOCK",
 };
 
+// Display colors from the UI specification; these do not set engine thresholds.
+export function riskClassName(score: number | null | undefined) {
+  if (score == null) return "";
+  return score >= 75 ? "risk-high" : score >= 40 ? "risk-medium" : "risk-low";
+}
+
 export type DecisionBucket = "1h" | "1d";
 
 // The API omits buckets without elevated decisions. Fill those gaps so separate

@@ -17,7 +17,12 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { loadDashboard } from "@/app/dashboard-data";
-import { dashboardURL, type DashboardQuery } from "@/lib/dashboard";
+import {
+  dashboardURL,
+  dashboardScope,
+  type DashboardQuery,
+} from "@/lib/dashboard";
+import { riskClassName } from "@/lib/decisions";
 import { dateTime, humanize, number, periodQuery, PERIODS } from "@/lib/format";
 import type { DashboardAccount, DashboardData } from "@/lib/types";
 import { Badge, CardHeader, EmptyState } from "./ui";
@@ -25,9 +30,9 @@ import { DecisionChart } from "./charts";
 import { DashboardDrawer } from "./dashboard-drawer";
 
 const TABS = [
-  { id: "attention", label: "Quarantined & Misusing" },
-  { id: "baseline", label: "Legitimate Baselines" },
-  { id: "telemetry", label: "Aggregated Telemetry" },
+  { id: "attention", label: "Review queue" },
+  { id: "baseline", label: "Legitimate baselines" },
+  { id: "telemetry", label: "Telemetry" },
 ] as const;
 export function Dashboard({
   query,
@@ -148,6 +153,9 @@ export function Dashboard({
     [onDirty, refresh],
   );
   const snapshot = data.snapshot;
+  const tableSnapshot =
+    data.scope === dashboardScope(query) ? snapshot : undefined;
+  const hasTableFilters = Boolean(query.q || query.severity !== "all");
   const busy = refreshing || navigationPending || pending;
   function inspect(
     item: DashboardAccount,
@@ -162,80 +170,124 @@ export function Dashboard({
   const period = periodQuery(query.period);
   const range = new URLSearchParams(period.query);
   const metrics = snapshot?.metrics;
+  const unit =
+    query.view === "holds"
+      ? "events"
+      : query.view === "keys"
+        ? "keys"
+        : "accounts";
+  const countUnit = tableSnapshot?.total === 1 ? unit.slice(0, -1) : unit;
+  const firstShown = tableSnapshot?.items.length
+    ? (tableSnapshot.page - 1) * tableSnapshot.limit + 1
+    : 0;
+  const lastShown = tableSnapshot?.items.length
+    ? firstShown + tableSnapshot.items.length - 1
+    : 0;
+  const keyedRows = query.view === "holds" || query.view === "keys";
+  const viewTitle =
+    query.view === "holds"
+      ? "Events on hold"
+      : query.view === "keys"
+        ? "Suspended API keys"
+        : query.view === "healthy"
+          ? "Healthy accounts"
+          : query.tab === "baseline"
+            ? "Legitimate accounts"
+            : "Accounts to review";
   const metricCards = [
     {
-      label: "Accounts needing attention",
+      tab: "attention",
+      view: "accounts",
+      label: "Accounts to review",
       value: metrics?.attention_accounts,
-      description: "Open reviews or suspended keys",
+      description: "Accounts with open reviews or suspended keys",
+      tone: "flag",
       icon: <ShieldAlert size={18} />,
     },
     {
-      label: "Pending quarantines",
+      tab: "attention",
+      view: "holds",
+      label: "Events on hold",
       value: metrics?.pending_quarantines,
-      description: "Held decisions awaiting resolution",
+      description: "Individual events waiting for release or review",
+      tone: "hold",
       icon: <Clock3 size={18} />,
     },
     {
-      label: "Suspended keys",
+      tab: "attention",
+      view: "keys",
+      label: "Suspended API keys",
       value: metrics?.suspended_keys,
-      description: "Current key access overrides",
+      description: "Keys with access currently suspended",
+      tone: "block",
       icon: <LockKeyhole size={18} />,
     },
     {
-      label: "Healthy baselines",
+      tab: "baseline",
+      view: "healthy",
+      label: "Healthy accounts",
       value: metrics?.healthy_baselines,
-      description: "Legitimate, learned, and clear",
+      description: "Legitimate, learned accounts with no open issues",
+      tone: "allow",
       icon: <ShieldCheck size={18} />,
     },
-  ];
+  ] as const;
   return (
     <div className="dashboard">
       <header className="dashboard-header">
         <div>
-          <p className="eyebrow">TRUST & SAFETY</p>
-          <h1 tabIndex={-1}>ATO Analyst Workspace</h1>
+          <h1 tabIndex={-1}>Account reviews</h1>
           <p className="page-description">
-            Account risk, investigation, and audited decisions.
+            Investigate unusual activity and act on the evidence.
           </p>
         </div>
-        <div className="dashboard-status">
-          <span
-            className={`connection-badge ${data.error ? "connection-stale" : ""}`}
-          >
-            <span className="online-dot" />
-            {data.error ? "API unavailable" : "API connected"}
-          </span>
-          <span className="connection-badge">
-            {data.database_ok ? "Database reachable" : "Database unverified"}
-          </span>
-          {snapshot && (
-            <span className="connection-badge">
-              Engine: {snapshot.engine_mode}
+        <div className="dashboard-header-tools">
+          <div className="dashboard-status">
+            <span
+              className={`connection-badge ${data.error ? "connection-stale" : ""}`}
+            >
+              <span className="online-dot" />
+              {data.error ? "API unavailable" : "API connected"}
             </span>
-          )}
+            {snapshot && (
+              <span
+                className="connection-badge"
+                title={
+                  snapshot.engine_mode === "shadow"
+                    ? "Shadow mode: events are scored, but holds and blocks are not enforced automatically."
+                    : "Enforcement mode: risk decisions automatically control whether events are allowed, held, or blocked."
+                }
+              >
+                {snapshot.engine_mode === "shadow"
+                  ? "Monitoring only"
+                  : "Enforcement active"}
+              </span>
+            )}
+            <button
+              type="button"
+              className="button button-secondary"
+              disabled={busy || dirty}
+              onClick={() => void refresh()}
+            >
+              <RefreshCw size={15} className={refreshing ? "spin" : ""} />
+              {refreshing ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
+          <div
+            className="dashboard-freshness"
+            title="Updates automatically every 30 seconds while visible"
+          >
+            <span
+              title={snapshot ? dateTime(snapshot.generated_at) : undefined}
+            >
+              {snapshot
+                ? `Updated ${new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" }).format(new Date(snapshot.generated_at))} UTC`
+                : "Waiting for an update"}
+            </span>
+            {(dirty || pending) && <span>Updates paused while reviewing</span>}
+          </div>
         </div>
       </header>
-      <div className="dashboard-freshness">
-        <span>
-          {snapshot
-            ? `Last successful update: ${dateTime(snapshot.generated_at)}`
-            : "Waiting for a dashboard snapshot"}
-        </span>
-        <span>
-          {dirty || pending
-            ? "Auto-refresh paused while reviewing"
-            : "Auto-refresh every 30 seconds"}
-        </span>
-        <button
-          type="button"
-          className="button button-secondary"
-          disabled={busy || dirty}
-          onClick={() => void refresh()}
-        >
-          <RefreshCw size={15} className={refreshing ? "spin" : ""} />
-          {refreshing ? "Refreshing…" : "Refresh"}
-        </button>
-      </div>
       {data.error && (
         <div className="api-error" role="alert">
           <ShieldAlert size={20} />
@@ -244,27 +296,61 @@ export function Dashboard({
             <p>{data.error}</p>
             {snapshot && (
               <p className="muted">
-                Showing the last successful snapshot. Results may not match the
-                current filters.
+                {tableSnapshot
+                  ? "Showing the last successful snapshot. Results may not match the current filters."
+                  : "Summary cards show the last successful update. Results for this view are unavailable."}
               </p>
             )}
           </div>
         </div>
       )}
-      <div className="stat-grid dashboard-metrics">
+      <div
+        className="stat-grid dashboard-metrics"
+        role="group"
+        aria-label="Dashboard views"
+      >
         {metricCards.map((card) => (
-          <section className="stat-card" key={card.label}>
-            <div className="stat-label">
+          <button
+            type="button"
+            className={`stat-card stat-${card.tone}`}
+            key={card.label}
+            title={`View all: ${card.description}`}
+            aria-label={`View ${card.label.toLowerCase()}`}
+            aria-controls="dashboard-results"
+            aria-describedby={`metric-count-${card.view}`}
+            aria-pressed={
+              query.tab === card.tab &&
+              query.view === card.view &&
+              !hasTableFilters
+            }
+            disabled={busy || card.value === undefined}
+            onClick={() =>
+              navigate({
+                tab: card.tab,
+                view: card.view,
+                q: "",
+                severity: "all",
+                page: "1",
+                before_id: "",
+                inspect: "",
+                decision: "",
+                review: "",
+              })
+            }
+          >
+            <span className="stat-label">
               {card.label}
               <span>{card.icon}</span>
-            </div>
-            <strong className="stat-number">
+            </span>
+            <strong className="stat-number" id={`metric-count-${card.view}`}>
               {card.value === undefined ? "—" : number(card.value)}
             </strong>
-            <p className="metric-description">{card.description}</p>
-          </section>
+          </button>
         ))}
       </div>
+      <p className="dashboard-counts-note">
+        Global totals · account, event and key counts overlap.
+      </p>
       <div className="dashboard-toolbar">
         <nav className="dashboard-tabs" aria-label="Dashboard sections">
           {TABS.map((tab) => (
@@ -277,6 +363,8 @@ export function Dashboard({
               onClick={() =>
                 navigate({
                   tab: tab.id,
+                  view: "accounts",
+                  severity: tab.id === "attention" ? query.severity : "all",
                   page: "1",
                   before_id: "",
                   inspect: "",
@@ -293,29 +381,33 @@ export function Dashboard({
       {query.tab !== "telemetry" ? (
         <>
           <div className="dashboard-filters">
-            <div
-              className="severity-pills"
-              role="group"
-              aria-label="Risk score filter"
-            >
-              {(
-                [
-                  { value: "all", label: "All" },
-                  { value: "high", label: "High ≥80" },
-                  { value: "medium", label: "Medium 40–79" },
-                ] as const
-              ).map((item) => (
-                <button
-                  type="button"
-                  key={item.value}
-                  aria-pressed={query.severity === item.value}
-                  disabled={busy}
-                  onClick={() => navigate({ severity: item.value, page: "1" })}
-                >
-                  {item.label}
-                </button>
-              ))}
-            </div>
+            {query.tab === "attention" && (
+              <div
+                className="severity-pills"
+                role="group"
+                aria-label="Risk score filter"
+              >
+                {(
+                  [
+                    { value: "all", label: "All" },
+                    { value: "high", label: "High ≥80" },
+                    { value: "medium", label: "Medium 40–79" },
+                  ] as const
+                ).map((item) => (
+                  <button
+                    type="button"
+                    key={item.value}
+                    aria-pressed={query.severity === item.value}
+                    disabled={busy}
+                    onClick={() =>
+                      navigate({ severity: item.value, page: "1" })
+                    }
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
             <form
               className="dashboard-search"
               onSubmit={(event) => {
@@ -323,15 +415,17 @@ export function Dashboard({
                 navigate({ q: search.trim(), page: "1" });
               }}
             >
-              <Search size={16} />
-              <input
-                type="search"
-                aria-label="Search dashboard"
-                placeholder="Account, API key, IP, ASN, or signal…"
-                value={search}
-                maxLength={200}
-                onChange={(event) => setSearch(event.target.value)}
-              />
+              <div className="dashboard-search-field">
+                <Search size={16} aria-hidden="true" />
+                <input
+                  type="search"
+                  aria-label="Search dashboard"
+                  placeholder="Account, API key, IP, ASN, or signal…"
+                  value={search}
+                  maxLength={200}
+                  onChange={(event) => setSearch(event.target.value)}
+                />
+              </div>
               <button
                 type="submit"
                 className="button button-secondary"
@@ -352,153 +446,204 @@ export function Dashboard({
               )}
             </form>
           </div>
-          <section className="card dashboard-table-card" aria-busy={busy}>
+          <section
+            id="dashboard-results"
+            className="card dashboard-table-card"
+            aria-busy={busy}
+          >
             <CardHeader
-              title={
-                query.tab === "baseline"
-                  ? "Legitimate accounts"
-                  : "Accounts requiring attention"
-              }
+              title={viewTitle}
               description={
-                query.tab === "baseline"
-                  ? "No outstanding reviews or suspended keys; latest outcome is allowed or confirmed legitimate."
-                  : "Highest-severity open decision per account, otherwise its latest recorded decision."
+                hasTableFilters
+                  ? "Filtered results; cards show global totals."
+                  : query.tab === "baseline" && query.view === "accounts"
+                    ? "Includes healthy accounts and accounts still learning."
+                    : undefined
               }
             >
-              <span className="count-pill">
-                {number(snapshot?.total ?? 0)} accounts
-              </span>
+              <div className="dashboard-table-controls">
+                <span
+                  className="count-pill"
+                  aria-live="polite"
+                  aria-atomic="true"
+                >
+                  {tableSnapshot
+                    ? `${number(tableSnapshot.total)} ${countUnit}`
+                    : "Unavailable"}
+                </span>
+                {query.view !== "accounts" && (
+                  <button
+                    type="button"
+                    className="text-button"
+                    disabled={busy}
+                    onClick={() => navigate({ view: "accounts", page: "1" })}
+                  >
+                    Clear view
+                  </button>
+                )}
+                <label className="dashboard-sort">
+                  <span>Sort by</span>
+                  <select
+                    value={query.sort}
+                    disabled={busy}
+                    onChange={(event) =>
+                      navigate({
+                        sort: event.target.value as DashboardQuery["sort"],
+                        page: "1",
+                      })
+                    }
+                  >
+                    <option value="priority">Decision priority</option>
+                    <option value="score_desc">Highest score</option>
+                  </select>
+                </label>
+              </div>
             </CardHeader>
-            {snapshot?.items.length ? (
+            {tableSnapshot?.items.length ? (
               <div className="table-scroll">
                 <table aria-label="Dashboard accounts">
+                  <colgroup>
+                    <col style={{ width: "23%" }} />
+                    <col style={{ width: "17%" }} />
+                    <col style={{ width: "30%" }} />
+                    <col style={{ width: "19%" }} />
+                    <col style={{ width: "11%" }} />
+                  </colgroup>
                   <thead>
                     <tr>
-                      <th>Account & API key</th>
-                      <th>Recorded decision</th>
-                      <th>Risk</th>
-                      <th>Primary signal</th>
-                      <th>Network</th>
-                      <th>State</th>
-                      <th>Detected (UTC)</th>
-                      <th>Actions</th>
+                      <th>Account</th>
+                      <th>Decision</th>
+                      <th>Signal evidence</th>
+                      <th>Current state</th>
+                      <th>
+                        <span className="sr-only">Review</span>
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
-                    {snapshot.items.map((item) => (
-                      <tr key={item.account_id}>
-                        <td>
-                          <button
-                            type="button"
-                            className="account-inspect"
-                            aria-label={`Inspect ${item.account_id}`}
-                            onClick={() => inspect(item)}
-                          >
-                            {item.account_id}
-                          </button>
-                          <small className="mono">
-                            {item.api_key_id ?? "No related API key"}
-                          </small>
-                        </td>
-                        <td>
-                          <Badge action={item.action} />
-                          {item.enforced === false && (
-                            <small>Shadow decision</small>
-                          )}
-                          {item.label && (
-                            <small>Reviewed: {humanize(item.label)}</small>
-                          )}
-                        </td>
-                        <td>
-                          <span
-                            className={`score-number ${Number(item.score) >= 60 ? "elevated" : ""}`}
-                          >
-                            {item.score ?? "—"}
-                          </span>
-                          <small>Historical score</small>
-                        </td>
-                        <td className="dashboard-driver">
-                          {humanize(item.primary_driver)}
-                        </td>
-                        <td>
-                          <span className="mono">{item.ip ?? "—"}</span>
-                          <small className="mono">
-                            {item.asn ? `AS${item.asn}` : ""}
-                            {item.asn_org ? ` · ${item.asn_org}` : ""}
-                          </small>
-                        </td>
-                        <td>
-                          <div className="dashboard-state">
-                            {item.suspended_keys > 0 && (
-                              <span className="badge badge-block">
-                                {item.suspended_keys} suspended key
-                                {item.suspended_keys === 1 ? "" : "s"}
-                              </span>
-                            )}
-                            {item.key_status === "suspended" && (
-                              <small>Related key suspended</small>
-                            )}
-                            {item.open_reviews > 0 && (
-                              <span>
-                                {item.open_reviews} open review
-                                {item.open_reviews === 1 ? "" : "s"}
-                              </span>
-                            )}
-                            {query.tab === "baseline" && (
-                              <span
-                                className={
-                                  item.baseline_ready
-                                    ? "baseline-ready"
-                                    : "muted"
-                                }
-                              >
-                                {item.baseline_ready
-                                  ? "Baseline ready"
-                                  : "Learning baseline"}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="timeline-time">
-                          {dateTime(item.occurred_at)}
-                        </td>
-                        <td>
-                          <div className="row-actions">
+                    {tableSnapshot.items.map((item) => {
+                      const evidence = item.hits.find(
+                        (hit) => hit.name === item.primary_driver,
+                      )?.detail;
+                      return (
+                        <tr
+                          key={
+                            query.view === "holds"
+                              ? item.decision_id
+                              : query.view === "keys"
+                                ? item.api_key_id
+                                : item.account_id
+                          }
+                        >
+                          <td className="dashboard-account">
                             <button
                               type="button"
-                              className="button button-secondary"
+                              className="account-inspect"
+                              aria-label={`Inspect ${item.account_id}`}
                               onClick={() => inspect(item)}
                             >
-                              Inspect
+                              {item.account_id}
                             </button>
-                            {item.decision_id && !item.label && (
-                              <>
-                                <button
-                                  type="button"
-                                  className="text-button"
-                                  onClick={() =>
-                                    inspect(item, "mark_legitimate")
+                            <small
+                              className="mono"
+                              title={item.api_key_id ?? undefined}
+                            >
+                              {item.api_key_id ?? "No related API key"}
+                            </small>
+                            <small className="dashboard-event-time">
+                              {dateTime(item.occurred_at)}
+                            </small>
+                          </td>
+                          <td className="dashboard-decision">
+                            <div
+                              className="dashboard-outcome"
+                              title={
+                                item.enforced === false
+                                  ? "Computed decision; not enforced"
+                                  : "Recorded decision"
+                              }
+                            >
+                              <Badge action={item.action} />
+                              <span
+                                className={`score-number ${riskClassName(item.score)}`}
+                                title="Original recorded risk score, out of 100"
+                              >
+                                {item.score ?? "—"}
+                              </span>
+                            </div>
+                            {item.label && (
+                              <small>Reviewed: {humanize(item.label)}</small>
+                            )}
+                          </td>
+                          <td className="dashboard-driver">
+                            <span>{humanize(item.primary_driver)}</span>
+                            {evidence && (
+                              <small title={evidence}>{evidence}</small>
+                            )}
+                          </td>
+                          <td className="dashboard-current-state">
+                            <div className="dashboard-state">
+                              {query.view === "holds" && (
+                                <span className="held-state">Pending hold</span>
+                              )}
+                              {keyedRows ? (
+                                item.key_status === "suspended" ? (
+                                  <span className="suspended-state">
+                                    <LockKeyhole size={13} aria-hidden="true" />
+                                    Key suspended
+                                  </span>
+                                ) : (
+                                  item.key_status && (
+                                    <span>Key {item.key_status}</span>
+                                  )
+                                )
+                              ) : (
+                                item.suspended_keys > 0 && (
+                                  <span className="suspended-state">
+                                    <LockKeyhole size={13} aria-hidden="true" />
+                                    {item.suspended_keys} suspended key
+                                    {item.suspended_keys === 1 ? "" : "s"}
+                                  </span>
+                                )
+                              )}
+                              {item.open_reviews > 0 && (
+                                <span>
+                                  {item.open_reviews}{" "}
+                                  {keyedRows ? "account review" : "open review"}
+                                  {item.open_reviews === 1 ? "" : "s"}
+                                </span>
+                              )}
+                              {query.tab === "baseline" && (
+                                <span
+                                  className={
+                                    item.baseline_ready
+                                      ? "baseline-ready"
+                                      : "muted"
                                   }
                                 >
-                                  Mark legitimate
-                                </button>
-                                {item.api_key_id && (
-                                  <button
-                                    type="button"
-                                    className="text-button danger-text"
-                                    onClick={() =>
-                                      inspect(item, "confirm_takeover")
-                                    }
-                                  >
-                                    Suspend key
-                                  </button>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+                                  {item.baseline_ready
+                                    ? "Baseline ready"
+                                    : "Learning baseline"}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="dashboard-row-action">
+                            <div className="row-actions">
+                              <button
+                                type="button"
+                                className="button button-secondary"
+                                onClick={() => inspect(item)}
+                              >
+                                {query.tab === "baseline" || !item.decision_id
+                                  ? "View"
+                                  : "Review"}
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -508,10 +653,16 @@ export function Dashboard({
                   data.error
                     ? "Dashboard data is unavailable"
                     : query.q || query.severity !== "all"
-                      ? "No accounts match these filters"
-                      : query.tab === "baseline"
-                        ? "No legitimate baselines yet"
-                        : "Your review queue is clear."
+                      ? `No ${unit} match these filters`
+                      : query.view === "holds"
+                        ? "No events on hold"
+                        : query.view === "keys"
+                          ? "No suspended API keys"
+                          : query.view === "healthy"
+                            ? "No healthy accounts yet"
+                            : query.tab === "baseline"
+                              ? "No legitimate baselines yet"
+                              : "Your review queue is clear."
                 }
               >
                 {data.error
@@ -521,8 +672,8 @@ export function Dashboard({
             )}
             <div className="dashboard-pagination">
               <span>
-                {snapshot
-                  ? `Page ${snapshot.page} · ${number(snapshot.total)} matching accounts`
+                {tableSnapshot
+                  ? `Showing ${number(firstShown)}–${number(lastShown)} of ${number(tableSnapshot.total)} ${countUnit} · Page ${tableSnapshot.page}`
                   : "No snapshot available"}
               </span>
               <button
@@ -541,8 +692,9 @@ export function Dashboard({
                 className="button button-secondary"
                 disabled={
                   busy ||
-                  !snapshot ||
-                  snapshot.page * snapshot.limit >= snapshot.total
+                  !tableSnapshot ||
+                  tableSnapshot.page * tableSnapshot.limit >=
+                    tableSnapshot.total
                 }
                 onClick={() =>
                   navigate({ page: String(Number(query.page) + 1) })

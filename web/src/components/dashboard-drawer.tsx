@@ -6,6 +6,7 @@ import { Badge, CardHeader, DetailList, EmptyState } from "./ui";
 import { MetadataBlock } from "./investigation-workspace";
 import { ReviewForm } from "./forms";
 import { dateTime, humanize, number } from "@/lib/format";
+import { riskClassName } from "@/lib/decisions";
 import type { DashboardInspection } from "@/lib/types";
 
 export function DashboardDrawer({
@@ -53,6 +54,9 @@ export function DashboardDrawer({
   const detail = inspection?.detail;
   const decision = detail?.decision;
   const profile = inspection?.profile?.profile;
+  const selectedKey = inspection?.profile?.key_status?.find(
+    (key) => key.api_key_id === decision?.api_key_id,
+  );
   useEffect(() => {
     if (initialAction && decision) focusReview();
   }, [initialAction, decision?.decision_id, focusReview]);
@@ -68,7 +72,6 @@ export function DashboardDrawer({
     >
       <div className="drawer-header">
         <div>
-          <p className="eyebrow">ACCOUNT INSPECTION</p>
           <h2 id="inspection-title">{account}</h2>
         </div>
         <div className="drawer-header-actions">
@@ -105,29 +108,44 @@ export function DashboardDrawer({
                     <Badge action={decision.action} />
                   </CardHeader>
                   <div className="drawer-score">
-                    <strong>
+                    <strong className={riskClassName(decision.score)}>
                       {decision.score}
                       <small> / 100</small>
                     </strong>
                     <span className="muted">Historical risk score</span>
                   </div>
-                  <DetailList
-                    items={[
-                      ["Recorded at", dateTime(decision.occurred_at)],
-                      [
-                        "Enforcement",
-                        decision.enforced ? "Enforced" : "Shadow mode",
-                      ],
-                      ["Review", humanize(decision.review_status)],
-                      [
-                        "Analyst label",
-                        decision.label
-                          ? humanize(decision.label)
-                          : "Not labeled",
-                      ],
-                      ["Quarantine", decision.hold_status ?? "None"],
-                    ]}
-                  />
+                  <div className="drawer-decision-meta">
+                    <span className="mono">
+                      {decision.api_key_id ?? "No API key"}
+                    </span>
+                    {selectedKey && (
+                      <span
+                        className={
+                          selectedKey.status === "suspended"
+                            ? "suspended-state"
+                            : "muted"
+                        }
+                      >
+                        Key {selectedKey.status}
+                      </span>
+                    )}
+                    {detail?.event.ip && (
+                      <span className="mono">
+                        {detail.event.ip}
+                        {detail.event.asn ? ` · AS${detail.event.asn}` : ""}
+                      </span>
+                    )}
+                    <span>{dateTime(decision.occurred_at)}</span>
+                    <span>
+                      {decision.enforced ? "Enforced" : "Monitoring only"}
+                    </span>
+                    {decision.label && (
+                      <span>Reviewed: {humanize(decision.label)}</span>
+                    )}
+                    {decision.hold_status && (
+                      <span>Quarantine: {decision.hold_status}</span>
+                    )}
+                  </div>
                   {!decision.enforced && (
                     <p className="aside-note">
                       This is a computed decision. The send API returned ALLOW.
@@ -173,9 +191,22 @@ export function DashboardDrawer({
                 event history.
               </EmptyState>
             )}
+            {decision && (
+              <section className="card" ref={reviewRef}>
+                <CardHeader title="Review this event" />
+                <ReviewForm
+                  key={decision.decision_id}
+                  decision={decision}
+                  initialAction={initialAction}
+                  onDirtyChange={onDirty}
+                  onPendingChange={onPending}
+                  onSuccess={onSuccess}
+                />
+              </section>
+            )}
             {profile && (
-              <section className="card">
-                <CardHeader title="Baseline & key state" />
+              <details className="drawer-disclosure">
+                <summary>Baseline & key state</summary>
                 <DetailList
                   items={[
                     ["Learned events", number(profile.events_seen)],
@@ -207,11 +238,11 @@ export function DashboardDrawer({
                     </p>
                   )}
                 </div>
-              </section>
+              </details>
             )}
             {detail && (
-              <section className="card">
-                <CardHeader title="Stored metadata" />
+              <details className="drawer-disclosure">
+                <summary>Stored metadata</summary>
                 <div className="drawer-metadata">
                   <MetadataBlock
                     title="Event"
@@ -243,27 +274,14 @@ export function DashboardDrawer({
                     }}
                   />
                 </div>
-              </section>
-            )}
-            {decision && (
-              <section className="card" ref={reviewRef}>
-                <CardHeader
-                  title="Review this event"
-                  description="Actions affect the identified key; the recorded score stays unchanged."
-                />
-                <ReviewForm
-                  key={decision.decision_id}
-                  decision={decision}
-                  initialAction={initialAction}
-                  onDirtyChange={onDirty}
-                  onPendingChange={onPending}
-                  onSuccess={onSuccess}
-                />
-              </section>
+              </details>
             )}
             {detail && (
-              <section className="card">
-                <CardHeader title="Audit history" />
+              <details
+                className="drawer-disclosure"
+                open={!!detail.actions?.length}
+              >
+                <summary>Audit history ({detail.actions?.length ?? 0})</summary>
                 {detail.actions?.length ? (
                   <ol className="audit-history">
                     {detail.actions.map((action) => (
@@ -281,7 +299,7 @@ export function DashboardDrawer({
                 ) : (
                   <EmptyState compact title="No review actions yet." />
                 )}
-              </section>
+              </details>
             )}
           </>
         )}
