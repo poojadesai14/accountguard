@@ -1,4 +1,3 @@
-# Activate as .github/workflows/backend-tests.yml after authorizing workflow writes.
 name: Backend tests
 
 on:
