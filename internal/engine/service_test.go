@@ -31,7 +31,12 @@ func testService(t *testing.T) *Service {
 	if err := store.Migrate(ctx, s.Pool, migrations.FS); err != nil {
 		t.Fatal(err)
 	}
-	return &Service{Store: s, Config: testConfig(t)}
+	cfg := testConfig(t)
+	// These tests assert transaction and scoring behavior, not latency. Race
+	// instrumentation and serialized account locks can exceed the production
+	// deadline on shared CI runners. Timeout behavior has a dedicated API test.
+	cfg.Scoring.TimeoutMS = 5000
+	return &Service{Store: s, Config: cfg}
 }
 
 type fixture struct {

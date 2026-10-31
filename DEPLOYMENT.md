@@ -16,6 +16,10 @@ This starts the local PostgreSQL service, creates the separate `ato_test`
 database if needed, and runs all tests with race detection. It does not reset the
 demo database. API integration tests use a fresh schema per fixture and remove
 their schemas afterward. Engine integration tests use unique account IDs.
+Functional database test fixtures use a five-second scoring deadline to tolerate
+race instrumentation and shared CI scheduling. The dedicated timeout test uses
+an explicit short deadline to verify fail-open and rollback behavior. The deployed
+scoring deadline remains 200 ms.
 
 To use an existing test PostgreSQL server:
 

@@ -75,6 +75,9 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Functional integration tests must tolerate race instrumentation and shared
+	// CI scheduling. The timeout test below explicitly sets its own short limit.
+	cfg.Scoring.TimeoutMS = 5000
 	s := &Server{Store: db, Config: cfg, Service: &engine.Service{Store: db, Config: cfg},
 		IngestToken: testIngestToken, AnalystToken: testAnalystToken}
 	return &apiFixture{t: t, server: s, handler: s.Routes()}
@@ -417,6 +420,7 @@ func TestScoringTimeoutRollsBackAndCanBeRetried(t *testing.T) {
 	if _, err := tx.Exec(context.Background(), `select account_id from profiles where account_id = 'account' for update`); err != nil {
 		t.Fatal(err)
 	}
+	originalTimeoutMS := f.server.Config.Scoring.TimeoutMS
 	f.server.Config.Scoring.TimeoutMS = 30
 	ev := f.email(testNow.Add(time.Minute), 16509, "stripe.com")
 	d := decodeResponse[DecisionResponse](t, request(t, f.handler, "POST", "/v1/events", testIngestToken, ev))
@@ -433,7 +437,7 @@ func TestScoringTimeoutRollsBackAndCanBeRetried(t *testing.T) {
 	if persisted || f.learned().EventsSeen != 1 {
 		t.Fatal("timed-out transaction persisted the event or changed the baseline")
 	}
-	f.server.Config.Scoring.TimeoutMS = 200
+	f.server.Config.Scoring.TimeoutMS = originalTimeoutMS
 	f.ingest(ev, "allow")
 	if f.learned().EventsSeen != 2 {
 		t.Fatal("retry was not learned exactly once")
