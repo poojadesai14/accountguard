@@ -3,7 +3,7 @@ services:
     name: resend-ato-api
     runtime: docker
     repo: https://github.com/poojadesai14/resend-ato
-    branch: codex/render-deployment
+    branch: render-deployment
     region: virginia
     plan: free
     dockerfilePath: ./Dockerfile

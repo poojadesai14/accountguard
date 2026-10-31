@@ -162,7 +162,7 @@ and `authenticated` roles have no usage access to the schema.
 
 1. Open the [Render Dashboard](https://dashboard.render.com/) and connect GitHub.
    Create a Blueprint from `poojadesai14/resend-ato`, selecting branch
-   `codex/render-deployment` and the root `render.yaml` file.
+   `render-deployment` and the root `render.yaml` file.
 2. Render prompts for the three secrets marked `sync: false`. Copy their values
    from the ignored, owner-readable `.env.supabase` file:
    `DATABASE_URL`, `INGEST_TOKEN`, and `ANALYST_TOKEN`.
