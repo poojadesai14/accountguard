@@ -119,7 +119,7 @@ export function DecisionChart({
             <ResponsiveContainer width="100%" height="100%">
               <LineChart
                 data={data}
-                margin={{ top: 8, right: 24, bottom: 4, left: 0 }}
+                margin={{ top: 12, right: 24, bottom: 12, left: 0 }}
               >
                 <CartesianGrid stroke={grid} vertical={false} />
                 <XAxis
