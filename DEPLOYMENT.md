@@ -2,8 +2,9 @@
 
 The intended stack is a Go API on Render, Supabase Postgres, and the Next.js
 analyst UI on Vercel. Render replaces the earlier Railway setup. This repository
-currently contains the Go backend, migrations, seed, and simulator; the `/web`
-application and Prometheus metrics described in the spec are still outstanding.
+contains the Go backend, migrations, seed, simulator, and the Next.js analyst
+dashboard in `/web`. Prometheus metrics described in the spec are still
+outstanding. Dashboard setup and Vercel settings are in [web/README.md](web/README.md).
 
 ## Run the complete backend tests
 
@@ -117,7 +118,7 @@ credentials or Supabase table access.
 4. Finish the spec's `/metrics` endpoint and counters before relying on shadow
    traffic for operational evaluation. Health alone does not reveal fail-open
    scoring failures. Validate the 200 ms scoring budget against hosted Postgres.
-5. Build the Next.js analyst UI and deploy it to Vercel with `API_BASE_URL`,
+5. Deploy the Next.js analyst UI from the `web` root to Vercel with `API_BASE_URL`,
    server-only `ANALYST_TOKEN`, and `UI_PASSWORD`. Keep the demo owner-response
    endpoint behind analyst authentication until signed owner links exist.
 6. Enable enforcement after reviewing detection results and verifying the
@@ -179,7 +180,7 @@ and `authenticated` roles have no usage access to the schema.
    `.mode-shadow`.
 
 Render supplies `PORT`; the server reads it directly. The API and database
-credentials remain server-side. The future Vercel UI will use the Render API
+credentials remain server-side. The Vercel UI uses the Render API
 URL and analyst token from its server environment.
 
 The Blueprint deliberately deploys the review branch so the current main branch

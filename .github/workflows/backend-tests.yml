@@ -1,4 +1,4 @@
-name: Backend tests
+name: Application checks
 
 on:
   push:
@@ -9,6 +9,7 @@ permissions:
 
 jobs:
   test:
+    name: Backend tests
     runs-on: ubuntu-latest
     timeout-minutes: 15
     services:
@@ -45,3 +46,32 @@ jobs:
         run: go test -race -count=1 ./...
       - name: Build deployment image
         run: docker build -t resend-ato:test .
+
+  dashboard:
+    name: Dashboard checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Check TypeScript
+        run: npm run typecheck
+      - name: Check dashboard formatting
+        run: npm run format:check
+      - name: Test sessions and review validation
+        run: npm test
+      - name: Build dashboard
+        run: npm run build
+      - name: Install browser
+        run: npx playwright install --with-deps chromium
+      - name: Test analyst browser flows
+        run: npm run test:e2e
