@@ -5,11 +5,10 @@ services:
     repo: https://github.com/poojadesai14/resend-ato
     branch: codex/render-deployment
     region: virginia
-    plan: 0.5c-512mb
+    plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
     dockerCommand: /app/server
-    preDeployCommand: /app/migrate
     healthCheckPath: /healthz
     maxShutdownDelaySeconds: 15
     autoDeployTrigger: "off"
@@ -19,8 +18,6 @@ services:
       - key: CONFIG_PATH
         value: /app/config.yaml
       - key: DATABASE_URL
-        sync: false
-      - key: MIGRATION_DATABASE_URL
         sync: false
       - key: INGEST_TOKEN
         sync: false

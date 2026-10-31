@@ -130,13 +130,25 @@ migrations are forward-only; application rollback does not undo schema changes.
 
 ## Render with Supabase
 
-`render.yaml` defines the API service. It uses the smallest paid, always-on web
-service plan (`0.5c-512mb`) in Virginia, near the Supabase database in US East.
-The free tier sleeps while idle, which would pause the hold-expiry ticker.
-The definition uses Docker, `/app/migrate` before deployment, `/app/server` for
-startup, `/healthz` for readiness, and a 15-second shutdown window. Deploys are
+`render.yaml` defines a free demo API service in Virginia, near the Supabase
+database in US East. After 15 minutes without traffic, Render puts the service
+to sleep; the next request wakes it with a cold-start delay. The hold-expiry
+ticker pauses while the service sleeps and resumes after startup.
+The definition uses Docker, `/app/server` for startup, `/healthz` for readiness,
+and a 15-second shutdown window. Deploys are
 manual until the CI workflow is enabled. See Render's
 [Blueprint reference](https://render.com/docs/blueprint-spec).
+
+Free web services do not support Render's pre-deploy command. Supabase is
+already migrated, so no migration hook is configured. Before a future release
+with schema changes, run the migration command locally against Supabase using
+the migration URL in `.env.supabase`, then deploy the API. Keep database
+credentials out of Docker build steps.
+
+```sh
+docker build -t resend-ato:local .
+docker run --rm --env-file .env.supabase --entrypoint /app/migrate resend-ato:local
+```
 
 The Blueprint was validated against Render's published JSON Schema. The image
 also passed migration-command, health, analyst-read, authentication, and shadow
@@ -151,14 +163,14 @@ and `authenticated` roles have no usage access to the schema.
 1. Open the [Render Dashboard](https://dashboard.render.com/) and connect GitHub.
    Create a Blueprint from `poojadesai14/resend-ato`, selecting branch
    `codex/render-deployment` and the root `render.yaml` file.
-2. Render prompts for the four secrets marked `sync: false`. Copy their values
+2. Render prompts for the three secrets marked `sync: false`. Copy their values
    from the ignored, owner-readable `.env.supabase` file:
-   `DATABASE_URL`, `MIGRATION_DATABASE_URL`, `INGEST_TOKEN`, and `ANALYST_TOKEN`.
-   Both database URLs point to the existing Supabase `ato` schema. No additional
+   `DATABASE_URL`, `INGEST_TOKEN`, and `ANALYST_TOKEN`.
+   The database URL points to the existing Supabase `ato` schema. No additional
    Render database is needed.
-3. Review the paid service plan and create `resend-ato-api`. Render builds the
-   image and runs migrations before making it live. A migration failure stops
-   the new deployment. See [pre-deploy commands](https://render.com/docs/deploys#pre-deploy-command).
+3. Confirm the service plan is **Free** and create `resend-ato-api`. Render
+   builds the image and starts the API against the existing database. See
+   [free service limits](https://render.com/docs/free).
 4. Open the generated HTTPS service URL and check `/healthz`. Confirm analyst
    requests require the analyst bearer token. Verify a suspicious test event
    returns `action: allow`, `enforced: false`, and a config version ending in
