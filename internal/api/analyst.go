@@ -21,6 +21,8 @@ var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[
 
 func (s *Server) analystRoutes(mux *http.ServeMux) {
 	auth := func(h http.HandlerFunc) http.Handler { return bearer(s.AnalystToken, h) }
+	mux.Handle("GET /v1/dashboard", auth(s.getDashboard))
+	mux.Handle("GET /v1/analyst-actions", auth(s.listAnalystActions))
 	mux.Handle("GET /v1/stats", auth(s.getStats))
 	mux.Handle("GET /v1/accounts", auth(s.listAccounts))
 	mux.Handle("GET /v1/accounts/{id}/timeline", auth(s.getTimeline))
