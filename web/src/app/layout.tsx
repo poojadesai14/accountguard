@@ -1,8 +1,13 @@
 import type { Metadata } from "next";
+import "@fontsource-variable/geist";
+import "@fontsource-variable/geist-mono";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: { default: "Overview · Resend ATO", template: "%s · Resend ATO" },
+  title: {
+    default: "Analyst Workspace · Resend ATO",
+    template: "%s · Resend ATO",
+  },
   description: "Account takeover investigations and analyst reviews.",
   robots: { index: false, follow: false },
 };

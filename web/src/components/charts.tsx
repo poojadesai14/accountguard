@@ -6,6 +6,8 @@ import {
   CartesianGrid,
   ComposedChart,
   Legend,
+  Line,
+  LineChart,
   ReferenceArea,
   ReferenceLine,
   ResponsiveContainer,
@@ -15,22 +17,30 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { EmptyState } from "./ui";
+import { Badge, EmptyState } from "./ui";
+import {
+  ACTION_LABELS,
+  decisionSeries,
+  type DecisionBucket,
+} from "@/lib/decisions";
+import { dateTime, number } from "@/lib/format";
 import type { AccountSeries, StatsPoint } from "@/lib/types";
 
 const COLORS = {
-  allow: "#a5b69a",
-  flag: "#cfad50",
-  hold: "#d78955",
-  block: "#ba625d",
+  allow: "var(--allow)",
+  flag: "var(--flag)",
+  hold: "var(--hold)",
+  block: "var(--block)",
 };
-const tick = { fontSize: 11, fill: "#707968" };
-const grid = "#eceee7";
+const tick = { fontSize: 15, fill: "var(--chart-text)" };
+const grid = "var(--chart-grid)";
 const tooltipStyle = {
-  border: "1px solid #e4e7dc",
-  borderRadius: 10,
-  fontSize: 12,
-  boxShadow: "0 6px 20px #1721170a",
+  border: "1px solid var(--line)",
+  backgroundColor: "var(--surface)",
+  color: "var(--ink)",
+  borderRadius: 6,
+  fontSize: 15,
+  boxShadow: "0 6px 24px #00000066",
 };
 const hourLabel = (value: number) =>
   new Date(value).toLocaleString("en-US", {
@@ -40,78 +50,158 @@ const hourLabel = (value: number) =>
     timeZone: "UTC",
   });
 
-export function DecisionChart({ points }: { points: StatsPoint[] }) {
-  if (!points.length)
+export function DecisionChart({
+  points,
+  bucket,
+  from,
+  to,
+}: {
+  points: StatsPoint[];
+  bucket: DecisionBucket;
+  from?: string;
+  to?: string;
+}) {
+  const data = decisionSeries(points, bucket, from, to);
+  if (!data.length)
     return (
       <EmptyState title="No elevated activity in this period">
-        Flagged, held, and blocked decisions will appear here as events arrive.
+        Flagged, quarantined, and blocked decisions will appear here as events
+        arrive.
       </EmptyState>
     );
-  const data = points.map((point) => ({
-    ...point,
-    time: new Date(point.t).getTime(),
-  }));
+  const actions = ["flag", "hold", "block"] as const;
+  const max = Math.max(
+    1,
+    ...data.flatMap((point) => actions.map((action) => point[action])),
+  );
+  const domain: [number, number] = [data[0].time, data[data.length - 1].time];
+  if (domain[0] === domain[1])
+    domain[1] += bucket === "1d" ? 86_400_000 : 3_600_000;
+  const timeLabel = (value: number) =>
+    new Date(value).toLocaleString("en-US", {
+      month: "short",
+      day: "numeric",
+      ...(bucket === "1h" ? { hour: "numeric" as const } : {}),
+      timeZone: "UTC",
+    });
   return (
     <div
-      className="overview-chart"
-      role="img"
-      aria-label="Stacked chart of flagged, held, and blocked decisions over time"
+      className="decision-trends"
+      role="group"
+      aria-label="Elevated activity trends"
     >
-      <ResponsiveContainer width="100%" height="100%">
-        <ComposedChart
-          data={data}
-          margin={{ top: 12, right: 12, left: -10, bottom: 8 }}
-        >
-          <CartesianGrid stroke={grid} vertical={false} />
-          <XAxis
-            dataKey="time"
-            type="number"
-            domain={["dataMin", "dataMax"]}
-            scale="time"
-            tickFormatter={hourLabel}
-            tick={tick}
-            axisLine={false}
-            tickLine={false}
-            minTickGap={60}
-          />
-          <YAxis
-            tick={tick}
-            axisLine={false}
-            tickLine={false}
-            allowDecimals={false}
-          />
-          <Tooltip
-            contentStyle={tooltipStyle}
-            labelFormatter={(value) => hourLabel(Number(value)) + " UTC"}
-            cursor={{ fill: "#f0f2e9" }}
-          />
-          <Bar
-            dataKey="flag"
-            name="Flag"
-            stackId="decisions"
-            fill={COLORS.flag}
-            maxBarSize={26}
-            isAnimationActive={false}
-          />
-          <Bar
-            dataKey="hold"
-            name="Hold"
-            stackId="decisions"
-            fill={COLORS.hold}
-            maxBarSize={26}
-            isAnimationActive={false}
-          />
-          <Bar
-            dataKey="block"
-            name="Block"
-            stackId="decisions"
-            fill={COLORS.block}
-            maxBarSize={26}
-            radius={[3, 3, 0, 0]}
-            isAnimationActive={false}
-          />
-        </ComposedChart>
-      </ResponsiveContainer>
+      <p className="trend-scale">
+        Decisions per {bucket === "1d" ? "day" : "hour"} · Same scale in every
+        row · UTC
+      </p>
+      {actions.map((action, index) => (
+        <section className="decision-trend" key={action}>
+          <div className="trend-heading">
+            <Badge action={action} />
+            <span>
+              <strong>
+                {number(
+                  data.reduce((total, point) => total + point[action], 0),
+                )}
+              </strong>{" "}
+              total
+            </span>
+          </div>
+          <div
+            className={
+              index === actions.length - 1
+                ? "trend-chart trend-chart-with-time"
+                : "trend-chart"
+            }
+            role="figure"
+            aria-label={`${ACTION_LABELS[action]} decisions over time`}
+          >
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart
+                data={data}
+                margin={{ top: 8, right: 24, bottom: 4, left: 0 }}
+              >
+                <CartesianGrid stroke={grid} vertical={false} />
+                <XAxis
+                  dataKey="time"
+                  type="number"
+                  domain={domain}
+                  scale="time"
+                  tick={index === actions.length - 1 ? tick : false}
+                  tickFormatter={timeLabel}
+                  minTickGap={70}
+                  height={index === actions.length - 1 ? 32 : 0}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis
+                  tick={tick}
+                  domain={[0, max]}
+                  ticks={[0, max]}
+                  interval={0}
+                  width={48}
+                  tickFormatter={(value) => number(Number(value))}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <Tooltip
+                  contentStyle={tooltipStyle}
+                  labelFormatter={(value) => timeLabel(Number(value)) + " UTC"}
+                  formatter={(value) => [
+                    number(Number(value)),
+                    ACTION_LABELS[action],
+                  ]}
+                  cursor={{
+                    stroke: "var(--chart-text)",
+                    strokeDasharray: "3 3",
+                  }}
+                />
+                <Line
+                  dataKey={action}
+                  name={ACTION_LABELS[action]}
+                  type="linear"
+                  stroke={COLORS[action]}
+                  strokeWidth={2}
+                  dot={
+                    data.length === 1 ? { r: 4, fill: COLORS[action] } : false
+                  }
+                  activeDot={{ r: 4 }}
+                  isAnimationActive={false}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+      ))}
+      <details className="chart-data">
+        <summary>View chart data</summary>
+        <div className="table-scroll">
+          <table aria-label="Elevated activity data">
+            <thead>
+              <tr>
+                <th scope="col">Time (UTC)</th>
+                {actions.map((action) => (
+                  <th scope="col" key={action}>
+                    {ACTION_LABELS[action]}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {data.map((point) => (
+                <tr key={point.time}>
+                  <th scope="row">
+                    {dateTime(new Date(point.time).toISOString())}
+                  </th>
+                  {actions.map((action) => (
+                    <td key={action}>{number(point[action])}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </div>
   );
 }
@@ -181,7 +271,7 @@ export function AccountCharts({ series }: { series: AccountSeries }) {
             <CartesianGrid stroke={grid} vertical={false} />
             {axis}
             <YAxis
-              width={42}
+              width={58}
               tick={tick}
               tickFormatter={(value) => Math.round(Number(value)).toString()}
               axisLine={false}
@@ -195,27 +285,27 @@ export function AccountCharts({ series }: { series: AccountSeries }) {
             <ReferenceArea
               y1={0}
               y2={series.baseline_hourly}
-              fill="#dce6d4"
-              fillOpacity={0.5}
+              fill="var(--chart-band)"
+              fillOpacity={0.35}
             />
             <ReferenceLine
               y={series.baseline_hourly}
-              stroke="#809578"
+              stroke="var(--chart-baseline)"
               strokeDasharray="4 4"
             />
             <ReferenceLine
               y={series.spike_threshold}
-              stroke="#cfad50"
+              stroke={COLORS.flag}
               strokeDasharray="4 4"
             />
             <Area
               dataKey="recipients"
               name="Recipients"
               type="monotone"
-              stroke="#526e4b"
+              stroke="var(--chart-line)"
               strokeWidth={2}
-              fill="#e1e9d9"
-              fillOpacity={0.65}
+              fill="var(--chart-line)"
+              fillOpacity={0.08}
               isAnimationActive={false}
             />
             <Tooltip
@@ -227,11 +317,11 @@ export function AccountCharts({ series }: { series: AccountSeries }) {
       </div>
       <div className="chart-key">
         <span>
-          <i style={{ background: "#526e4b" }} />
+          <i style={{ background: "var(--chart-line)" }} />
           Recipients
         </span>
         <span>
-          <i style={{ background: "#dce6d4" }} />
+          <i style={{ background: "var(--chart-baseline)" }} />
           Current baseline: {series.baseline_hourly.toFixed(1)}
         </span>
         <span>
@@ -242,9 +332,9 @@ export function AccountCharts({ series }: { series: AccountSeries }) {
       <div className="chart-lane-label">
         <span>Network activity</span>
         <small>
-          <i className="legend-dot red" />
+          <i className="legend-dot new" />
           First seen
-          <i className="legend-dot green" />
+          <i className="legend-dot known" />
           Known ASN
         </small>
       </div>
@@ -257,13 +347,13 @@ export function AccountCharts({ series }: { series: AccountSeries }) {
           <ScatterChart {...common}>
             {axis}
             <YAxis
-              width={42}
+              width={58}
               dataKey="lane"
               type="number"
               domain={[0, asns.length + 1]}
               ticks={asns.map((_, index) => index + 1)}
               tickFormatter={(value) => String(asns[value - 1] ?? "")}
-              tick={{ ...tick, fontSize: 9 }}
+              tick={{ ...tick, fontSize: 13 }}
               axisLine={false}
               tickLine={false}
             />
@@ -290,7 +380,7 @@ export function AccountCharts({ series }: { series: AccountSeries }) {
             <Scatter
               name="Known ASN"
               data={networkPoints.filter((point) => !point.first_seen)}
-              fill="#809578"
+              fill="var(--chart-baseline)"
               isAnimationActive={false}
             />
             <Scatter
@@ -315,7 +405,7 @@ export function AccountCharts({ series }: { series: AccountSeries }) {
           <ComposedChart {...common} data={data}>
             {axis}
             <YAxis
-              width={42}
+              width={58}
               tick={tick}
               axisLine={false}
               tickLine={false}
@@ -324,7 +414,7 @@ export function AccountCharts({ series }: { series: AccountSeries }) {
             <Bar
               dataKey="content"
               name="Content signals"
-              fill="#b19866"
+              fill="var(--flag)"
               maxBarSize={10}
               radius={[2, 2, 0, 0]}
               isAnimationActive={false}
@@ -332,7 +422,7 @@ export function AccountCharts({ series }: { series: AccountSeries }) {
             <Bar
               dataKey="changes"
               name="Account changes"
-              fill="#8e8aa8"
+              fill="#aaa3c2"
               maxBarSize={10}
               radius={[2, 2, 0, 0]}
               isAnimationActive={false}
@@ -366,7 +456,7 @@ export function AccountCharts({ series }: { series: AccountSeries }) {
               tickLine={false}
             />
             <YAxis
-              width={42}
+              width={58}
               tick={tick}
               axisLine={false}
               tickLine={false}
@@ -376,7 +466,7 @@ export function AccountCharts({ series }: { series: AccountSeries }) {
               <Bar
                 key={action}
                 dataKey={`action_${action}`}
-                name={action}
+                name={ACTION_LABELS[action as keyof typeof ACTION_LABELS]}
                 fill={color}
                 stackId="actions"
                 maxBarSize={16}
@@ -387,7 +477,7 @@ export function AccountCharts({ series }: { series: AccountSeries }) {
               contentStyle={tooltipStyle}
               labelFormatter={(value) => hourLabel(Number(value)) + " UTC"}
             />
-            <Legend iconSize={8} wrapperStyle={{ fontSize: 11 }} />
+            <Legend iconSize={10} wrapperStyle={{ fontSize: 14 }} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>

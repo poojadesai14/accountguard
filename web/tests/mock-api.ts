@@ -2,6 +2,8 @@
 import { createServer } from "node:http";
 import type {
   AccountSeries,
+  DashboardAccount,
+  GlobalAuditAction,
   DecisionDetail,
   Stats,
   TimelineRow,
@@ -65,6 +67,9 @@ let suspended = true;
 let requests: { path: string; body?: Record<string, string> }[] = [];
 let empty = false;
 let unavailable = false;
+let singleBucket = false;
+let manyAccounts = false;
+let auditRecords: GlobalAuditAction[] = [];
 function reset() {
   detail = {
     decision: {
@@ -93,6 +98,9 @@ function reset() {
   requests = [];
   empty = false;
   unavailable = false;
+  singleBucket = false;
+  manyAccounts = false;
+  auditRecords = [];
 }
 reset();
 const series: AccountSeries = {
@@ -155,6 +163,96 @@ const stats: Stats = {
   ],
 };
 
+function dashboardAccounts(): DashboardAccount[] {
+  const base: DashboardAccount = {
+    account_id: "acc_acme",
+    events_seen: 6200,
+    active_hours: 260,
+    baseline_ready: true,
+    open_reviews: detail.decision.review_status === "open" ? 1 : 0,
+    suspended_keys: suspended ? 1 : 0,
+    key_status: suspended ? "suspended" : "active",
+    decision_id: decisionId,
+    event_id: event.event_id,
+    api_key_id: "key_prod_1",
+    action: "hold",
+    score: 75,
+    enforced: true,
+    label: detail.decision.label,
+    review_status: detail.decision.review_status,
+    hold_status: detail.decision.hold_status,
+    occurred_at: hours[10],
+    ip: "203.0.113.9",
+    asn: 14061,
+    asn_org: "DIGITALOCEAN-ASN",
+    primary_driver: "new_asn",
+    hits,
+  };
+  return empty
+    ? []
+    : [
+        base,
+        {
+          ...base,
+          account_id: "acc_beta",
+          decision_id: null,
+          api_key_id: "key_beta",
+          action: "flag",
+          score: 40,
+          suspended_keys: 0,
+          key_status: "active",
+          open_reviews: 1,
+          label: null,
+        },
+        {
+          ...base,
+          account_id: "acc_high",
+          decision_id: null,
+          api_key_id: "key_high",
+          action: "block",
+          score: 80,
+          suspended_keys: 1,
+          key_status: "suspended",
+          open_reviews: 1,
+          label: null,
+        },
+        {
+          ...base,
+          account_id: "acc_good",
+          decision_id: null,
+          api_key_id: "key_good",
+          action: "allow",
+          score: 5,
+          suspended_keys: 0,
+          key_status: "active",
+          open_reviews: 0,
+          label: null,
+        },
+        {
+          ...base,
+          account_id: "acc_learning",
+          decision_id: null,
+          api_key_id: "key_learning",
+          action: "allow",
+          score: 0,
+          suspended_keys: 0,
+          key_status: "active",
+          open_reviews: 0,
+          events_seen: 1,
+          active_hours: 1,
+          baseline_ready: false,
+          label: null,
+        },
+        ...(manyAccounts
+          ? Array.from({ length: 55 }, (_, index) => ({
+              ...base,
+              account_id: `acc_bulk_${String(index).padStart(3, "0")}`,
+              decision_id: null,
+            }))
+          : []),
+      ];
+}
+
 createServer(async (req, res) => {
   const url = new URL(req.url ?? "/", "http://127.0.0.1:3102");
   const reply = (status: number, value: unknown) => {
@@ -174,6 +272,18 @@ createServer(async (req, res) => {
     unavailable = true;
     return reply(200, {});
   }
+  if (url.pathname === "/__single-bucket" && req.method === "POST") {
+    singleBucket = true;
+    return reply(200, {});
+  }
+  if (url.pathname === "/__many-accounts" && req.method === "POST") {
+    manyAccounts = true;
+    return reply(200, {});
+  }
+  if (url.pathname === "/__recover" && req.method === "POST") {
+    unavailable = false;
+    return reply(200, {});
+  }
   if (url.pathname === "/__requests") return reply(200, requests);
   if (req.headers.authorization !== "Bearer fixture-analyst-token")
     return reply(401, { error: "missing token" });
@@ -183,6 +293,16 @@ createServer(async (req, res) => {
     for await (const chunk of req) chunks.push(chunk);
     const body = JSON.parse(Buffer.concat(chunks).toString());
     requests.push({ path: url.pathname, body });
+    auditRecords.unshift({
+      id: auditRecords.length + 1,
+      account_id: "acc_acme",
+      api_key_id: "key_prod_1",
+      decision_id: decisionId,
+      action: body.action ?? "unblock_key",
+      actor: body.actor ?? "owner",
+      reason: body.reason ?? "Owner response",
+      created_at: new Date().toISOString(),
+    });
     if (url.pathname.endsWith("/unblock")) {
       suspended = false;
       return reply(200, { status: "active" });
@@ -198,6 +318,7 @@ createServer(async (req, res) => {
     if (url.pathname.endsWith("/actions")) {
       detail.decision.review_status = "resolved";
       if (body.action === "confirm_takeover") {
+        suspended = true;
         detail.decision.label = "takeover";
         detail.decision.hold_status = "dropped";
       }
@@ -219,6 +340,72 @@ createServer(async (req, res) => {
     return reply(404, {});
   }
   requests.push({ path: url.pathname + url.search });
+  if (url.pathname === "/v1/dashboard") {
+    const all = dashboardAccounts();
+    const baseline = (item: DashboardAccount) =>
+      !item.open_reviews &&
+      !item.suspended_keys &&
+      (item.action === "allow" || item.label === "legitimate");
+    const q = (url.searchParams.get("q") ?? "").toLowerCase();
+    const filtered = all
+      .filter((item) =>
+        url.searchParams.get("segment") === "baseline"
+          ? baseline(item)
+          : !!(item.open_reviews || item.suspended_keys),
+      )
+      .filter((item) =>
+        url.searchParams.get("severity") === "high"
+          ? (item.score ?? 0) >= 80
+          : url.searchParams.get("severity") === "medium"
+            ? (item.score ?? 0) >= 40 && (item.score ?? 0) <= 79
+            : true,
+      )
+      .filter((item) =>
+        [
+          item.account_id,
+          item.api_key_id,
+          item.ip,
+          `AS${item.asn}`,
+          item.primary_driver,
+          item.primary_driver.replaceAll("_", " "),
+        ].some((value) => (value ?? "").toLowerCase().includes(q)),
+      );
+    const page = Number(url.searchParams.get("page") ?? 1),
+      limit = 50;
+    return reply(200, {
+      metrics: {
+        attention_accounts: all.filter(
+          (item) => item.open_reviews || item.suspended_keys,
+        ).length,
+        pending_quarantines: empty
+          ? 0
+          : detail.decision.hold_status === "pending"
+            ? 1
+            : 0,
+        suspended_keys: all.reduce(
+          (total, item) => total + item.suspended_keys,
+          0,
+        ),
+        healthy_baselines: all.filter(
+          (item) => baseline(item) && item.baseline_ready,
+        ).length,
+      },
+      items: filtered.slice((page - 1) * limit, page * limit),
+      total: filtered.length,
+      page,
+      limit,
+      generated_at: new Date().toISOString(),
+      engine_mode: "shadow",
+    });
+  }
+  if (url.pathname === "/v1/analyst-actions") {
+    const before = Number(url.searchParams.get("before_id") ?? 0);
+    const actions = auditRecords.filter((item) => !before || item.id < before);
+    return reply(200, {
+      items: actions.slice(0, 50),
+      next_before_id: actions.length > 50 ? actions[49].id : null,
+    });
+  }
   if (url.pathname === "/v1/stats")
     return reply(
       200,
@@ -229,7 +416,13 @@ createServer(async (req, res) => {
             top_signals: null,
             review_queue: null,
           }
-        : stats,
+        : singleBucket
+          ? {
+              ...stats,
+              totals: { events: 1, allow: 0, flag: 0, hold: 1, block: 0 },
+              series: [{ t: hours[10], flag: 0, hold: 1, block: 0 }],
+            }
+          : stats,
     );
   if (url.pathname === "/v1/accounts") {
     const accounts = ["acc_acme", "acc_beta", "acc_northstar"].filter((id) =>
@@ -280,7 +473,37 @@ createServer(async (req, res) => {
     });
   }
   if (url.pathname.endsWith("/series")) return reply(200, series);
-  if (url.pathname.endsWith("/timeline")) return reply(200, [event]);
+  if (url.pathname.endsWith("/timeline"))
+    return reply(200, [
+      {
+        ...event,
+        event_id: "evt_unscored_001",
+        occurred_at: hours[8],
+        action: null,
+        score: null,
+        hits: null,
+        enforced: null,
+        decision_id: null,
+        hold_status: null,
+        review_status: null,
+      },
+      {
+        ...event,
+        event_id: "evt_normal_001",
+        occurred_at: hours[9],
+        api_key_id: "key_safe_1",
+        ip: "198.51.100.20",
+        asn: 16509,
+        asn_org: "AMAZON-02",
+        action: "allow",
+        score: 0,
+        hits: [],
+        decision_id: null,
+        hold_status: null,
+        review_status: "none",
+      },
+      event,
+    ]);
   if (url.pathname === `/v1/decisions/${decisionId}`) return reply(200, detail);
   return reply(404, { error: "not found" });
 }).listen(3102, "127.0.0.1", () =>

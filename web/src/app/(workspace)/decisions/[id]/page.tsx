@@ -5,6 +5,7 @@ import { analystApi } from "@/lib/api";
 import { dateTime, humanize, number, shortId } from "@/lib/format";
 import type { DecisionDetail } from "@/lib/types";
 import { UUID } from "@/lib/review";
+import { ACTION_LABELS } from "@/lib/decisions";
 import {
   ApiError,
   Badge,
@@ -54,8 +55,8 @@ export default async function DecisionPage({
           <div>
             <strong>Shadow mode</strong>
             <span>
-              This is a computed {d.action} decision. The API returned allow;
-              this decision did not hold mail or suspend a key.
+              This is a computed {ACTION_LABELS[d.action]} decision. The API
+              returned ALLOW; this decision did not hold mail or suspend a key.
             </span>
           </div>
         </div>
@@ -96,12 +97,17 @@ export default async function DecisionPage({
                     <span
                       className={`category-marker category-${hit.category}`}
                     />
-                    <div>
-                      <strong>{humanize(hit.name)}</strong>
-                      <span className="hit-category">{hit.category}</span>
+                    <div className="hit-evidence">
+                      <div className="hit-heading">
+                        <strong>{humanize(hit.name)}</strong>
+                        <span className="hit-category">{hit.category}</span>
+                      </div>
                       <p>{hit.detail}</p>
                     </div>
-                    <span className="hit-points">+{hit.points}</span>
+                    <span className="hit-points">
+                      +{hit.points}
+                      <small>pts</small>
+                    </span>
                   </div>
                 ))}
               </div>
@@ -144,13 +150,23 @@ export default async function DecisionPage({
                   ],
                   ["Event type", humanize(event.type)],
                   ["Source", event.source],
-                  ["API key", event.api_key_id],
+                  [
+                    "API key",
+                    <span className="mono" key="api-key">
+                      {event.api_key_id ?? "—"}
+                    </span>,
+                  ],
                   ["Occurred at", dateTime(event.occurred_at)],
                 ]}
               />
               <DetailList
                 items={[
-                  ["Source IP", event.ip],
+                  [
+                    "Source IP",
+                    <span className="mono" key="ip">
+                      {event.ip ?? "—"}
+                    </span>,
+                  ],
                   [
                     "ASN",
                     event.asn ? `AS${event.asn} ${event.asn_org ?? ""}` : "—",

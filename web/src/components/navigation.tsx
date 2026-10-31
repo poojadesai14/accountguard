@@ -5,7 +5,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { useTransition } from "react";
 import {
   ArrowUpRight,
-  ChevronRight,
   LayoutDashboard,
   LogOut,
   RefreshCw,
@@ -19,12 +18,14 @@ export function Navigation() {
   return (
     <aside className="sidebar">
       <Link href="/" className="brand" aria-label="Resend ATO overview">
-        <span className="brand-symbol">
-          r<span>→</span>
-        </span>
-        <span>
-          resend<span className="brand-product">ATO</span>
-        </span>
+        <ShieldCheck size={28} className="brand-mark" aria-hidden="true" />
+        <img
+          src="/resend-wordmark-white.svg"
+          width="96"
+          height="24"
+          alt="Resend"
+        />
+        <span className="brand-product">ATO</span>
       </Link>
       <div className="workspace">
         <span className="workspace-icon">
@@ -33,19 +34,24 @@ export function Navigation() {
         <div>
           Account protection<small>Analyst workspace</small>
         </div>
-        <ChevronRight size={14} />
       </div>
       <span className="nav-label">WORKSPACE</span>
       <nav aria-label="Main navigation">
         <Link
           href="/"
+          aria-label="Overview"
+          title="Overview"
+          aria-current={pathname === "/" ? "page" : undefined}
           className={pathname === "/" ? "nav-item active" : "nav-item"}
         >
           <LayoutDashboard size={17} />
-          Overview
+          <span className="nav-text">Overview</span>
         </Link>
         <Link
           href="/accounts"
+          aria-label="Accounts"
+          title="Accounts"
+          aria-current={pathname.startsWith("/accounts") ? "page" : undefined}
           className={
             pathname.startsWith("/accounts") ||
             pathname.startsWith("/decisions") ||
@@ -55,7 +61,7 @@ export function Navigation() {
           }
         >
           <Users size={17} />
-          Accounts
+          <span className="nav-text">Accounts</span>
         </Link>
       </nav>
       <div className="sidebar-footer">
@@ -66,9 +72,14 @@ export function Navigation() {
           </div>
         </div>
         <form action={logout}>
-          <button className="nav-item logout" type="submit">
+          <button
+            className="nav-item logout"
+            type="submit"
+            aria-label="Sign out"
+            title="Sign out"
+          >
             <LogOut size={16} />
-            Sign out
+            <span className="nav-text">Sign out</span>
             <ArrowUpRight size={13} />
           </button>
         </form>

@@ -140,3 +140,65 @@ export type DecisionDetail = {
 export type ApiResult<T> =
   | { data: T; error?: never; status?: never }
   | { data?: never; error: string; status: number };
+
+export type DashboardAccount = {
+  account_id: string;
+  events_seen: number;
+  active_hours: number;
+  baseline_ready: boolean;
+  open_reviews: number;
+  suspended_keys: number;
+  key_status: "active" | "suspended" | null;
+  decision_id: string | null;
+  event_id: string | null;
+  api_key_id: string | null;
+  action: Action | null;
+  score: number | null;
+  enforced: boolean | null;
+  label: string | null;
+  review_status: string | null;
+  hold_status: string | null;
+  occurred_at: string | null;
+  ip: string | null;
+  asn: number | null;
+  asn_org: string | null;
+  primary_driver: string;
+  hits: Hit[];
+};
+export type DashboardSnapshot = {
+  metrics: {
+    attention_accounts: number;
+    pending_quarantines: number;
+    suspended_keys: number;
+    healthy_baselines: number;
+  };
+  items: DashboardAccount[];
+  total: number;
+  page: number;
+  limit: number;
+  generated_at: string;
+  engine_mode: "shadow" | "enforce";
+};
+export type GlobalAuditAction = AuditAction & {
+  account_id: string | null;
+  api_key_id: string | null;
+  decision_id: string | null;
+};
+export type AuditPage = {
+  items: GlobalAuditAction[];
+  next_before_id: number | null;
+};
+export type DashboardInspection = {
+  profile?: ProfileResponse;
+  detail?: DecisionDetail;
+  error?: string;
+};
+export type DashboardData = {
+  snapshot?: DashboardSnapshot;
+  database_ok: boolean;
+  stats?: Stats;
+  audit?: AuditPage;
+  inspection?: DashboardInspection;
+  error?: string;
+  telemetry_error?: string;
+};

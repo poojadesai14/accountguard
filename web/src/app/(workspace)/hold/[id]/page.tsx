@@ -45,7 +45,13 @@ export default async function HoldPage({
             ["Time", dateTime(event.occurred_at)],
             [
               "Network",
-              event.asn ? `AS${event.asn} ${event.asn_org ?? ""}` : event.ip,
+              event.asn ? (
+                `AS${event.asn} ${event.asn_org ?? ""}`
+              ) : (
+                <span className="mono" key="ip">
+                  {event.ip ?? "—"}
+                </span>
+              ),
             ],
             ["Hold status", decision.hold_status ?? "No hold"],
           ]}

@@ -12,18 +12,20 @@ export default async function LoginPage({
   return (
     <main className="login-page">
       <div className="login-brand">
-        resend<span>ATO</span>
+        <img
+          src="/resend-wordmark-white.svg"
+          width="104"
+          height="26"
+          alt="Resend"
+        />
+        <span>ATO</span>
       </div>
       <section className="login-card">
         <span className="login-symbol">
           <ShieldCheck size={27} strokeWidth={1.4} />
         </span>
         <p className="eyebrow">ANALYST WORKSPACE</p>
-        <h1>
-          A clearer view
-          <br />
-          of account security.
-        </h1>
+        <h1>Sign in to your workspace</h1>
         <p className="login-description">
           Investigate unusual activity, understand every signal, and make the
           next call with context.

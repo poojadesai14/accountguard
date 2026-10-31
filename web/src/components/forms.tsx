@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useId } from "react";
+import { useActionState, useEffect, useId, useRef } from "react";
 import { ArrowRight, Check, LockKeyhole } from "lucide-react";
 import {
   login,
@@ -82,8 +82,38 @@ function ReviewIdentity() {
   );
 }
 
-export function ReviewForm({ decision }: { decision: Decision }) {
+export function ReviewForm({
+  decision,
+  initialAction,
+  onDirtyChange,
+  onPendingChange,
+  onSuccess,
+}: {
+  decision: Decision;
+  initialAction?: "confirm_takeover" | "mark_legitimate";
+  onDirtyChange?: (dirty: boolean) => void;
+  onPendingChange?: (pending: boolean) => void;
+  onSuccess?: (message: string) => void;
+}) {
   const [state, action, pending] = useActionState(reviewDecision, {});
+  const handled = useRef<FormState | undefined>(undefined);
+  useEffect(() => {
+    onPendingChange?.(pending);
+  }, [pending, onPendingChange]);
+  useEffect(() => {
+    if (state.success && handled.current !== state) {
+      handled.current = state;
+      onDirtyChange?.(false);
+      onSuccess?.(state.success);
+    }
+  }, [state, onSuccess, onDirtyChange]);
+  useEffect(
+    () => () => {
+      onDirtyChange?.(false);
+      onPendingChange?.(false);
+    },
+    [onDirtyChange, onPendingChange],
+  );
   const labeled = Boolean(decision.label);
   const canRelease = decision.hold_status === "pending";
   if (labeled && !canRelease)
@@ -100,14 +130,20 @@ export function ReviewForm({ decision }: { decision: Decision }) {
       </div>
     );
   return (
-    <form action={action} className="review-form">
+    <form
+      action={action}
+      className="review-form"
+      onChange={() => onDirtyChange?.(true)}
+    >
       <input type="hidden" name="decision_id" value={decision.decision_id} />
       <label htmlFor="action">Review outcome</label>
       <select
         name="action"
         id="action"
         required
-        defaultValue={!labeled ? "mark_legitimate" : "release_hold"}
+        defaultValue={
+          !labeled ? (initialAction ?? "mark_legitimate") : "release_hold"
+        }
       >
         {!labeled && <option value="mark_legitimate">Mark legitimate</option>}
         {!labeled && decision.api_key_id && (
@@ -118,6 +154,10 @@ export function ReviewForm({ decision }: { decision: Decision }) {
         )}
       </select>
       <ReviewIdentity />
+      <p className="form-help">
+        Affected key:{" "}
+        <span className="mono">{decision.api_key_id ?? "No API key"}</span>
+      </p>
       <p className="form-help">
         Confirming a takeover suspends the key and drops its pending holds.
         Marking legitimate teaches the baseline and releases this pending hold;

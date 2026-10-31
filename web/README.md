@@ -32,9 +32,14 @@ Open `http://localhost:3000` and sign in with `UI_PASSWORD`.
 
 ## Views
 
-- `/`: action totals, stacked flag/hold/block chart, top signals, and review queue.
+- `/`: current global system metrics; attention and legitimate-baseline account tables
+  with URL-based search, severity filters, and pagination; an accessible inspection
+  drawer with audited actions; aggregated outcome trends, risk drivers, and the
+  global analyst audit stream.
 - `/accounts`: account search and review filter.
-- `/accounts/[id]`: volume with current baseline and spike threshold, ASN
+- `/accounts/[id]`: an event stream with search and outcome filters, selected
+  decision and signal breakdown, and copyable structured metadata; volume with
+  current baseline and spike threshold, ASN
   observations, content/account markers, decisions on a shared time axis,
   timeline, profile, key status, and key restoration.
 - `/decisions/[id]`: scores, each signal's evidence, safe event metadata,
@@ -42,6 +47,9 @@ Open `http://localhost:3000` and sign in with `UI_PASSWORD`.
 - `/hold/[id]`: owner response demo, behind the same analyst password gate.
 
 Times are UTC. The selected range filters decisions by event occurrence time.
+QUARANTINE is the UI label for the API's `hold` action. FLAG remains an observation;
+the service does not implement throttling. Charts fill empty time buckets with
+zero elevated decisions instead of connecting separate incidents across gaps.
 Current baseline values are shown explicitly; the API does not store historical
 baselines. Shadow decisions are labeled and are not presented as enforced holds
 or suspensions. Real, empty, error, and loading states are supported; the app
@@ -71,13 +79,13 @@ use the hosted API or Supabase. CI runs these checks alongside the Go suite.
 
 Import `poojadesai14/resend-ato` into Vercel and use:
 
-| Setting                         | Value               |
-| ------------------------------- | ------------------- |
-| Framework preset                | Next.js             |
-| Root directory                  | `web`               |
-| Node.js                         | 24.x                |
-| Production branch for this demo | `render-deployment` |
-| Build command                   | `npm run build`     |
+| Setting                         | Value           |
+| ------------------------------- | --------------- |
+| Framework preset                | Next.js         |
+| Root directory                  | `web`           |
+| Node.js                         | 24.x            |
+| Production branch for this demo | `main`          |
+| Build command                   | `npm run build` |
 
 Set `API_BASE_URL`, `ANALYST_TOKEN`, and `UI_PASSWORD` in Vercel's server environment.
 Use the analyst token already configured on Render. Do not add a `NEXT_PUBLIC_`
@@ -87,3 +95,34 @@ server-rendered app; do not use static export.
 Render's free API can sleep while idle. The UI allows time for a cold start and
 displays a retry message if the connection still fails. Keep the API in shadow
 mode until the detection results and upstream enforcement integration are ready.
+
+## Dashboard data and actions
+
+`GET /v1/dashboard` provides one consistent snapshot for global metrics and a
+filtered page of account cases. It accepts `segment=attention|baseline`, `q`,
+`severity=all|high|medium`, `page`, and `limit` (default 50, capped at 200).
+One account represents its highest-severity open decision, then highest score
+and newest event; otherwise it represents its latest decision. Original scores
+and decisions remain distinct from key suspension and analyst labels.
+
+Healthy baselines require a legitimate latest outcome, no outstanding reviews
+or suspended keys, and the configured event and active-hour minimums. Accounts
+still learning their baseline are labeled explicitly. System metrics are global
+current-state counts, independent of account filters and telemetry time ranges.
+
+`GET /v1/analyst-actions` accepts RFC 3339 `from`/`to` bounds, `before_id`, and
+`limit`; the end time is exclusive. Records are ordered by descending ID and
+include an optional next-page cursor. Both endpoints require the analyst token.
+
+The UI refreshes every 30 seconds while visible, pauses for unsaved review
+input and pending actions, prevents overlapping requests, and retains the last
+snapshot with a stale-data message on failure. API and database connection
+badges reflect successful real reads; engine mode comes from the API config.
+
+Suspend key and Mark legitimate use the existing audited server actions and
+require an actor and reason. They preserve historical scores; marking a single
+event legitimate never silently restores a suspended key. No account email,
+HTTP endpoint, location, or risk scores are invented.
+
+Release the backend read endpoints before the frontend. No schema migration
+or change to scoring or enforcement mode is required.
