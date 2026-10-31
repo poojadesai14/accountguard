@@ -1,7 +1,11 @@
 "use server";
 import { requireSession } from "@/lib/auth";
 import { analystApi } from "@/lib/api";
-import { dashboardQuery } from "@/lib/dashboard";
+import {
+  dashboardQuery,
+  dashboardScope,
+  dashboardSnapshotError,
+} from "@/lib/dashboard";
 import { periodQuery } from "@/lib/format";
 import type {
   AuditPage,
@@ -19,8 +23,10 @@ export async function loadDashboard(
   const query = dashboardQuery(raw);
   const params = new URLSearchParams({
     segment: query.tab === "baseline" ? "baseline" : "attention",
+    view: query.view,
     q: query.q,
     severity: query.severity,
+    sort: query.sort,
     page: query.page,
   });
   const period = periodQuery(query.period).query;
@@ -58,12 +64,16 @@ export async function loadDashboard(
             : undefined),
       }
     : undefined;
+  const snapshotError = snapshot.data
+    ? dashboardSnapshotError(query, snapshot.data)
+    : undefined;
   return {
-    snapshot: snapshot.data,
+    scope: dashboardScope(query),
+    snapshot: snapshotError ? undefined : snapshot.data,
     database_ok: !!snapshot.data,
     stats: stats?.data,
     audit: audit?.data,
-    error: snapshot.error,
+    error: snapshotError ?? snapshot.error,
     telemetry_error: stats?.error ?? audit?.error,
     inspection,
   };

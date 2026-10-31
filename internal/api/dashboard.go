@@ -30,6 +30,24 @@ func (s *Server) getDashboard(w http.ResponseWriter, r *http.Request) {
 	if severity == "" {
 		severity = "all"
 	}
+	view := q.Get("view")
+	if view == "" {
+		view = "accounts"
+	}
+	if (view != "accounts" && view != "holds" && view != "keys" && view != "healthy") ||
+		(view == "healthy" && segment != "baseline") ||
+		((view == "holds" || view == "keys") && segment != "attention") {
+		writeError(w, http.StatusBadRequest, "invalid dashboard view")
+		return
+	}
+	sort := q.Get("sort")
+	if sort == "" {
+		sort = "priority"
+	}
+	if sort != "priority" && sort != "score_desc" {
+		writeError(w, http.StatusBadRequest, "invalid dashboard sort")
+		return
+	}
 	search := strings.TrimSpace(q.Get("q"))
 	if (segment != "attention" && segment != "baseline") || (severity != "all" && severity != "high" && severity != "medium") || len(search) > 200 {
 		writeError(w, http.StatusBadRequest, "invalid dashboard filter")
@@ -44,7 +62,7 @@ func (s *Server) getDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	limit = min(limit, 200)
-	result, err := store.GetDashboard(r.Context(), s.Store.Pool, store.DashboardFilter{Segment: segment, Query: search, Severity: severity, Page: page, Limit: limit, MinEvents: s.Config.Baseline.MinEvents, MinActiveHours: s.Config.Velocity.MinActiveHours})
+	result, err := store.GetDashboard(r.Context(), s.Store.Pool, store.DashboardFilter{Segment: segment, Query: search, Severity: severity, Sort: sort, View: view, Page: page, Limit: limit, MinEvents: s.Config.Baseline.MinEvents, MinActiveHours: s.Config.Velocity.MinActiveHours})
 	if result != nil {
 		result.EngineMode = s.Config.Mode
 	}

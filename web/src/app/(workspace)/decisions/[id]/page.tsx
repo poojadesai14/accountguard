@@ -5,7 +5,7 @@ import { analystApi } from "@/lib/api";
 import { dateTime, humanize, number, shortId } from "@/lib/format";
 import type { DecisionDetail } from "@/lib/types";
 import { UUID } from "@/lib/review";
-import { ACTION_LABELS } from "@/lib/decisions";
+import { ACTION_LABELS, riskClassName } from "@/lib/decisions";
 import {
   ApiError,
   Badge,
@@ -74,7 +74,7 @@ export default async function DecisionPage({
             />
             <div className="score-overview">
               <div className={`score-orbit orbit-${d.action}`}>
-                <strong>{d.score}</strong>
+                <strong className={riskClassName(d.score)}>{d.score}</strong>
                 <span>/ 100</span>
               </div>
               <div>

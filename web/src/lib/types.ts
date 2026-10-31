@@ -166,6 +166,7 @@ export type DashboardAccount = {
   hits: Hit[];
 };
 export type DashboardSnapshot = {
+  view?: "accounts" | "holds" | "keys" | "healthy";
   metrics: {
     attention_accounts: number;
     pending_quarantines: number;
@@ -194,6 +195,7 @@ export type DashboardInspection = {
   error?: string;
 };
 export type DashboardData = {
+  scope: string;
   snapshot?: DashboardSnapshot;
   database_ok: boolean;
   stats?: Stats;

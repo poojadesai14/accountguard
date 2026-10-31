@@ -69,6 +69,7 @@ let empty = false;
 let unavailable = false;
 let singleBucket = false;
 let manyAccounts = false;
+let legacyDashboard = false;
 let auditRecords: GlobalAuditAction[] = [];
 function reset() {
   detail = {
@@ -100,6 +101,7 @@ function reset() {
   unavailable = false;
   singleBucket = false;
   manyAccounts = false;
+  legacyDashboard = false;
   auditRecords = [];
 }
 reset();
@@ -247,6 +249,9 @@ function dashboardAccounts(): DashboardAccount[] {
           ? Array.from({ length: 55 }, (_, index) => ({
               ...base,
               account_id: `acc_bulk_${String(index).padStart(3, "0")}`,
+              api_key_id: `key_bulk_${String(index).padStart(3, "0")}`,
+              action: index === 54 ? "flag" : base.action,
+              score: index === 54 ? 99 : base.score,
               decision_id: null,
             }))
           : []),
@@ -280,8 +285,13 @@ createServer(async (req, res) => {
     manyAccounts = true;
     return reply(200, {});
   }
+  if (url.pathname === "/__legacy-dashboard" && req.method === "POST") {
+    legacyDashboard = true;
+    return reply(200, {});
+  }
   if (url.pathname === "/__recover" && req.method === "POST") {
     unavailable = false;
+    legacyDashboard = false;
     return reply(200, {});
   }
   if (url.pathname === "/__requests") return reply(200, requests);
@@ -341,6 +351,9 @@ createServer(async (req, res) => {
   }
   requests.push({ path: url.pathname + url.search });
   if (url.pathname === "/v1/dashboard") {
+    const view = legacyDashboard
+      ? "accounts"
+      : (url.searchParams.get("view") ?? "accounts");
     const all = dashboardAccounts();
     const baseline = (item: DashboardAccount) =>
       !item.open_reviews &&
@@ -348,11 +361,14 @@ createServer(async (req, res) => {
       (item.action === "allow" || item.label === "legitimate");
     const q = (url.searchParams.get("q") ?? "").toLowerCase();
     const filtered = all
-      .filter((item) =>
-        url.searchParams.get("segment") === "baseline"
-          ? baseline(item)
-          : !!(item.open_reviews || item.suspended_keys),
-      )
+      .filter((item) => {
+        if (view === "holds")
+          return item.hold_status === "pending" && item.decision_id != null;
+        if (view === "keys") return item.key_status === "suspended";
+        if (url.searchParams.get("segment") === "baseline")
+          return baseline(item) && (view !== "healthy" || item.baseline_ready);
+        return !!(item.open_reviews || item.suspended_keys);
+      })
       .filter((item) =>
         url.searchParams.get("severity") === "high"
           ? (item.score ?? 0) >= 80
@@ -370,9 +386,23 @@ createServer(async (req, res) => {
           item.primary_driver.replaceAll("_", " "),
         ].some((value) => (value ?? "").toLowerCase().includes(q)),
       );
+    const priority = { allow: 0, flag: 1, hold: 2, block: 3 };
+    filtered.sort((a, b) => {
+      const scores = (b.score ?? -1) - (a.score ?? -1);
+      return (
+        (url.searchParams.get("sort") === "score_desc" ? scores : 0) ||
+        (b.action ? priority[b.action] : -1) -
+          (a.action ? priority[a.action] : -1) ||
+        scores ||
+        Date.parse(b.occurred_at ?? "1970-01-01") -
+          Date.parse(a.occurred_at ?? "1970-01-01") ||
+        a.account_id.localeCompare(b.account_id)
+      );
+    });
     const page = Number(url.searchParams.get("page") ?? 1),
       limit = 50;
     return reply(200, {
+      ...(legacyDashboard ? {} : { view }),
       metrics: {
         attention_accounts: all.filter(
           (item) => item.open_reviews || item.suspended_keys,

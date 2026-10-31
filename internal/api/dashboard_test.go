@@ -293,6 +293,334 @@ func TestDashboardFilters(t *testing.T) {
 		})
 	}
 }
+func TestDashboardMetricViews(t *testing.T) {
+	f, ids := dashboardHistory(t)
+	secondHold := dashboardDecision(t, f, dashboardDecisionInput{
+		account: "multi",
+		key:     "key_a",
+		action:  "hold",
+		score:   70,
+		at:      testNow.Add(4 * time.Minute),
+		review:  "open",
+		hold:    strp("pending"),
+	})
+	if _, err := f.server.Store.Pool.Exec(context.Background(), `insert into key_status(api_key_id,account_id,status,reason) values('key_orphan','orphan','suspended','owner')`); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name, query, wantView string
+		wantTotal             int
+		wantKeys              []string
+		wantDecisions         []string
+	}{
+		{
+			name:      "attention card counts each account once",
+			wantView:  "accounts",
+			wantTotal: 5,
+		},
+		{
+			name:          "holds card includes each pending event behind a more severe account decision",
+			query:         "view=holds",
+			wantView:      "holds",
+			wantTotal:     2,
+			wantKeys:      []string{"key_a", "key_b"},
+			wantDecisions: []string{secondHold, ids["multi/hold"]},
+		},
+		{
+			name:          "held events paginate individually within one account",
+			query:         "view=holds&limit=1&page=2",
+			wantView:      "holds",
+			wantTotal:     2,
+			wantKeys:      []string{"key_b"},
+			wantDecisions: []string{ids["multi/hold"]},
+		},
+		{
+			name:          "search checks the held event key rather than the account representative",
+			query:         "view=holds&q=key_b",
+			wantView:      "holds",
+			wantTotal:     1,
+			wantKeys:      []string{"key_b"},
+			wantDecisions: []string{ids["multi/hold"]},
+		},
+		{
+			name:          "key card includes every suspended key including keys without decisions or profiles",
+			query:         "view=keys",
+			wantView:      "keys",
+			wantTotal:     3,
+			wantKeys:      []string{"key_a", "key_c", "key_orphan"},
+			wantDecisions: []string{ids["multi/block"], "", ""},
+		},
+		{
+			name:          "a suspended key never borrows a decision from another key",
+			query:         "view=keys&q=key_c",
+			wantView:      "keys",
+			wantTotal:     1,
+			wantKeys:      []string{"key_c"},
+			wantDecisions: []string{""},
+		},
+		{
+			name:          "suspended keys paginate without dropping sibling keys",
+			query:         "view=keys&limit=1&page=2",
+			wantView:      "keys",
+			wantTotal:     3,
+			wantKeys:      []string{"key_c"},
+			wantDecisions: []string{""},
+		},
+		{
+			name:          "healthy card excludes learning accounts but preserves legitimate historical decisions",
+			query:         "segment=baseline&view=healthy",
+			wantView:      "healthy",
+			wantTotal:     1,
+			wantKeys:      []string{"key_good"},
+			wantDecisions: []string{ids["approved/hold"]},
+		},
+		{
+			name:      "healthy search does not reintroduce accounts still learning",
+			query:     "segment=baseline&view=healthy&q=learning",
+			wantView:  "healthy",
+			wantTotal: 0,
+		},
+		{
+			name:      "clearing the healthy view includes learning baselines again",
+			query:     "segment=baseline",
+			wantView:  "accounts",
+			wantTotal: 2,
+		},
+	}
+	wantMetrics := store.DashboardMetrics{AttentionAccounts: 5, PendingQuarantines: 2, SuspendedKeys: 3, HealthyBaselines: 1}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := decodeResponse[store.Dashboard](t, request(t, f.handler, "GET", "/v1/dashboard?"+tt.query, testAnalystToken, nil))
+			if got.View != tt.wantView || got.Total != tt.wantTotal {
+				t.Fatalf("view/total = %q/%d, want %q/%d", got.View, got.Total, tt.wantView, tt.wantTotal)
+			}
+			if got.Metrics != wantMetrics {
+				t.Errorf("global metrics = %+v, want %+v", got.Metrics, wantMetrics)
+			}
+			var keys, decisions []string
+			for _, item := range got.Items {
+				if item.APIKeyID == nil {
+					t.Fatal("drilldown row is missing its key")
+				}
+				keys = append(keys, *item.APIKeyID)
+				decision := ""
+				if item.DecisionID != nil {
+					decision = *item.DecisionID
+				}
+				decisions = append(decisions, decision)
+				if got.View == "holds" && (item.HoldStatus == nil || *item.HoldStatus != "pending") {
+					t.Error("held event is not pending")
+				}
+				if got.View == "keys" && (item.KeyStatus == nil || *item.KeyStatus != "suspended") {
+					t.Error("key is not suspended")
+				}
+			}
+			if tt.wantKeys != nil && !slices.Equal(keys, tt.wantKeys) {
+				t.Errorf("keys = %v, want %v", keys, tt.wantKeys)
+			}
+			if tt.wantDecisions != nil && !slices.Equal(decisions, tt.wantDecisions) {
+				t.Errorf("decisions = %v, want %v", decisions, tt.wantDecisions)
+			}
+		})
+	}
+}
+func TestDashboardMetricViewPaginationTies(t *testing.T) {
+	f := newAPIFixture(t)
+	var holdIDs []string
+	for i := range 3 {
+		holdIDs = append(holdIDs, dashboardDecision(t, f, dashboardDecisionInput{
+			account: "tied",
+			key:     "held_key",
+			action:  "hold",
+			score:   75,
+			at:      testNow.Add(time.Duration(i) * time.Minute),
+			review:  "open",
+			hold:    strp("pending"),
+		}))
+	}
+	if _, err := f.server.Store.Pool.Exec(context.Background(), `update decisions set occurred_at=$1 where account_id='tied'`, testNow); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.server.Store.Pool.Exec(context.Background(), `insert into key_status(api_key_id,account_id,status,reason) values('key_z','tied','suspended','owner'),('key_a','tied','suspended','owner')`); err != nil {
+		t.Fatal(err)
+	}
+	slices.Sort(holdIDs)
+	tests := []struct {
+		name, view string
+		wantIDs    []string
+	}{
+		{
+			name:    "held events with identical key score and timestamp",
+			view:    "holds",
+			wantIDs: holdIDs,
+		},
+		{
+			name:    "sibling suspended keys without any decisions",
+			view:    "keys",
+			wantIDs: []string{"key_a", "key_z"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for i, wantID := range tt.wantIDs {
+				path := fmt.Sprintf("/v1/dashboard?view=%s&limit=1&page=%d", tt.view, i+1)
+				got := decodeResponse[store.Dashboard](t, request(t, f.handler, "GET", path, testAnalystToken, nil))
+				if got.Total != len(tt.wantIDs) || len(got.Items) != 1 {
+					t.Fatalf("page %d total/rows = %d/%d, want %d/1", i+1, got.Total, len(got.Items), len(tt.wantIDs))
+				}
+				id := got.Items[0].APIKeyID
+				if tt.view == "holds" {
+					id = got.Items[0].DecisionID
+				}
+				if id == nil || *id != wantID {
+					t.Errorf("page %d ID = %v, want %q", i+1, id, wantID)
+				}
+			}
+		})
+	}
+}
+func TestDashboardSort(t *testing.T) {
+	f := newAPIFixture(t)
+	decisions := []dashboardDecisionInput{
+		{
+			account: "sort_block",
+			key:     "key_block",
+			action:  "block",
+			score:   70,
+			at:      testNow,
+			review:  "open",
+		},
+		{
+			account: "sort_flag_high",
+			key:     "key_flag_high",
+			action:  "flag",
+			score:   95,
+			at:      testNow,
+			review:  "open",
+		},
+		{
+			account: "sort_hold_old",
+			key:     "key_hold_old",
+			action:  "hold",
+			score:   80,
+			at:      testNow.Add(-time.Minute),
+			review:  "open",
+		},
+		{
+			account: "sort_hold_a",
+			key:     "key_hold_a",
+			action:  "hold",
+			score:   80,
+			at:      testNow,
+			review:  "open",
+		},
+		{
+			account: "sort_hold_b",
+			key:     "key_hold_b",
+			action:  "hold",
+			score:   80,
+			at:      testNow,
+			review:  "open",
+		},
+		{
+			account: "sort_flag_equal",
+			key:     "key_flag_equal",
+			action:  "flag",
+			score:   80,
+			at:      testNow.Add(time.Minute),
+			review:  "open",
+		},
+		{
+			account: "baseline_low",
+			key:     "key_baseline_low",
+			action:  "allow",
+			score:   5,
+			at:      testNow,
+			review:  "none",
+		},
+		{
+			account: "baseline_reviewed",
+			key:     "key_baseline_reviewed",
+			action:  "hold",
+			score:   85,
+			at:      testNow,
+			review:  "resolved",
+			label:   strp("legitimate"),
+		},
+	}
+	for _, input := range decisions {
+		dashboardDecision(t, f, input)
+	}
+	ctx := context.Background()
+	if _, err := f.server.Store.Pool.Exec(ctx, `insert into profiles(account_id,first_seen_at) values('sort_unscored',$1)`, testNow); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.server.Store.Pool.Exec(ctx, `insert into key_status(api_key_id,account_id,status,reason) values('key_unscored','sort_unscored','suspended','analyst')`); err != nil {
+		t.Fatal(err)
+	}
+	tests := []struct {
+		name, query  string
+		wantTotal    int
+		wantAccounts []string
+	}{
+		{
+			name:         "default preserves decision priority before score",
+			wantTotal:    7,
+			wantAccounts: []string{"sort_block", "sort_hold_a", "sort_hold_b", "sort_hold_old", "sort_flag_high", "sort_flag_equal", "sort_unscored"},
+		},
+		{
+			name:         "explicit priority preserves the existing order",
+			query:        "sort=priority",
+			wantTotal:    7,
+			wantAccounts: []string{"sort_block", "sort_hold_a", "sort_hold_b", "sort_hold_old", "sort_flag_high", "sort_flag_equal", "sort_unscored"},
+		},
+		{
+			name:         "highest score wins across actions with stable ties and missing scores last",
+			query:        "sort=score_desc",
+			wantTotal:    7,
+			wantAccounts: []string{"sort_flag_high", "sort_hold_a", "sort_hold_b", "sort_hold_old", "sort_flag_equal", "sort_block", "sort_unscored"},
+		},
+		{
+			name:         "highest score is selected before the first page",
+			query:        "sort=score_desc&limit=2",
+			wantTotal:    7,
+			wantAccounts: []string{"sort_flag_high", "sort_hold_a"},
+		},
+		{
+			name:         "tied scores cross page boundaries without repeats",
+			query:        "sort=score_desc&limit=2&page=2",
+			wantTotal:    7,
+			wantAccounts: []string{"sort_hold_b", "sort_hold_old"},
+		},
+		{
+			name:         "search and severity apply before sorting and pagination",
+			query:        "sort=score_desc&q=hold_&severity=high&limit=2&page=2",
+			wantTotal:    3,
+			wantAccounts: []string{"sort_hold_old"},
+		},
+		{
+			name:         "baseline sorting preserves a reviewed historical score",
+			query:        "segment=baseline&sort=score_desc",
+			wantTotal:    2,
+			wantAccounts: []string{"baseline_reviewed", "baseline_low"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := decodeResponse[store.Dashboard](t, request(t, f.handler, "GET", "/v1/dashboard?"+tt.query, testAnalystToken, nil))
+			if got.Total != tt.wantTotal {
+				t.Errorf("matching accounts = %d, want %d", got.Total, tt.wantTotal)
+			}
+			var accounts []string
+			for _, item := range got.Items {
+				accounts = append(accounts, item.AccountID)
+			}
+			if !slices.Equal(accounts, tt.wantAccounts) {
+				t.Errorf("account order = %v, want %v", accounts, tt.wantAccounts)
+			}
+		})
+	}
+}
 func TestDashboardPaginationBeyondTwoHundred(t *testing.T) {
 	f := newAPIFixture(t)
 	const total = 225
@@ -352,6 +680,26 @@ func TestDashboardRequestValidation(t *testing.T) {
 		{
 			name: "unknown severity",
 			path: "/v1/dashboard?severity=bad",
+		},
+		{
+			name: "unknown sort order",
+			path: "/v1/dashboard?sort=bad",
+		},
+		{
+			name: "unknown metric view",
+			path: "/v1/dashboard?view=bad",
+		},
+		{
+			name: "held events cannot use the baseline segment",
+			path: "/v1/dashboard?segment=baseline&view=holds",
+		},
+		{
+			name: "suspended keys cannot use the baseline segment",
+			path: "/v1/dashboard?segment=baseline&view=keys",
+		},
+		{
+			name: "healthy accounts need the baseline segment",
+			path: "/v1/dashboard?view=healthy",
 		},
 		{
 			name: "zero page",
