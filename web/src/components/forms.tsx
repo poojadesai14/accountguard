@@ -238,3 +238,28 @@ export function OwnerForm({ decision }: { decision: Decision }) {
     </form>
   );
 }
+
+// A filter checkbox that applies as soon as it changes, like the dashboard's
+// filters, instead of waiting for the form's Search button.
+export function AutoSubmitCheckbox({
+  name,
+  defaultChecked,
+  children,
+}: {
+  name: string;
+  defaultChecked: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className="checkbox-label">
+      <input
+        type="checkbox"
+        name={name}
+        value="true"
+        defaultChecked={defaultChecked}
+        onChange={(event) => event.currentTarget.form?.requestSubmit()}
+      />
+      {children}
+    </label>
+  );
+}

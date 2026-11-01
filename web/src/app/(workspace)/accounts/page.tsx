@@ -1,3 +1,4 @@
+import Form from "next/form";
 import Link from "next/link";
 import { ArrowRight, Search } from "lucide-react";
 import { analystApi } from "@/lib/api";
@@ -11,6 +12,7 @@ import {
   PageHeader,
 } from "@/components/ui";
 import { RefreshButton } from "@/components/navigation";
+import { AutoSubmitCheckbox } from "@/components/forms";
 
 export const metadata = { title: "Accounts" };
 export default async function Accounts({
@@ -39,7 +41,8 @@ export default async function Accounts({
           title="Accounts"
           description="Up to 200 accounts, with open reviews shown first."
         />
-        <form className="account-search" action="/accounts">
+        {/* next/form: client-side navigation on submit, a plain GET form without JS. */}
+        <Form className="account-search" action="/accounts">
           <div className="search-field">
             <Search size={17} />
             <input
@@ -50,22 +53,16 @@ export default async function Accounts({
               defaultValue={q}
             />
           </div>
-          <label className="checkbox-label">
-            <input
-              type="checkbox"
-              name="needs_review"
-              value="true"
-              defaultChecked={needsReview}
-            />
+          <AutoSubmitCheckbox name="needs_review" defaultChecked={needsReview}>
             Needs review
-          </label>
+          </AutoSubmitCheckbox>
           <button className="button button-primary">Search</button>
           {(q || needsReview) && (
             <Link className="text-link" href="/accounts">
               Clear
             </Link>
           )}
-        </form>
+        </Form>
         {result.error ? (
           <ApiError message={result.error} />
         ) : result.data?.length ? (
