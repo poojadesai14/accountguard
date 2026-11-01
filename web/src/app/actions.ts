@@ -13,7 +13,7 @@ import {
   SESSION_SECONDS,
 } from "@/lib/session";
 import { reviewFields, UUID, type FormState } from "@/lib/review";
-import type { DecisionDetail } from "@/lib/types";
+import type { AccountResolution, DecisionDetail } from "@/lib/types";
 import { restoreIsLastStep } from "@/lib/decisions";
 
 export async function login(
@@ -121,5 +121,50 @@ export async function ownerResponse(
       response === "this_was_me"
         ? "Recorded as legitimate. The pending hold has been released."
         : "Reported as unauthorized. The key is suspended and its pending holds have been dropped.",
+  };
+}
+
+export async function resolveAccount(
+  _previous: FormState,
+  form: FormData,
+): Promise<FormState> {
+  await requireSession();
+  const account = String(form.get("account_id") ?? "");
+  const outcome = String(form.get("outcome") ?? "");
+  if (!account || account.length > 200)
+    return { error: "Choose a valid account." };
+  if (outcome !== "legitimate" && outcome !== "takeover")
+    return { error: "Choose Legitimate or Takeover." };
+  const decisionIds = form.getAll("decision_id").map(String);
+  if (decisionIds.length === 0 || decisionIds.some((id) => !UUID.test(id)))
+    return { error: "Reload the account: its open reviews are missing." };
+  const fields = reviewFields(form);
+  if (fields.error) return { error: fields.error };
+  const restoreKeys =
+    outcome === "legitimate" && form.get("restore_keys") === "on";
+  const result = await analystApi<AccountResolution>(
+    `/v1/accounts/${encodeURIComponent(account)}/resolve`,
+    {
+      decision_ids: decisionIds,
+      outcome,
+      restore_keys: restoreKeys,
+      actor: fields.actor,
+      reason: fields.reason,
+    },
+  );
+  if (result.error) return { error: result.error };
+  revalidatePath("/", "layout");
+  const r = result.data!;
+  const plural = (n: number, word: string) =>
+    `${n} ${word}${n === 1 ? "" : "s"}`;
+  const parts = [
+    r.resolved && `${plural(r.resolved, "review")} closed`,
+    r.holds_released && `${plural(r.holds_released, "hold")} released`,
+    r.holds_dropped && `${plural(r.holds_dropped, "hold")} dropped`,
+    r.keys_restored.length && `restored ${r.keys_restored.join(", ")}`,
+    r.keys_suspended.length && `suspended ${r.keys_suspended.join(", ")}`,
+  ].filter(Boolean);
+  return {
+    success: `Resolved as ${r.outcome}: ${parts.join(", ") || "nothing changed"}.`,
   };
 }

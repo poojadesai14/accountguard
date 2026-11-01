@@ -1,15 +1,16 @@
 "use client";
 
-import { useActionState, useEffect, useId, useRef } from "react";
+import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { ArrowRight, Check, ChevronDown, LockKeyhole } from "lucide-react";
 import {
   login,
   ownerResponse,
+  resolveAccount,
   reviewDecision,
   unblockKey,
 } from "@/app/actions";
 import type { FormState } from "@/lib/review";
-import type { Decision } from "@/lib/types";
+import type { Decision, OpenCounts } from "@/lib/types";
 
 function Feedback({ state }: { state: FormState }) {
   return (
@@ -236,5 +237,122 @@ export function OwnerForm({ decision }: { decision: Decision }) {
         “Not me” suspends the key and drops its pending holds.
       </p>
     </form>
+  );
+}
+
+// ResolveAccountForm closes an account's whole incident with one audited outcome.
+// Restoring keys is a separate, unticked choice: a wrong call there lets an
+// attacker send again.
+export function ResolveAccountForm({
+  accountId,
+  open,
+}: {
+  accountId: string;
+  open: OpenCounts;
+}) {
+  const [state, action, pending] = useActionState(resolveAccount, {});
+  const [outcome, setOutcome] = useState<"" | "legitimate" | "takeover">("");
+  const plural = (n: number, word: string) =>
+    `${n} ${word}${n === 1 ? "" : "s"}`;
+  return (
+    <form action={action} className="review-form resolve-form">
+      <input type="hidden" name="account_id" value={accountId} />
+      {open.decision_ids.map((id) => (
+        <input key={id} type="hidden" name="decision_id" value={id} />
+      ))}
+      <fieldset className="resolve-outcome">
+        <legend>Outcome</legend>
+        {(
+          [
+            ["legitimate", "Legitimate"],
+            ["takeover", "Takeover"],
+          ] as const
+        ).map(([value, label]) => (
+          <label key={value}>
+            <input
+              type="radio"
+              name="outcome"
+              value={value}
+              required
+              checked={outcome === value}
+              onChange={() => setOutcome(value)}
+            />
+            {label}
+          </label>
+        ))}
+      </fieldset>
+      {outcome === "legitimate" && (
+        <p className="form-help">
+          Labels the open reviews legitimate and teaches the baseline from them
+          {open.pending_holds
+            ? `, and releases ${plural(open.pending_holds, "held email")}`
+            : ""}
+          .
+        </p>
+      )}
+      {outcome === "takeover" && (
+        <p className="form-help">
+          Labels the open reviews takeover
+          {open.pending_holds
+            ? `, drops ${plural(open.pending_holds, "held email")}`
+            : ""}{" "}
+          and suspends the keys they were sent with.
+        </p>
+      )}
+      {outcome === "legitimate" && open.restorable_keys > 0 && (
+        <label className="restore-keys">
+          <input type="checkbox" name="restore_keys" />
+          Also restore {plural(open.restorable_keys, "key")} these reviews
+          suspended
+        </label>
+      )}
+      {outcome === "legitimate" &&
+        open.suspended_keys > open.restorable_keys && (
+          <p className="form-help">
+            {plural(open.suspended_keys - open.restorable_keys, "other key")}{" "}
+            {open.suspended_keys - open.restorable_keys === 1
+              ? "stays"
+              : "stay"}{" "}
+            suspended: restore those one at a time above.
+          </p>
+        )}
+      <ReviewIdentity />
+      <Feedback state={state} />
+      <button
+        className="button button-primary"
+        disabled={pending || !outcome || open.reviews === 0}
+      >
+        {pending ? "Resolving…" : "Resolve account"}
+      </button>
+    </form>
+  );
+}
+
+// ResolveCard mounts the form only once opened, so its fields never duplicate
+// another form's on the account page. The page always renders it; it hides itself
+// when no review is open, except while showing the result of a resolution that
+// just closed the last one. A suspended key alone is restored from its key line.
+export function ResolveCard({
+  accountId,
+  open,
+  summary,
+}: {
+  accountId: string;
+  open: OpenCounts;
+  summary: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  if (!expanded && open.reviews === 0) return null;
+  return (
+    <details
+      className="card resolve-card"
+      onToggle={(event) => setExpanded(event.currentTarget.open)}
+    >
+      <summary>
+        <strong>Resolve account</strong>
+        <span className="muted">{summary}</span>
+      </summary>
+      {expanded && <ResolveAccountForm accountId={accountId} open={open} />}
+    </details>
   );
 }

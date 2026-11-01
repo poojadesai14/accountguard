@@ -32,6 +32,7 @@ func (s *Server) analystRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /v1/decisions/{id}", auth(s.getDecision))
 	mux.Handle("POST /v1/decisions/{id}/actions", auth(s.postAction))
 	mux.Handle("POST /v1/keys/{key_id}/unblock", auth(s.postUnblock))
+	mux.Handle("POST /v1/accounts/{id}/resolve", auth(s.postResolveAccount))
 	// Demo: the owner's hold link uses the analyst token. Production: a signed one-time link.
 	mux.Handle("POST /v1/holds/{id}/owner-response", auth(s.postOwnerResponse))
 }
@@ -166,7 +167,12 @@ func (s *Server) getProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	keys, err := store.KeyStatuses(ctx, s.Store.Pool, id)
-	respond(w, map[string]any{"profile": p, "key_status": keys}, err)
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
+	open, err := store.AccountOpenCounts(ctx, s.Store.Pool, id)
+	respond(w, map[string]any{"profile": p, "key_status": keys, "open": open}, err)
 }
 
 func (s *Server) getDecision(w http.ResponseWriter, r *http.Request) {
@@ -271,6 +277,34 @@ func (s *Server) postUnblock(w http.ResponseWriter, r *http.Request) {
 	}
 	err := s.Service.UnblockKey(r.Context(), r.PathValue("key_id"), req.Actor, req.Reason)
 	respond(w, map[string]string{"api_key_id": r.PathValue("key_id"), "status": "active"}, err)
+}
+
+// postResolveAccount closes every open review on an account with one outcome.
+func (s *Server) postResolveAccount(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		DecisionIDs []string `json:"decision_ids"` // the open reviews the analyst saw
+		Outcome     string   `json:"outcome"`
+		RestoreKeys bool     `json:"restore_keys"`
+		Actor       string   `json:"actor"`
+		Reason      string   `json:"reason"`
+	}
+	if !decodeBody(w, r, &req) || !requireActor(w, actionRequest{Actor: req.Actor, Reason: req.Reason}) {
+		return
+	}
+	if req.Outcome != engine.ResolveLegitimate && req.Outcome != engine.ResolveTakeover {
+		writeError(w, http.StatusBadRequest, "outcome must be legitimate or takeover")
+		return
+	}
+	if len(req.DecisionIDs) == 0 {
+		writeError(w, http.StatusBadRequest, "decision_ids must list the open reviews being resolved")
+		return
+	}
+	if req.Outcome == engine.ResolveTakeover && req.RestoreKeys {
+		writeError(w, http.StatusBadRequest, "keys can only be restored when resolving as legitimate")
+		return
+	}
+	res, err := s.Service.ResolveAccount(r.Context(), r.PathValue("id"), req.DecisionIDs, req.Outcome, req.RestoreKeys, req.Actor, req.Reason)
+	respond(w, res, err)
 }
 
 func (s *Server) postOwnerResponse(w http.ResponseWriter, r *http.Request) {

@@ -227,3 +227,62 @@ func nonNil(s []string) []string {
 	}
 	return s
 }
+
+// OpenDecisions locks an account's decisions that still await a review, oldest first.
+func OpenDecisions(ctx context.Context, db DBTX, accountID string) ([]*Decision, error) {
+	rows, err := db.Query(ctx, `select `+decisionCols+` from decisions
+		where account_id = $1 and review_status = 'open'
+		order by occurred_at, decision_id for update`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Decision
+	for rows.Next() {
+		d, err := scanDecision(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// RestorableKeys locks the keys that resolving these decisions as legitimate may
+// restore: ones the engine suspended because of one of them. A key an analyst or
+// the owner suspended, or one tied to any decision labelled takeover, stays as it is.
+func RestorableKeys(ctx context.Context, db DBTX, decisionIDs []string) ([]string, error) {
+	rows, err := db.Query(ctx, `select k.api_key_id from key_status k
+		where k.status = 'suspended' and k.reason = 'auto' and k.decision_id = any($1::uuid[])
+		and not exists (select 1 from decisions d where d.api_key_id = k.api_key_id and d.label = 'takeover')
+		order by k.api_key_id for update`, decisionIDs)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowTo[string])
+}
+
+// OpenCounts is what an account-level resolution would close. DecisionIDs are the
+// open reviews; the resolution is refused if they change before it is submitted.
+type OpenCounts struct {
+	Reviews        int      `json:"reviews"`
+	PendingHolds   int      `json:"pending_holds"`
+	SuspendedKeys  int      `json:"suspended_keys"`
+	RestorableKeys int      `json:"restorable_keys"`
+	DecisionIDs    []string `json:"decision_ids"`
+}
+
+func AccountOpenCounts(ctx context.Context, db DBTX, accountID string) (OpenCounts, error) {
+	var c OpenCounts
+	err := db.QueryRow(ctx, `select
+		coalesce((select array_agg(decision_id::text order by occurred_at, decision_id) from decisions
+			where account_id = $1 and review_status = 'open'), '{}'),
+		(select count(*) from decisions where account_id = $1 and hold_status = 'pending'),
+		(select count(*) from key_status where account_id = $1 and status = 'suspended'),
+		(select count(*) from key_status k where k.account_id = $1 and k.status = 'suspended' and k.reason = 'auto'
+			and k.decision_id in (select decision_id from decisions where account_id = $1 and review_status = 'open')
+			and not exists (select 1 from decisions d where d.api_key_id = k.api_key_id and d.label = 'takeover'))`, accountID,
+	).Scan(&c.DecisionIDs, &c.PendingHolds, &c.SuspendedKeys, &c.RestorableKeys)
+	c.Reviews = len(c.DecisionIDs)
+	return c, err
+}

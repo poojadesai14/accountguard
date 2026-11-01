@@ -6,6 +6,7 @@ import { ApiError, CardHeader, DetailList, PageHeader } from "@/components/ui";
 import { AccountCharts } from "@/components/charts";
 import { PeriodFilter } from "@/components/period-filter";
 import { KeyLine } from "@/components/key-line";
+import { ResolveCard } from "@/components/forms";
 import { InvestigationWorkspace } from "@/components/investigation-workspace";
 
 export const metadata = { title: "Account investigation" };
@@ -41,6 +42,7 @@ export default async function AccountPage({
     );
   const p = profile.data!.profile;
   const keys = profile.data!.key_status ?? [];
+  const open = profile.data!.open;
   const rows = [...(timeline.data ?? [])].reverse();
   return (
     <>
@@ -51,6 +53,22 @@ export default async function AccountPage({
       {keys.map((key) => (
         <KeyLine key={key.api_key_id} keyStatus={key} />
       ))}
+      {open && (
+        <ResolveCard
+          accountId={id}
+          open={open}
+          summary={[
+            open.reviews &&
+              `${open.reviews} open review${open.reviews === 1 ? "" : "s"}`,
+            open.pending_holds &&
+              `${open.pending_holds} held email${open.pending_holds === 1 ? "" : "s"}`,
+            open.suspended_keys &&
+              `${open.suspended_keys} suspended key${open.suspended_keys === 1 ? "" : "s"}`,
+          ]
+            .filter(Boolean)
+            .join(" · ")}
+        />
+      )}
       <div className="investigation-grid">
         <section className="card">
           <CardHeader

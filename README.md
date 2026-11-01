@@ -277,11 +277,18 @@ Analyst UI (Next.js) ──server-side, analyst token──▶ analyst API ─�
   send again), so the decision page shows the key's state with an inline, audited "Restore access" as the
   step left. The account leaves the queue once the key is restored and nothing else is open, judged by its
   latest *scored* decision rather than a rejection.
-- **Production version of reviews: an account-level case.** Reviews here are per event, while analysts
-  reason per account. A case would group the triggering decision, its rejections and the holds from the
-  same window, and close them with one outcome: *legitimate* (teach the baseline, release the holds,
-  offer key restore) or *takeover* (drop the holds, keep the key suspended). Restoring a key after a
-  takeover would require the owner to rotate it, not an analyst click.
+- **Resolve the account, not each event.** Analysts reason per account, so the account page has one
+  audited **Resolve account** action (`POST /v1/accounts/{id}/resolve`) that closes every open review with
+  one outcome in one transaction: *legitimate* labels them, teaches the baseline from each stopped event
+  and releases pending holds; *takeover* labels them, drops pending holds and suspends the keys they used.
+  Restoring keys is a separate, unticked box, because a wrong call there lets an attacker send again, and
+  it only covers keys the engine suspended because of those reviews: never one an analyst or the owner
+  suspended, or one with a confirmed takeover behind it. The request names the reviews the analyst saw; if
+  a new one arrived since (an attacker's next send), nothing changes and the analyst reloads. Each change
+  is its own audit row. Per-event review stays for one-off calls.
+- **Production version: a case object.** A stored case would group the trigger, its rejections and the
+  holds from the same window, so an analyst could resolve one incident on an account that has several.
+  Restoring a key after a takeover would require the owner to rotate it, not an analyst click.
 - **Expired holds are dropped, not sent** (`hold.expire_action: drop`). A held email that nobody vouched for
   in 24 h is more likely phishing than urgent, and a phishing email delivered a day late still does harm.
   The cost is a legitimate email lost when the owner doesn't answer, so the owner is told it failed, and

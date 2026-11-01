@@ -88,6 +88,18 @@ func TestRouteAuthentication(t *testing.T) {
 			otherToken: testIngestToken,
 		},
 		{
+			name:       "engine config",
+			method:     "GET",
+			path:       "/v1/config",
+			otherToken: testIngestToken,
+		},
+		{
+			name:       "account resolution",
+			method:     "POST",
+			path:       "/v1/accounts/acc/resolve",
+			otherToken: testIngestToken,
+		},
+		{
 			name:       "accounts",
 			method:     "GET",
 			path:       "/v1/accounts",

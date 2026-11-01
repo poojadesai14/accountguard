@@ -61,9 +61,27 @@ export type KeyStatus = {
   decision_id: string | null;
   updated_at: string;
 };
+export type OpenCounts = {
+  reviews: number;
+  pending_holds: number;
+  suspended_keys: number;
+  /** Suspended keys a legitimate resolution may restore: auto-suspended by these reviews, no takeover behind them. */
+  restorable_keys: number;
+  /** The open reviews; a resolution is refused if they changed since the page loaded. */
+  decision_ids: string[];
+};
 export type ProfileResponse = {
   profile: Profile;
   key_status: KeyStatus[] | null;
+  open?: OpenCounts;
+};
+export type AccountResolution = {
+  outcome: "legitimate" | "takeover";
+  resolved: number;
+  holds_released: number;
+  holds_dropped: number;
+  keys_restored: string[];
+  keys_suspended: string[];
 };
 export type TimelineRow = {
   event_id: string;
