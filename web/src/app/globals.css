@@ -1901,13 +1901,14 @@ td strong {
   background: transparent;
   font-size: 16px;
 }
-.stream-filters select {
-  color: var(--muted);
-  background: var(--card);
-  border: 1px solid var(--line);
-  padding: 9px 10px;
-  border-radius: 5px;
-  font-size: 14px;
+/* Five outcome buttons in a narrow panel: smaller than the dashboard pills,
+   still at least 32px tall, and wrapping when the panel is too narrow. */
+.severity-pills.stream-outcomes {
+  gap: 6px;
+}
+.severity-pills.stream-outcomes button {
+  min-height: 32px;
+  padding: 6px 10px;
 }
 .stream-scroll {
   flex: 1;

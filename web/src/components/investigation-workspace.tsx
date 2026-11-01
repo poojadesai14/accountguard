@@ -128,21 +128,35 @@ export function InvestigationWorkspace({ rows }: { rows: TimelineRow[] }) {
               }}
             />
           </label>
-          <select
+          {/* Buttons, like the dashboard filters: a native select's menu is
+              drawn by the OS and ignores the theme. */}
+          <div
+            className="severity-pills stream-outcomes"
+            role="group"
             aria-label="Filter event outcomes"
-            value={outcome}
-            onChange={(event) => {
-              setOutcome(event.target.value);
-              setLimit(100);
-            }}
           >
-            <option value="all">All outcomes</option>
-            {Object.entries(ACTION_LABELS).map(([value, label]) => (
-              <option value={value} key={value}>
+            {(
+              [
+                ["all", "All"],
+                ["allow", "Allow"],
+                ["flag", "Flag"],
+                ["hold", "Hold"],
+                ["block", "Block"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                type="button"
+                key={value}
+                aria-pressed={outcome === value}
+                onClick={() => {
+                  setOutcome(value);
+                  setLimit(100);
+                }}
+              >
                 {label}
-              </option>
+              </button>
             ))}
-          </select>
+          </div>
         </div>
         <div className="stream-scroll">
           {filtered.length ? (

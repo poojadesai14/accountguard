@@ -288,8 +288,9 @@ test("event selection, filters, and copy controls keep the investigation panels 
     selected.getByRole("link", { name: "Open full review" }),
   ).toHaveCount(0);
   await workspace
-    .getByRole("combobox", { name: "Filter event outcomes" })
-    .selectOption("hold");
+    .getByRole("group", { name: "Filter event outcomes" })
+    .getByRole("button", { name: "Hold", exact: true })
+    .click();
   await expect(
     workspace.getByRole("button", {
       name: "Inspect evt_normal_001",
