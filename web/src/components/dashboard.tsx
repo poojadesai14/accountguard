@@ -22,7 +22,7 @@ import {
   dashboardScope,
   type DashboardQuery,
 } from "@/lib/dashboard";
-import { scoreClassName } from "@/lib/decisions";
+import { holdCountdown, scoreClassName, SUSPENDED_BY } from "@/lib/decisions";
 import { dateTime, humanize, number, periodQuery, PERIODS } from "@/lib/format";
 import type { DashboardAccount, DashboardData } from "@/lib/types";
 import { Badge, CardHeader, EmptyState } from "./ui";
@@ -525,10 +525,26 @@ export function Dashboard({
                   </colgroup>
                   <thead>
                     <tr>
-                      <th>Account</th>
-                      <th>Decision</th>
+                      {/* Each drilldown answers its own question, so the
+                          first and last columns follow the view. */}
+                      <th>
+                        {query.view === "keys"
+                          ? "API key"
+                          : query.view === "holds"
+                            ? "Held email"
+                            : "Account"}
+                      </th>
+                      <th>
+                        {query.view === "keys" ? "Triggered by" : "Decision"}
+                      </th>
                       <th>Signal evidence</th>
-                      <th>Current state</th>
+                      <th>
+                        {query.view === "keys"
+                          ? "Suspension"
+                          : query.view === "holds"
+                            ? "Hold"
+                            : "Current state"}
+                      </th>
                       <th>
                         <span className="sr-only">Review</span>
                       </th>
@@ -539,6 +555,13 @@ export function Dashboard({
                       const evidence = item.hits.find(
                         (hit) => hit.name === item.primary_driver,
                       )?.detail;
+                      const countdown =
+                        query.view === "holds"
+                          ? holdCountdown(
+                              item.hold_expires_at,
+                              tableSnapshot.generated_at,
+                            )
+                          : null;
                       return (
                         <tr
                           key={
@@ -550,23 +573,41 @@ export function Dashboard({
                           }
                         >
                           <td className="dashboard-account">
-                            <button
-                              type="button"
-                              className="account-inspect"
-                              aria-label={`Inspect ${item.account_id}`}
-                              onClick={() => inspect(item)}
-                            >
-                              {item.account_id}
-                            </button>
-                            <small
-                              className="mono"
-                              title={item.api_key_id ?? undefined}
-                            >
-                              {item.api_key_id ?? "No related API key"}
-                            </small>
-                            <small className="dashboard-event-time">
-                              {dateTime(item.occurred_at)}
-                            </small>
+                            {query.view === "keys" ? (
+                              <>
+                                <button
+                                  type="button"
+                                  className="account-inspect mono"
+                                  // Starts with the visible key so screen readers and voice control match it.
+                                  aria-label={`${item.api_key_id} on ${item.account_id}: inspect`}
+                                  onClick={() => inspect(item)}
+                                >
+                                  {item.api_key_id}
+                                </button>
+                                <small>Account {item.account_id}</small>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  className="account-inspect"
+                                  aria-label={`Inspect ${item.account_id}`}
+                                  onClick={() => inspect(item)}
+                                >
+                                  {item.account_id}
+                                </button>
+                                <small
+                                  className="mono"
+                                  title={item.api_key_id ?? undefined}
+                                >
+                                  {item.api_key_id ?? "No related API key"}
+                                </small>
+                                <small className="dashboard-event-time">
+                                  {query.view === "holds" ? "Sent " : ""}
+                                  {dateTime(item.occurred_at)}
+                                </small>
+                              </>
+                            )}
                           </td>
                           <td className="dashboard-decision">
                             <div
@@ -598,9 +639,45 @@ export function Dashboard({
                           <td className="dashboard-current-state">
                             <div className="dashboard-state">
                               {query.view === "holds" && (
-                                <span className="held-state">Pending hold</span>
+                                <>
+                                  <span
+                                    className={
+                                      countdown?.urgent
+                                        ? "suspended-state"
+                                        : "held-state"
+                                    }
+                                    title={
+                                      item.hold_expires_at
+                                        ? `Dropped if unanswered at ${dateTime(item.hold_expires_at)}`
+                                        : undefined
+                                    }
+                                  >
+                                    {countdown?.text ?? "Pending hold"}
+                                  </span>
+                                  {item.hold_expires_at && (
+                                    <small className="muted">
+                                      Dropped at{" "}
+                                      {dateTime(item.hold_expires_at)}
+                                    </small>
+                                  )}
+                                </>
                               )}
-                              {keyedRows ? (
+                              {query.view === "keys" &&
+                              item.key_status === "suspended" ? (
+                                <>
+                                  <span className="suspended-state">
+                                    <LockKeyhole size={13} aria-hidden="true" />
+                                    {item.key_suspended_by
+                                      ? SUSPENDED_BY[item.key_suspended_by]
+                                      : "Key suspended"}
+                                  </span>
+                                  {item.key_suspended_at && (
+                                    <small className="muted">
+                                      {dateTime(item.key_suspended_at)}
+                                    </small>
+                                  )}
+                                </>
+                              ) : keyedRows ? (
                                 item.key_status === "suspended" ? (
                                   <span className="suspended-state">
                                     <LockKeyhole size={13} aria-hidden="true" />
