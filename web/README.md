@@ -50,7 +50,10 @@ note.
   content and account-change markers, and flag/hold/block decisions (allowed
   events are counted, not drawn). A dashed line marks the first hold or block on
   every lane, which is where a takeover lights several signals up at once.
-  A key that was ever suspended is one line under the title (restore inline).
+  A key that was ever suspended is one line under the title (restore inline), and
+  **Resolve account** closes the whole incident with one audited outcome
+  (legitimate or takeover); restoring the keys those reviews suspended is a
+  separate, unticked box. It shows only while a review is open.
   Beside the charts: the baseline. Below: the event stream (opens on the latest
   flag, hold or block) beside one card for the selected event: its decision,
   signal evidence and a link to the full review, with copyable raw metadata

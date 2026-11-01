@@ -64,6 +64,7 @@ const event: TimelineRow = {
 };
 let detail: DecisionDetail;
 let suspended = true;
+let newerReview = false; // a review the page hasn't seen yet
 let requests: { path: string; body?: Record<string, string> }[] = [];
 let empty = false;
 let unavailable = false;
@@ -134,6 +135,7 @@ function reset() {
     ],
   };
   suspended = true;
+  newerReview = false;
   requests = [];
   empty = false;
   unavailable = false;
@@ -381,6 +383,10 @@ createServer(async (req, res) => {
     reset();
     return reply(200, {});
   }
+  if (url.pathname === "/__newer-review" && req.method === "POST") {
+    newerReview = true;
+    return reply(200, {});
+  }
   if (url.pathname === "/__empty" && req.method === "POST") {
     empty = true;
     return reply(200, {});
@@ -432,6 +438,41 @@ createServer(async (req, res) => {
     if (url.pathname.endsWith("/unblock")) {
       suspended = false;
       return reply(200, { status: "active" });
+    }
+    if (url.pathname.endsWith("/resolve")) {
+      // Mirrors the API: only the reviews the analyst saw, and only a key they suspended.
+      const open = detail.decision.review_status === "open";
+      const pending = detail.decision.hold_status === "pending";
+      if (body.outcome === "takeover" && body.restore_keys)
+        return reply(400, {
+          error: "keys can only be restored when resolving as legitimate",
+        });
+      if (!open)
+        return reply(409, { error: "nothing to resolve on this account" });
+      const openIds = newerReview ? [decisionId, "newer"] : [decisionId];
+      if (JSON.stringify(body.decision_ids) !== JSON.stringify(openIds))
+        return reply(409, {
+          error:
+            "this account's open reviews changed since you loaded it; reload and review again",
+        });
+      const restorable = suspended && detail.decision.label !== "takeover";
+      detail.decision.label = body.outcome;
+      detail.decision.review_status = "resolved";
+      if (pending)
+        detail.decision.hold_status =
+          body.outcome === "legitimate" ? "released" : "dropped";
+      const restored = body.restore_keys && restorable ? ["key_prod_1"] : [];
+      if (restored.length) suspended = false;
+      const takenOver = body.outcome === "takeover" ? ["key_prod_1"] : [];
+      if (takenOver.length) suspended = true;
+      return reply(200, {
+        outcome: body.outcome,
+        resolved: 1,
+        holds_released: pending && body.outcome === "legitimate" ? 1 : 0,
+        holds_dropped: pending && body.outcome === "takeover" ? 1 : 0,
+        keys_restored: restored,
+        keys_suspended: takenOver,
+      });
     }
     if (url.pathname.endsWith("/owner-response")) {
       detail.decision.hold_status =
@@ -615,6 +656,19 @@ createServer(async (req, res) => {
         active_hours: 260,
         read_resources: ["domains"],
         last_change_at: hours[8],
+      },
+      open: {
+        reviews: detail.decision.review_status === "open" ? 1 : 0,
+        pending_holds: detail.decision.hold_status === "pending" ? 1 : 0,
+        suspended_keys: suspended ? 1 : 0,
+        restorable_keys:
+          suspended &&
+          detail.decision.review_status === "open" &&
+          detail.decision.label !== "takeover"
+            ? 1
+            : 0,
+        decision_ids:
+          detail.decision.review_status === "open" ? [decisionId] : [],
       },
       key_status: [
         {

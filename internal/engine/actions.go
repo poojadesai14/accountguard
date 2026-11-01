@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/jackc/pgx/v5"
 
@@ -167,3 +168,136 @@ func (s *Service) UnblockKey(ctx context.Context, apiKeyID, actor, reason string
 }
 
 func ptr[T any](v T) *T { return &v }
+
+// Outcomes of an account-level resolution.
+const (
+	ResolveLegitimate = "legitimate"
+	ResolveTakeover   = "takeover"
+)
+
+// AccountResolution reports what ResolveAccount changed.
+type AccountResolution struct {
+	Outcome       string   `json:"outcome"`
+	Resolved      int      `json:"resolved"`
+	HoldsReleased int      `json:"holds_released"`
+	HoldsDropped  int      `json:"holds_dropped"`
+	KeysRestored  []string `json:"keys_restored"`
+	KeysSuspended []string `json:"keys_suspended"`
+}
+
+// ResolveAccount closes every open review on an account with one outcome, the way
+// an analyst reasons about an incident, in one transaction. Each change is audited
+// as its own action.
+//
+// seen are the open reviews the analyst looked at. If the account's open reviews
+// differ when the transaction locks them, nothing changes: the analyst must look
+// again rather than label an attacker's newer send unseen.
+//
+// Legitimate labels the open decisions legitimate (teaching the baseline from each
+// stopped event) and releases their pending holds. Keys are restored only when
+// restoreKeys is set, and only those the engine suspended because of one of these
+// decisions (store.RestorableKeys): a wrong call there lets an attacker send again.
+// Takeover labels them takeover, drops their pending holds and suspends the keys
+// they were sent with.
+func (s *Service) ResolveAccount(ctx context.Context, accountID string, seen []string, outcome string, restoreKeys bool, actor, reason string) (*AccountResolution, error) {
+	if outcome != ResolveLegitimate && outcome != ResolveTakeover {
+		return nil, fmt.Errorf("outcome must be legitimate or takeover")
+	}
+	if outcome == ResolveTakeover && restoreKeys {
+		return nil, fmt.Errorf("keys can only be restored when resolving as legitimate")
+	}
+	audit := "account resolution: " + reason
+	res := &AccountResolution{Outcome: outcome, KeysRestored: []string{}, KeysSuspended: []string{}}
+	err := pgx.BeginFunc(ctx, s.Store.Pool, func(tx pgx.Tx) error {
+		open, err := store.OpenDecisions(ctx, tx, accountID)
+		if err != nil {
+			return err
+		}
+		if len(open) == 0 {
+			return conflict("nothing to resolve on this account")
+		}
+		ids := make([]string, len(open))
+		for i, d := range open {
+			ids[i] = d.DecisionID
+		}
+		want := slices.Clone(seen)
+		slices.Sort(want)
+		if got := slices.Sorted(slices.Values(ids)); !slices.Equal(got, want) {
+			return conflict("this account's open reviews changed since you loaded it; reload and review again")
+		}
+		// Locked before any label changes, so a takeover label written below can't hide a key.
+		var restorable []string
+		if restoreKeys {
+			if restorable, err = store.RestorableKeys(ctx, tx, ids); err != nil {
+				return err
+			}
+		}
+		keyDecision := map[string]string{} // takeover: the first open decision sent with each key
+		for _, d := range open {
+			pending := d.HoldStatus != nil && *d.HoldStatus == "pending"
+			var hold *string
+			logged := ActMarkLegitimate
+			if outcome == ResolveLegitimate {
+				if pending {
+					hold, res.HoldsReleased = ptr("released"), res.HoldsReleased+1
+				}
+				if d.Action != Allow.String() {
+					if err := s.learnFromStoredEvent(ctx, tx, d.AccountID, d.EventID); err != nil {
+						return err
+					}
+				}
+			} else {
+				logged = ActConfirmTakeover
+				if pending {
+					hold, res.HoldsDropped = ptr("dropped"), res.HoldsDropped+1
+				}
+				if d.APIKeyID != nil {
+					if _, seen := keyDecision[*d.APIKeyID]; !seen {
+						keyDecision[*d.APIKeyID] = d.DecisionID
+					}
+				}
+			}
+			if err := store.ResolveDecision(ctx, tx, d.DecisionID, hold, ptr(outcome)); err != nil {
+				return err
+			}
+			if err := store.InsertAnalystAction(ctx, tx, &d.DecisionID, d.APIKeyID, logged, actor, audit); err != nil {
+				return err
+			}
+			res.Resolved++
+		}
+		if outcome == ResolveTakeover {
+			for key, decisionID := range keyDecision {
+				if err := store.SuspendKey(ctx, tx, key, accountID, "analyst", decisionID); err != nil {
+					return err
+				}
+				dropped, err := store.DropPendingHolds(ctx, tx, key)
+				if err != nil {
+					return err
+				}
+				res.HoldsDropped += int(dropped)
+				res.KeysSuspended = append(res.KeysSuspended, key)
+			}
+			slices.Sort(res.KeysSuspended)
+		}
+		if restoreKeys {
+			for _, key := range restorable {
+				was, _, err := store.ActivateKey(ctx, tx, key)
+				if err != nil {
+					return err
+				}
+				if !was {
+					continue
+				}
+				if err := store.InsertAnalystAction(ctx, tx, nil, &key, "unblock_key", actor, audit); err != nil {
+					return err
+				}
+				res.KeysRestored = append(res.KeysRestored, key)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}

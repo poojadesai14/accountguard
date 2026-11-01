@@ -3452,3 +3452,52 @@ td strong {
   color: var(--ink);
   font-weight: 500;
 }
+
+/* Account page: resolve the whole incident with one outcome. */
+.resolve-card {
+  margin: 0 0 20px;
+}
+.resolve-card > summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+  padding: 14px 22px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.resolve-card > summary .muted {
+  font-size: 13px;
+}
+.resolve-form {
+  max-width: 560px;
+  padding: 0 22px 20px;
+}
+.resolve-outcome {
+  display: flex;
+  gap: 8px;
+  border: 0;
+  padding: 0;
+  margin: 0 0 4px;
+}
+.resolve-outcome legend {
+  margin-bottom: 8px;
+}
+.resolve-outcome label,
+.restore-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.resolve-outcome label {
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.resolve-outcome label:has(input:checked) {
+  border-color: var(--border-active);
+  background: var(--surface);
+  color: var(--ink);
+}

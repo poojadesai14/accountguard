@@ -1166,3 +1166,77 @@ test("the drawer's review message names the restore, and a restore confirms in p
   ).toBeVisible();
   await expect(keyLine).toContainText("key_prod_1 active");
 });
+
+test("an account's incident resolves in one audited step, keys only on request", async ({
+  page,
+}) => {
+  await signIn(page, "/accounts/acc_acme");
+  const card = page.locator(".resolve-card");
+  await expect(card.locator("summary")).toContainText(
+    "1 open review · 1 held email · 1 suspended key",
+  );
+  await card.locator("summary").click();
+  const submit = card.getByRole("button", { name: "Resolve account" });
+  await expect(submit).toBeDisabled();
+  await card.getByLabel("Legitimate").check();
+  await expect(card).toContainText("releases 1 held email");
+  const restore = card.getByLabel("Also restore 1 key these reviews suspended");
+  await expect(restore).not.toBeChecked();
+  await card.getByLabel("Your name").fill("Pooja");
+  await card.getByLabel("Reason", { exact: true }).fill("Owner confirmed.");
+  await submit.click();
+  await expect(card.getByRole("status")).toContainText(
+    "Resolved as legitimate: 1 review closed, 1 hold released.",
+  );
+  await expect(submit).toBeDisabled();
+  // The key stayed suspended because the box was left unticked; with no review
+  // left, the card is gone and the key's own restore is the next step.
+  await expect(page.locator(".key-line").first()).toContainText(
+    "key_prod_1 suspended",
+  );
+  await page.reload();
+  await expect(page.locator(".resolve-card")).toHaveCount(0);
+});
+
+test("the restore box brings back only the key the resolved reviews suspended", async ({
+  page,
+}) => {
+  await signIn(page, "/accounts/acc_acme");
+  const card = page.locator(".resolve-card");
+  await card.locator("summary").click();
+  await card.getByLabel("Legitimate").check();
+  await card.getByLabel("Also restore 1 key these reviews suspended").check();
+  await card.getByLabel("Your name").fill("Pooja");
+  await card.getByLabel("Reason", { exact: true }).fill("Key rotated.");
+  await card.getByRole("button", { name: "Resolve account" }).click();
+  await expect(card.getByRole("status")).toContainText("restored key_prod_1");
+  await page.reload();
+  await expect(page.locator(".resolve-card")).toHaveCount(0);
+  await expect(page.locator(".key-line").first()).toContainText(
+    "key_prod_1 active",
+  );
+});
+
+test("a resolution is refused when the account's reviews changed since it loaded", async ({
+  page,
+  request,
+}) => {
+  await signIn(page, "/accounts/acc_acme");
+  const card = page.locator(".resolve-card");
+  await card.locator("summary").click();
+  await card.getByLabel("Takeover").check();
+  await expect(card).toContainText("drops 1 held email");
+  await expect(
+    card.getByLabel("Also restore 1 key these reviews suspended"),
+  ).toHaveCount(0);
+  await card.getByLabel("Your name").fill("Pooja");
+  await card
+    .getByLabel("Reason", { exact: true })
+    .fill("Confirmed with owner.");
+  // The attacker sends again after the page loaded.
+  await request.post("http://127.0.0.1:3102/__newer-review");
+  await card.getByRole("button", { name: "Resolve account" }).click();
+  await expect(card.getByRole("alert")).toContainText(
+    "open reviews changed since you loaded it",
+  );
+});
