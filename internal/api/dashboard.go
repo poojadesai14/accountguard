@@ -44,7 +44,7 @@ func (s *Server) getDashboard(w http.ResponseWriter, r *http.Request) {
 	if sort == "" {
 		sort = "priority"
 	}
-	if sort != "priority" && sort != "score_desc" {
+	if sort != "priority" && sort != "recent" {
 		writeError(w, http.StatusBadRequest, "invalid dashboard sort")
 		return
 	}

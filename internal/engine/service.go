@@ -78,7 +78,9 @@ func (s *Service) Handle(ctx context.Context, ev *event.Event) (*store.Decision,
 			ConfigVersion: cfg.Version,
 			ReviewStatus:  "none",
 		}
-		if res.Action >= Flag {
+		// Flags stay in the log and timeline; only actions that stop mail need a
+		// person, so a lone new ASN doesn't fill the queue.
+		if res.Action >= Hold {
 			dec.ReviewStatus = "open"
 		}
 		if enforced && res.Action == Hold {

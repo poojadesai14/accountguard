@@ -507,8 +507,8 @@ export function Dashboard({
                       })
                     }
                   >
-                    <option value="priority">Decision priority</option>
-                    <option value="score_desc">Highest score</option>
+                    <option value="priority">Most severe first</option>
+                    <option value="recent">Newest first</option>
                   </select>
                 </label>
               </div>

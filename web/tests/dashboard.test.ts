@@ -13,7 +13,7 @@ test("dashboard query rejects malformed and unbounded filter parameters", () => 
     tab: "unknown",
     view: ["holds"],
     severity: ["block"],
-    sort: ["score_desc"],
+    sort: ["recent"],
     page: "-4",
     q: "x".repeat(500),
     before_id: "9007199254740992",
@@ -38,7 +38,7 @@ test("dashboard links preserve search and sorting and safely encode inspected ac
     view: "healthy",
     q: "AS14061",
     severity: "hold",
-    sort: "score_desc",
+    sort: "recent",
     page: "2",
     inspect: "account / one",
     decision: "11111111-1111-4111-8111-111111111111",
@@ -47,7 +47,7 @@ test("dashboard links preserve search and sorting and safely encode inspected ac
   assert.equal(url.searchParams.get("inspect"), "account / one");
   assert.equal(url.searchParams.get("page"), "2");
   assert.equal(url.searchParams.get("q"), "AS14061");
-  assert.equal(url.searchParams.get("sort"), "score_desc");
+  assert.equal(url.searchParams.get("sort"), "recent");
   assert.equal(url.searchParams.get("view"), "healthy");
   assert.equal(url.searchParams.has("severity"), false);
   const closed = new URL(
@@ -56,7 +56,7 @@ test("dashboard links preserve search and sorting and safely encode inspected ac
   );
   assert.equal(closed.searchParams.has("inspect"), false);
   assert.equal(closed.searchParams.get("tab"), "baseline");
-  assert.equal(closed.searchParams.get("sort"), "score_desc");
+  assert.equal(closed.searchParams.get("sort"), "recent");
   assert.equal(closed.searchParams.get("view"), "healthy");
 });
 
@@ -70,7 +70,7 @@ test("metric views persist in links and clear when switching to an incompatible 
     const query = dashboardQuery({
       ...item,
       q: "AS14061",
-      sort: "score_desc",
+      sort: "recent",
       page: "2",
     });
     const url = new URL(dashboardURL(query), "https://dashboard.invalid");
@@ -86,7 +86,7 @@ test("metric views persist in links and clear when switching to an incompatible 
     assert.equal(changed.searchParams.has("view"), false);
     assert.equal(changed.searchParams.has("page"), false);
     assert.equal(changed.searchParams.get("q"), "AS14061");
-    assert.equal(changed.searchParams.get("sort"), "score_desc");
+    assert.equal(changed.searchParams.get("sort"), "recent");
   }
 });
 
@@ -94,7 +94,7 @@ test("severity filters stay on attention and cannot hide baselines through old l
   const attention = dashboardQuery({
     severity: "block",
     q: "key_good",
-    sort: "score_desc",
+    sort: "recent",
   });
   assert.equal(attention.severity, "block");
   for (const tab of ["baseline", "telemetry"] as const) {
@@ -104,16 +104,16 @@ test("severity filters stay on attention and cannot hide baselines through old l
     );
     assert.equal(url.searchParams.has("severity"), false);
     assert.equal(url.searchParams.get("q"), "key_good");
-    assert.equal(url.searchParams.get("sort"), "score_desc");
+    assert.equal(url.searchParams.get("sort"), "recent");
     for (const severity of ["flag", "hold", "block"])
       assert.equal(dashboardQuery({ tab, severity }).severity, "all");
   }
 });
 
 test("dashboard sort accepts highest score and omits the default from links", () => {
-  for (const input of [undefined, "priority", "score_desc", "unknown"]) {
+  for (const input of [undefined, "priority", "recent", "unknown"]) {
     const query = dashboardQuery({ sort: input });
-    const expected = input === "score_desc" ? "score_desc" : "priority";
+    const expected = input === "recent" ? "recent" : "priority";
     assert.equal(query.sort, expected);
     const url = new URL(dashboardURL(query), "https://dashboard.invalid");
     assert.equal(
@@ -263,7 +263,7 @@ test("cached table rows belong to their exact view filters sort and page", () =>
     { tab: "baseline" },
     { q: "key" },
     { severity: "block" },
-    { sort: "score_desc" },
+    { sort: "recent" },
     { page: "2" },
   ])
     assert.notEqual(

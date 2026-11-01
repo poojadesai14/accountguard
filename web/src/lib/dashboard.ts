@@ -6,7 +6,7 @@ export type DashboardQuery = {
   view: "accounts" | "holds" | "keys" | "healthy";
   q: string;
   severity: "all" | "flag" | "hold" | "block";
-  sort: "priority" | "score_desc";
+  sort: "priority" | "recent";
   page: string;
   period: Period;
   before_id: string;
@@ -40,7 +40,7 @@ export function dashboardQuery(raw: Record<string, unknown>): DashboardQuery {
         raw.severity === "block")
         ? raw.severity
         : "all",
-    sort: raw.sort === "score_desc" ? "score_desc" : "priority",
+    sort: raw.sort === "recent" ? "recent" : "priority",
     page: integer(raw.page, 1_000_000) || "1",
     period: PERIODS.includes(raw.period as Period)
       ? (raw.period as Period)

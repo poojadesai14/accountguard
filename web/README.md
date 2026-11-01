@@ -121,10 +121,12 @@ integration are ready.
 `GET /v1/dashboard` provides one consistent snapshot for global metrics and a
 filtered page of accounts, held events, or suspended keys. It accepts
 `segment=attention|baseline`, `view=accounts|holds|keys|healthy`, `q`,
-`severity=all|flag|hold|block` (the representative decision's action), `sort=priority|score_desc`, `page`, and `limit`
-(default 50, capped at 200). Decision priority remains the default; Highest score
-orders matching accounts by recorded score before pagination. Equal scores use
-decision priority, recency, and account ID to keep pages stable. Changing the
+`severity=all|flag|hold|block` (the representative decision's action), `sort=priority|recent`, `page`, and `limit`
+(default 50, capped at 200). Most severe first (`priority`, the default) orders
+by action (block, hold, flag) and then score; the action already comes from the
+score, so a separate score sort would give almost the same order. Newest first
+(`recent`) orders by event time, for following a live incident. Ties fall back to
+severity, score, time, and account ID to keep pages stable. Changing the
 sort resets the page while retaining the current search and severity filter.
 The UI shows severity filters only in the Review queue. Switching to
 Legitimate baselines clears severity; old baseline links containing a severity

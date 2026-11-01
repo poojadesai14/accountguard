@@ -177,6 +177,18 @@ func TestServiceTakeoverHoldsThenBlocksAndDoesNotLearn(t *testing.T) {
 		})
 	}
 }
+func TestServiceOpensReviewsOnlyForHoldAndBlock(t *testing.T) {
+	f := newFixture(t)
+	at := f.history(now.AddDate(0, 0, -5))
+	flag := f.handle(f.send(at, 14061, "stripe.com"))
+	if flag.Action != "flag" || flag.ReviewStatus != "none" {
+		t.Errorf("new ASN alone = %s/%s, want flag/none", flag.Action, flag.ReviewStatus)
+	}
+	hold := f.handle(f.send(at.Add(time.Second), 14061, "invoice-portal.net"))
+	if hold.Action != "hold" || hold.ReviewStatus != "open" {
+		t.Errorf("new ASN and new domain = %s/%s, want hold/open", hold.Action, hold.ReviewStatus)
+	}
+}
 func TestServiceRecordsAccountChangeEvenWhenNotAllowed(t *testing.T) {
 	tests := []struct {
 		name                                 string

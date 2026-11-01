@@ -399,7 +399,7 @@ create table analyst_actions (
 );
 ```
 
-`review_status` is `open` for `flag`/`hold`/`block` decisions and `none` for `allow`.
+`review_status` is `open` for `hold`/`block` decisions and `none` for `allow`/`flag` (flags are logged and charted, not queued).
 Any analyst or owner action on a decision sets it to `resolved`.
 
 ### 5.2 Request transaction (`POST /v1/events`)
