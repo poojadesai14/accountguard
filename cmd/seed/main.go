@@ -111,8 +111,9 @@ func main() {
 	c := &client{url: strings.TrimRight(*url, "/"), token: token, http: &http.Client{Timeout: 10 * time.Second}}
 	rng := rand.New(rand.NewPCG(1, 2))
 
-	// The takeover happens today at 02:00 UTC, a quiet hour, so only the attacker's sends are in the window.
-	today := time.Now().UTC().Truncate(24 * time.Hour)
+	// The takeover happens yesterday at 02:00 UTC, a quiet hour, so only the attacker's sends are in the window.
+	// Yesterday, not today, so no event is dated in the future whenever the seed runs.
+	today := time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -1)
 	takeover := today.Add(2 * time.Hour)
 
 	// 1. 60 days of normal sending: one send per business hour, 20-60 recipients, from AWS.
