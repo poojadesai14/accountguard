@@ -19,6 +19,7 @@ import (
 	"github.com/poojadesai14/resend-ato/internal/config"
 	"github.com/poojadesai14/resend-ato/internal/engine"
 	"github.com/poojadesai14/resend-ato/internal/event"
+	"github.com/poojadesai14/resend-ato/internal/metrics"
 	"github.com/poojadesai14/resend-ato/internal/profile"
 	"github.com/poojadesai14/resend-ato/internal/store"
 	"github.com/poojadesai14/resend-ato/migrations"
@@ -79,8 +80,9 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	// Functional integration tests must tolerate race instrumentation and shared
 	// CI scheduling. The timeout test below explicitly sets its own short limit.
 	cfg.Scoring.TimeoutMS = 5000
-	s := &Server{Store: db, Config: cfg, Service: &engine.Service{Store: db, Config: cfg},
-		IngestToken: testIngestToken, AnalystToken: testAnalystToken}
+	m := metrics.New()
+	s := &Server{Store: db, Config: cfg, Service: &engine.Service{Store: db, Config: cfg, Metrics: m},
+		IngestToken: testIngestToken, AnalystToken: testAnalystToken, Metrics: m}
 	return &apiFixture{t: t, server: s, handler: s.Routes()}
 }
 

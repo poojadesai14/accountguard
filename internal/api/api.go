@@ -12,6 +12,7 @@ import (
 	"github.com/poojadesai14/resend-ato/internal/config"
 	"github.com/poojadesai14/resend-ato/internal/engine"
 	"github.com/poojadesai14/resend-ato/internal/event"
+	"github.com/poojadesai14/resend-ato/internal/metrics"
 	"github.com/poojadesai14/resend-ato/internal/signal"
 	"github.com/poojadesai14/resend-ato/internal/store"
 )
@@ -24,12 +25,17 @@ type Server struct {
 	Config       *config.Config
 	IngestToken  string
 	AnalystToken string
+	Metrics      *metrics.Metrics // optional; serves GET /metrics when set
 }
 
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.healthz)
 	mux.Handle("POST /v1/events", bearer(s.IngestToken, http.HandlerFunc(s.postEvent)))
+	if s.Metrics != nil {
+		// Counts only, but the hosted URL is public, so it needs the analyst token.
+		mux.Handle("GET /metrics", bearer(s.AnalystToken, s.Metrics.Handler()))
+	}
 	s.analystRoutes(mux)
 	return mux
 }
@@ -78,6 +84,7 @@ func (s *Server) postEvent(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// Fail open: a detector outage must not stop every customer's email.
 		slog.Error("scoring failed, failing open", "event_id", ev.EventID, "account_id", ev.AccountID, "err", err)
+		s.Metrics.Unscored()
 		writeJSON(w, http.StatusOK, DecisionResponse{
 			EventID: ev.EventID, Action: "allow", Hits: []signal.Hit{},
 			Unscored: true, ConfigVersion: s.Config.Version,
