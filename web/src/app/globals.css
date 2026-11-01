@@ -86,8 +86,18 @@ button {
   cursor: pointer;
 }
 button:disabled {
-  cursor: wait;
+  cursor: not-allowed;
   opacity: 0.55;
+}
+/* A disabled primary must not look like the one thing to press: grey, flat and
+   without the hover highlight. */
+.button-primary:disabled,
+.button-primary:disabled:hover {
+  background: var(--card);
+  border-color: var(--line);
+  color: var(--muted);
+  box-shadow: none;
+  opacity: 1;
 }
 button:focus-visible,
 a:focus-visible,
@@ -3513,8 +3523,21 @@ td strong {
   padding-left: 18px;
 }
 .resolve-warning label {
-  display: grid;
-  gap: 6px;
+  display: block;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  letter-spacing: normal;
+  text-transform: none;
+  color: inherit;
+}
+.resolve-warning label .mono {
+  text-transform: none;
+}
+.resolve-warning input {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
 }
 .correction-list {
   display: grid;

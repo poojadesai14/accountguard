@@ -176,17 +176,6 @@ export function ReviewForm({
         </select>
         <ChevronDown size={16} aria-hidden="true" />
       </div>
-      <ReviewIdentity />
-      <p className="form-help">
-        Affected key:{" "}
-        <span className="mono">{decision.api_key_id ?? "No API key"}</span>
-      </p>
-      <p className="form-help">
-        Confirming a takeover suspends the key and drops its pending holds.
-        Marking legitimate teaches the baseline
-        {canRelease ? " and releases this pending hold" : ""}; it does not
-        unblock the key, and the account's other reviews stay open.
-      </p>
       {warnings.length > 0 && (
         <div className="resolve-warning" role="note">
           <strong>This looks like a takeover:</strong>
@@ -210,6 +199,17 @@ export function ReviewForm({
           </label>
         </div>
       )}
+      <ReviewIdentity />
+      <p className="form-help">
+        Affected key:{" "}
+        <span className="mono">{decision.api_key_id ?? "No API key"}</span>
+      </p>
+      <p className="form-help">
+        Confirming a takeover suspends the key and drops its pending holds.
+        Marking legitimate teaches the baseline
+        {canRelease ? " and releases this pending hold" : ""}; it does not
+        unblock the key, and the account's other reviews stay open.
+      </p>
       <Feedback state={state} />
       <button
         className="button button-primary"
