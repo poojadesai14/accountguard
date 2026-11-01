@@ -36,9 +36,9 @@ Grounded in Resend's docs ([API keys](https://resend.com/docs/api-reference/api-
    the SMTP password (username `resend`), so it sits in WordPress plugins and CMS configs too.
 2. **Recon.** Keys are `full_access` or `sending_access` (optionally limited to one domain). With full access the
    attacker calls *List Domains* to find the verified sending domain, *List Contacts* / *Segments* to get the
-   brand's real customer list, and *List Sent Emails* to copy the brand's real templates. A sending-only key
-   is refused on all of them; verified in my own account, `GET /domains`, `/contacts` and `/emails` each
-   return `401 restricted_api_key` ("This API key is restricted to only send emails"). Those failed reads
+   brand's real customer list, and *List Sent Emails* to copy the brand's real templates. Verified in my own account: with a full-access key, `GET /domains`,
+   `/contacts` and `/emails` each return `200` with a list; with a sending-only key, each returns
+   `401 restricted_api_key` ("This API key is restricted to only send emails"). Those failed reads
    are a signal too: a production key that suddenly tries recon has been picked up by someone else.
 3. **Persistence (optional, full access).** *Create API key* so revoking the leaked one doesn't help, or
    *Update Webhook* so bounce and complaint events stop reaching the owner. Team invites have no API, so that
