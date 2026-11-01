@@ -15,6 +15,7 @@ import (
 	"github.com/poojadesai14/resend-ato/internal/api"
 	"github.com/poojadesai14/resend-ato/internal/config"
 	"github.com/poojadesai14/resend-ato/internal/engine"
+	"github.com/poojadesai14/resend-ato/internal/metrics"
 	"github.com/poojadesai14/resend-ato/internal/store"
 )
 
@@ -46,8 +47,9 @@ func run() error {
 	}
 	defer db.Close()
 
-	svc := &engine.Service{Store: db, Config: cfg}
-	go expireHolds(ctx, db, cfg.Hold.Tick)
+	m := metrics.New()
+	svc := &engine.Service{Store: db, Config: cfg, Metrics: m}
+	go expireHolds(ctx, db, m, cfg.Hold.Tick)
 
 	apiServer := &api.Server{
 		Store:        db,
@@ -55,6 +57,7 @@ func run() error {
 		Config:       cfg,
 		IngestToken:  os.Getenv("INGEST_TOKEN"),
 		AnalystToken: os.Getenv("ANALYST_TOKEN"),
+		Metrics:      m,
 	}
 
 	srv := &http.Server{
@@ -93,21 +96,28 @@ func loadConfig() (*config.Config, error) {
 	return cfg, nil
 }
 
-// expireHolds marks holds nobody answered as expired (SPEC §7). Uses wall clock.
-func expireHolds(ctx context.Context, db *store.Store, every time.Duration) {
+// expireHolds marks holds nobody answered as expired (SPEC §7) and refreshes the
+// pending-holds gauge. Uses wall clock.
+func expireHolds(ctx context.Context, db *store.Store, m *metrics.Metrics, every time.Duration) {
 	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
+		// Runs once at startup so the gauge isn't 0 until the first tick.
+		n, err := store.ExpireHolds(ctx, db.Pool)
+		if err != nil {
+			slog.Error("expire holds", "err", err)
+		} else if n > 0 {
+			slog.Info("holds expired", "count", n)
+		}
+		if pending, err := store.PendingHolds(ctx, db.Pool); err != nil {
+			slog.Error("count pending holds", "err", err)
+		} else {
+			m.HoldsPending(pending)
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			n, err := store.ExpireHolds(ctx, db.Pool)
-			if err != nil {
-				slog.Error("expire holds", "err", err)
-			} else if n > 0 {
-				slog.Info("holds expired", "count", n)
-			}
 		}
 	}
 }

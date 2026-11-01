@@ -9,6 +9,7 @@ import (
 
 	"github.com/poojadesai14/resend-ato/internal/config"
 	"github.com/poojadesai14/resend-ato/internal/event"
+	"github.com/poojadesai14/resend-ato/internal/metrics"
 	"github.com/poojadesai14/resend-ato/internal/signal"
 	"github.com/poojadesai14/resend-ato/internal/store"
 )
@@ -16,8 +17,9 @@ import (
 // Service scores events inside one transaction: save event, lock profile, compare,
 // decide, save decision, then update the profile (SPEC §5.2).
 type Service struct {
-	Store  *store.Store
-	Config *config.Config
+	Store   *store.Store
+	Config  *config.Config
+	Metrics *metrics.Metrics // optional
 }
 
 // Handle returns the decision for ev. A duplicate event_id returns the original decision.
@@ -119,6 +121,8 @@ func (s *Service) Handle(ctx context.Context, ev *event.Event) (*store.Decision,
 			"event_id", dec.EventID, "account_id", dec.AccountID, "api_key_id", ev.APIKeyID, "type", ev.Type,
 			"action", dec.Action, "enforced", dec.Enforced, "score", dec.Score, "hits", names,
 			"config_version", dec.ConfigVersion, "latency_us", dec.LatencyUS)
+		// Includes the commit, unlike latency_us, which is stored inside the transaction.
+		s.Metrics.Decision(dec.Action, dec.Enforced, names, time.Since(start))
 	}
 	return dec, nil
 }

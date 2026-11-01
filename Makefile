@@ -1,7 +1,7 @@
 -include .env
 export
 
-.PHONY: db-up db-down db-reset migrate run test psql seed sim
+.PHONY: db-up db-down db-reset migrate run test psql seed sim prom-up prom-down
 
 db-up:
 	docker compose up -d --wait db
@@ -40,3 +40,11 @@ sim:
 
 psql:
 	docker compose exec db psql -U ato -d ato
+
+# Local Prometheus UI on http://localhost:9090, scraping `make run` on :8080.
+prom-up:
+	@printf '%s' "$(ANALYST_TOKEN)" > prometheus/.token
+	docker compose --profile metrics up -d prometheus
+
+prom-down:
+	docker compose --profile metrics stop prometheus
