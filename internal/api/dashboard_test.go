@@ -957,3 +957,29 @@ func TestDashboardRejectionsAfterResolution(t *testing.T) {
 		t.Errorf("owner-suspended key row = %v, want the scored block %s, not the later rejection", k.DecisionID, scored)
 	}
 }
+
+// Marking the block that suspended a key legitimate and restoring the key must
+// let the account leave the queue, even though later sends on the key were
+// rejected while it was suspended (QA: "marked legitimate, not on the allow list").
+func TestDashboardLegitimateAfterRestoreIgnoresRejections(t *testing.T) {
+	f := newAPIFixture(t)
+	trigger := dashboardDecision(t, f, dashboardDecisionInput{account: "restored", key: "key_rs", action: "block", score: 90, at: testNow, review: "resolved", label: strp("legitimate")})
+	dashboardDecision(t, f, dashboardDecisionInput{account: "restored", key: "key_rs", action: "block", score: 90, at: testNow.Add(time.Minute), review: "none", reason: strp("key_suspended")})
+	if _, err := f.server.Store.Pool.Exec(context.Background(), `insert into key_status(api_key_id,account_id,status,reason,decision_id) values('key_rs','restored','active','analyst',$1)`, trigger); err != nil {
+		t.Fatal(err)
+	}
+	queue := decodeResponse[store.Dashboard](t, f.get("/v1/dashboard"))
+	for _, item := range queue.Items {
+		if item.AccountID == "restored" {
+			t.Errorf("restored account is still in the review queue: %+v", item)
+		}
+	}
+	baseline := decodeResponse[store.Dashboard](t, f.get("/v1/dashboard?segment=baseline"))
+	found := false
+	for _, item := range baseline.Items {
+		found = found || item.AccountID == "restored"
+	}
+	if !found {
+		t.Error("restored account with a legitimate trigger is missing from the legitimate baselines")
+	}
+}

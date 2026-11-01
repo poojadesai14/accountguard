@@ -3447,3 +3447,8 @@ td strong {
 .key-line details[open] {
   flex-basis: 100%;
 }
+
+.key-hint {
+  color: var(--ink);
+  font-weight: 500;
+}

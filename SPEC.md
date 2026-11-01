@@ -399,7 +399,7 @@ create table analyst_actions (
 );
 ```
 
-`review_status` is `open` for `hold`/`block` decisions and `none` for `allow`/`flag` (flags are logged and charted, not queued).
+`review_status` is `open` for `hold`/`block` decisions and `none` for `allow`/`flag` (flags are logged and charted, not queued) and for `key_suspended` rejections (the suspension and its triggering decision are the case; a rejected send is not a review of its own). An account counts as legitimate when its latest *scored* decision (ignoring `key_suspended` rejections) is `allow` or labelled `legitimate`.
 Any analyst or owner action on a decision sets it to `resolved`.
 
 ### 5.2 Request transaction (`POST /v1/events`)

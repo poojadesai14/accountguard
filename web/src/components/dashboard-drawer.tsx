@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { ArrowRight, Check, X } from "lucide-react";
 import { Badge, EmptyState } from "./ui";
 import { ReviewForm } from "./forms";
+import { KeyLine } from "./key-line";
 import { dateTime, humanize } from "@/lib/format";
 import { scoreClassName } from "@/lib/decisions";
 import type { DashboardInspection } from "@/lib/types";
@@ -113,15 +114,9 @@ export function DashboardDrawer({
                   ))}
               </p>
             </div>
-            {(selectedKey?.status === "suspended" ||
-              decision.hold_status === "pending") && (
-              <p className="drawer-state">
-                {selectedKey?.status === "suspended" && (
-                  <span className="suspended-state">
-                    <span className="mono">{selectedKey.api_key_id}</span>{" "}
-                    suspended
-                  </span>
-                )}
+            {(selectedKey || decision.hold_status === "pending") && (
+              <div className="drawer-state">
+                {selectedKey && <KeyLine keyStatus={selectedKey} />}
                 {decision.hold_status === "pending" && (
                   <span className="held-state">
                     Hold pending
@@ -130,7 +125,7 @@ export function DashboardDrawer({
                       : ""}
                   </span>
                 )}
-              </p>
+              </div>
             )}
             {decision.hits.length ? (
               <div className="hit-list">

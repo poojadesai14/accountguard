@@ -118,3 +118,20 @@ func TestRelatedListsBeyondFive(t *testing.T) {
 	}
 	t.Fatal("invoice-portal.net was not reported as shared")
 }
+
+func TestDecisionIncludesCurrentKeyStatus(t *testing.T) {
+	f := newAPIFixture(t)
+	d := decodeResponse[DecisionResponse](t, request(t, f.handler, "POST", "/v1/events", testIngestToken, f.email(testNow, 16509, "stripe.com")))
+	type withKey struct {
+		Key *store.KeyStatus `json:"key"`
+	}
+	if got := decodeResponse[withKey](t, f.get("/v1/decisions/"+d.DecisionID)); got.Key != nil {
+		t.Errorf("key = %+v, want null for a key that was never suspended", got.Key)
+	}
+	if _, err := f.server.Store.Pool.Exec(context.Background(), `insert into key_status(api_key_id,account_id,status,reason) values('key','account','suspended','analyst')`); err != nil {
+		t.Fatal(err)
+	}
+	if got := decodeResponse[withKey](t, f.get("/v1/decisions/"+d.DecisionID)); got.Key == nil || got.Key.Status != "suspended" {
+		t.Errorf("key = %+v, want the suspended key", got.Key)
+	}
+}

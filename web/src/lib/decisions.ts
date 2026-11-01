@@ -1,6 +1,7 @@
 import type {
   Action,
   Hit,
+  KeyStatus,
   RelatedIndicator,
   SeriesPoint,
   StatsPoint,
@@ -275,5 +276,21 @@ export function defaultEvent<
     rows.find((row) => elevated(row) && row.reason !== "key_suspended") ??
     rows.find(elevated) ??
     rows[0]
+  );
+}
+
+// restoreIsLastStep: after this decision is marked legitimate, restoring the key is
+// the step left only if this decision is what suspended it automatically. A key
+// suspended by a confirmed takeover, or by another, unreviewed block, must never
+// be presented as "restore to finish".
+export function restoreIsLastStep(
+  decision: { decision_id: string; label: string | null },
+  key: KeyStatus | null | undefined,
+) {
+  return (
+    decision.label === "legitimate" &&
+    key?.status === "suspended" &&
+    key.reason === "auto" &&
+    key.decision_id === decision.decision_id
   );
 }

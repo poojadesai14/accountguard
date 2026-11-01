@@ -660,7 +660,18 @@ createServer(async (req, res) => {
       },
       event,
     ]);
-  if (url.pathname === `/v1/decisions/${decisionId}`) return reply(200, detail);
+  if (url.pathname === `/v1/decisions/${decisionId}`)
+    return reply(200, {
+      ...detail,
+      key: {
+        api_key_id: "key_prod_1",
+        account_id: "acc_acme",
+        status: suspended ? "suspended" : "active",
+        reason: "auto",
+        decision_id: decisionId,
+        updated_at: hours[11],
+      },
+    });
   return reply(404, { error: "not found" });
 }).listen(3102, "127.0.0.1", () =>
   console.log("Local fixture API listening on 3102"),

@@ -191,7 +191,26 @@ func (s *Server) getDecision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	related, err := store.RelatedIndicators(ctx, s.Store.Pool, d.AccountID, ev, s.Config.Content.Freemail, relatedWindow)
-	respond(w, map[string]any{"decision": d, "event": ev, "actions": actions, "thresholds": s.thresholds(), "related": related}, err)
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
+	// The event's key as it is now, so a review can show what is left to do
+	// (a suspended key is restored by a separate, audited action).
+	var key *store.KeyStatus
+	if d.APIKeyID != nil {
+		keys, err := store.KeyStatuses(ctx, s.Store.Pool, d.AccountID)
+		if err != nil {
+			respond(w, nil, err)
+			return
+		}
+		for i := range keys {
+			if keys[i].APIKeyID == *d.APIKeyID {
+				key = &keys[i]
+			}
+		}
+	}
+	respond(w, map[string]any{"decision": d, "event": ev, "actions": actions, "thresholds": s.thresholds(), "related": related, "key": key}, nil)
 }
 
 // relatedWindow is how far either side of an event to look for the same indicators

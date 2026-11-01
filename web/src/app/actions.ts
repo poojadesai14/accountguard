@@ -13,6 +13,8 @@ import {
   SESSION_SECONDS,
 } from "@/lib/session";
 import { reviewFields, UUID, type FormState } from "@/lib/review";
+import type { DecisionDetail } from "@/lib/types";
+import { restoreIsLastStep } from "@/lib/decisions";
 
 export async function login(
   _previous: FormState,
@@ -67,6 +69,16 @@ export async function reviewDecision(
   });
   if (result.error) return { error: result.error };
   refreshDecision(id);
+  // Marking legitimate never restores a suspended key; say so, so the review
+  // doesn't look finished while the account is still blocked.
+  if (action === "mark_legitimate") {
+    const detail = await analystApi<DecisionDetail>(`/v1/decisions/${id}`);
+    const key = detail.data?.key;
+    if (detail.data && restoreIsLastStep(detail.data.decision, key))
+      return {
+        success: `Marked legitimate. Key ${key!.api_key_id} is still suspended: restore access to finish.`,
+      };
+  }
   return {
     success: "Action recorded. The decision and audit history are up to date.",
   };

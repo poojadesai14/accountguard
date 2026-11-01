@@ -1109,3 +1109,60 @@ test("a page past the end of the list does not claim the queue is empty", async 
   ).toBeVisible();
   await expect(page.getByText("Your review queue is clear.")).toHaveCount(0);
 });
+
+test("marking legitimate says the suspended key is the step left, and offers it", async ({
+  page,
+}) => {
+  await signIn(page, `/decisions/${id}`);
+  // The key's state is visible before the review, with restore inline.
+  const keyLine = page.locator(".key-line");
+  await expect(keyLine).toContainText("key_prod_1 suspended");
+  await expect(
+    keyLine.getByText("Restore access", { exact: true }),
+  ).toBeVisible();
+  await page.getByLabel("Review outcome").selectOption("mark_legitimate");
+  await page.getByLabel("Your name").fill("Pooja");
+  await page
+    .getByLabel("Reason", { exact: true })
+    .fill("Owner confirmed the new network.");
+  await page.getByRole("button", { name: "Record review" }).click();
+  // The page refreshes into the labeled state; the key line now says what is left.
+  await expect(keyLine).toContainText(
+    "Marked legitimate; restore access to finish.",
+  );
+  await expect(
+    keyLine.getByText("Restore access", { exact: true }),
+  ).toBeVisible();
+});
+
+test("the drawer's review message names the restore, and a restore confirms in place", async ({
+  page,
+}) => {
+  await signIn(page);
+  await page
+    .getByRole("button", { name: "Inspect acc_acme", exact: true })
+    .click();
+  const drawer = page.getByRole("dialog", { name: "acc_acme" });
+  await drawer.getByLabel("Review outcome").selectOption("mark_legitimate");
+  await drawer.getByLabel("Your name").fill("Pooja");
+  await drawer
+    .getByLabel("Reason", { exact: true })
+    .fill("Owner confirmed the new network.");
+  await drawer.getByRole("button", { name: "Record review" }).click();
+  await expect(drawer.locator(".dashboard-toast")).toContainText(
+    "Key key_prod_1 is still suspended: restore access to finish.",
+  );
+  await drawer.getByRole("button", { name: "Close inspection" }).click();
+
+  // Restoring on the decision page keeps its confirmation after the key turns active.
+  await page.goto(`/decisions/${id}`);
+  const keyLine = page.locator(".key-line");
+  await keyLine.getByText("Restore access", { exact: true }).click();
+  await keyLine.getByLabel("Your name").fill("Pooja");
+  await keyLine.getByLabel("Reason", { exact: true }).fill("Key rotated.");
+  await keyLine.getByRole("button", { name: "Restore key access" }).click();
+  await expect(
+    keyLine.getByText("Key access restored", { exact: false }),
+  ).toBeVisible();
+  await expect(keyLine).toContainText("key_prod_1 active");
+});

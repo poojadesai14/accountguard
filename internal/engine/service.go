@@ -81,8 +81,11 @@ func (s *Service) Handle(ctx context.Context, ev *event.Event) (*store.Decision,
 			ReviewStatus:  "none",
 		}
 		// Flags stay in the log and timeline; only actions that stop mail need a
-		// person, so a lone new ASN doesn't fill the queue.
-		if res.Action >= Hold {
+		// person, so a lone new ASN doesn't fill the queue. A send rejected because
+		// its key is already suspended needs no review of its own: the suspension
+		// and the decision that caused it are the case. Otherwise one incident
+		// leaves a review per rejected send behind.
+		if res.Action >= Hold && res.Reason != ReasonKeySuspended {
 			dec.ReviewStatus = "open"
 		}
 		if enforced && res.Action == Hold {
