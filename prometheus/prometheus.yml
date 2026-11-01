@@ -1,0 +1,11 @@
+# Local Prometheus for the Go API running on the host (`make run`). Start with `make prom-up`.
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: ato-api
+    authorization:
+      # Written from ANALYST_TOKEN by `make prom-up`; git-ignored.
+      credentials_file: /etc/prometheus/.token
+    static_configs:
+      - targets: ["host.docker.internal:8080"]

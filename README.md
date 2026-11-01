@@ -317,6 +317,7 @@ make run             # API on :8080
 make seed            # in another terminal: scripted demo, checks every decision
 make sim             # detection-quality report (~40 s)
 make test            # unit + database integration tests
+make prom-up         # optional: Prometheus UI on :9090, scraping the API's /metrics
 ```
 
 `make seed` builds 60 days of normal history for `acc_acme`, then a takeover, and checks the outcome:

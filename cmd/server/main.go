@@ -102,21 +102,22 @@ func expireHolds(ctx context.Context, db *store.Store, m *metrics.Metrics, every
 	t := time.NewTicker(every)
 	defer t.Stop()
 	for {
+		// Runs once at startup so the gauge isn't 0 until the first tick.
+		n, err := store.ExpireHolds(ctx, db.Pool)
+		if err != nil {
+			slog.Error("expire holds", "err", err)
+		} else if n > 0 {
+			slog.Info("holds expired", "count", n)
+		}
+		if pending, err := store.PendingHolds(ctx, db.Pool); err != nil {
+			slog.Error("count pending holds", "err", err)
+		} else {
+			m.HoldsPending(pending)
+		}
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
-			n, err := store.ExpireHolds(ctx, db.Pool)
-			if err != nil {
-				slog.Error("expire holds", "err", err)
-			} else if n > 0 {
-				slog.Info("holds expired", "count", n)
-			}
-			if pending, err := store.PendingHolds(ctx, db.Pool); err != nil {
-				slog.Error("count pending holds", "err", err)
-			} else {
-				m.HoldsPending(pending)
-			}
 		}
 	}
 }
