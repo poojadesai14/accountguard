@@ -12,18 +12,18 @@ import {
   PageHeader,
 } from "@/components/ui";
 import { RefreshButton } from "@/components/navigation";
-import { AutoSubmitCheckbox } from "@/components/forms";
 
 export const metadata = { title: "Accounts" };
 export default async function Accounts({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; needs_review?: string }>;
+  searchParams: Promise<{ q?: string }>;
 }) {
   const params = await searchParams;
   const q = (params.q ?? "").slice(0, 200);
-  const needsReview = params.needs_review === "true";
-  const query = new URLSearchParams({ q, needs_review: String(needsReview) });
+  // A lookup page: triage, and the one definition of "needs review", live on
+  // the dashboard queue.
+  const query = new URLSearchParams({ q });
   const result = await analystApi<AccountSummary[] | null>(
     `/v1/accounts?${query}`,
   );
@@ -53,11 +53,8 @@ export default async function Accounts({
               defaultValue={q}
             />
           </div>
-          <AutoSubmitCheckbox name="needs_review" defaultChecked={needsReview}>
-            Needs review
-          </AutoSubmitCheckbox>
           <button className="button button-primary">Search</button>
-          {(q || needsReview) && (
+          {q && (
             <Link className="text-link" href="/accounts">
               Clear
             </Link>
@@ -130,14 +127,10 @@ export default async function Accounts({
           </div>
         ) : (
           <EmptyState
-            title={
-              q || needsReview
-                ? "No accounts match this search."
-                : "No accounts yet."
-            }
+            title={q ? "No accounts match this search." : "No accounts yet."}
           >
-            {q || needsReview
-              ? "Try another account ID or clear the review filter."
+            {q
+              ? "Try another account ID."
               : "Accounts appear automatically after their first event is processed."}
           </EmptyState>
         )}

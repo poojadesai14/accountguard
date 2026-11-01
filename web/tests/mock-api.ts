@@ -555,17 +555,13 @@ createServer(async (req, res) => {
             : stats,
     );
   if (url.pathname === "/v1/accounts") {
-    // acc_northstar has nothing open, so the "Needs review" filter drops it.
     const openReviews: Record<string, number> = {
       acc_acme: 12,
       acc_beta: 9,
       acc_northstar: 0,
     };
-    const accounts = ["acc_acme", "acc_beta", "acc_northstar"].filter(
-      (id) =>
-        id.includes(url.searchParams.get("q") ?? "") &&
-        (url.searchParams.get("needs_review") !== "true" ||
-          openReviews[id] > 0),
+    const accounts = ["acc_acme", "acc_beta", "acc_northstar"].filter((id) =>
+      id.includes(url.searchParams.get("q") ?? ""),
     );
     return reply(
       200,
