@@ -129,9 +129,9 @@ integration are ready.
 filtered page of accounts, held events, or suspended keys. It accepts
 `segment=attention|baseline`, `view=accounts|holds|keys|healthy`, `q`,
 `severity=all|flag|hold|block` (the representative decision's action), `sort=priority|recent`, `page`, and `limit`
-(default 50, capped at 200). Most severe first (`priority`, the default) orders
+(default 50, capped at 200). Most severe (`priority`, the default) orders
 by action (block, hold, flag) and then score; the action already comes from the
-score, so a separate score sort would give almost the same order. Newest first
+score, so a separate score sort would give almost the same order. Newest
 (`recent`) orders by event time, for following a live incident. Ties fall back to
 severity, score, time, and account ID to keep pages stable. Changing the
 sort resets the page while retaining the current search and severity filter.
