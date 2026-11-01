@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/poojadesai14/resend-ato/internal/config"
@@ -368,23 +369,42 @@ func main() {
 	fmt.Printf("\n%d events in %s (%.0f/s); server scoring latency p50 %.1fms p95 %.1fms\n",
 		total, elapsed.Round(time.Second), float64(total)/elapsed.Seconds(),
 		float64(latencies[len(latencies)/2])/1000, float64(latencies[len(latencies)*95/100])/1000)
+	if n := unscoredRetries.Load(); n > 0 {
+		fmt.Printf("%d events missed the scoring deadline and were resent (production would allow them unscored)\n", n)
+	}
 }
 
+// unscoredRetries counts events the server failed open on and that were resent.
+var unscoredRetries atomic.Int64
+
+// post sends one event. A fail-open answer rolls the event back on the server, so
+// resending the same event_id is safe; a few retries absorb latency spikes on a
+// small hosted instance without dropping the event from the report.
 func post(c *http.Client, url, token string, ev *event.Event) response {
 	body, _ := json.Marshal(ev)
+	for attempt := 1; ; attempt++ {
+		r := postOnce(c, url, token, ev.EventID, body)
+		if !r.Unscored {
+			return r
+		}
+		if attempt == 3 {
+			fail("%s was not scored after %d attempts (server failed open) - check the server log", ev.EventID, attempt)
+		}
+		unscoredRetries.Add(1)
+	}
+}
+
+func postOnce(c *http.Client, url, token, eventID string, body []byte) response {
 	req, _ := http.NewRequest("POST", strings.TrimRight(url, "/")+"/v1/events", bytes.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+token)
 	res, err := c.Do(req)
 	if err != nil {
-		fail("post %s: %v", ev.EventID, err)
+		fail("post %s: %v", eventID, err)
 	}
 	defer res.Body.Close()
 	var r response
 	if res.StatusCode != http.StatusOK || json.NewDecoder(res.Body).Decode(&r) != nil {
-		fail("post %s: HTTP %d", ev.EventID, res.StatusCode)
-	}
-	if r.Unscored {
-		fail("%s was not scored (server failed open) - check the server log", ev.EventID)
+		fail("post %s: HTTP %d", eventID, res.StatusCode)
 	}
 	return r
 }
