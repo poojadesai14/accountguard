@@ -96,10 +96,17 @@ export function Dashboard({
                 ...next,
                 stats:
                   next.stats ??
-                  (next.telemetry_error ? previous.stats : undefined),
+                  (next.telemetry_error &&
+                  next.telemetry_period === previous.telemetry_period
+                    ? previous.stats
+                    : undefined),
                 audit:
                   next.audit ??
-                  (next.telemetry_error ? previous.audit : undefined),
+                  (next.telemetry_error &&
+                  next.telemetry_period === previous.telemetry_period &&
+                  next.audit_before_id === previous.audit_before_id
+                    ? previous.audit
+                    : undefined),
               }
             : {
                 ...previous,
@@ -155,6 +162,12 @@ export function Dashboard({
   const snapshot = data.snapshot;
   const tableSnapshot =
     data.scope === dashboardScope(query) ? snapshot : undefined;
+  const stats = data.telemetry_period === query.period ? data.stats : undefined;
+  const audit =
+    data.telemetry_period === query.period &&
+    data.audit_before_id === query.before_id
+      ? data.audit
+      : undefined;
   const hasTableFilters = Boolean(query.q || query.severity !== "all");
   const busy = refreshing || navigationPending || pending;
   function inspect(
@@ -741,15 +754,15 @@ export function Dashboard({
                 title="Elevated activity"
                 description="Each outcome on its own row, sharing one timeline."
               />
-              {data.stats ? (
+              {stats ? (
                 <DecisionChart
-                  points={data.stats.series ?? []}
+                  points={stats.series ?? []}
                   bucket={range.get("bucket") === "1d" ? "1d" : "1h"}
                   from={range.get("from") ?? undefined}
                   to={range.get("to") ?? undefined}
                 />
               ) : (
-                <EmptyState title="No telemetry snapshot" />
+                <EmptyState title="Telemetry for this range is unavailable" />
               )}
             </section>
             <section className="card signals-card">
@@ -757,9 +770,9 @@ export function Dashboard({
                 title="Risk drivers"
                 description="Signal hits across the selected period."
               />
-              {data.stats?.top_signals?.length ? (
+              {stats?.top_signals?.length ? (
                 <div className="signal-list">
-                  {data.stats.top_signals.map((signal, index) => (
+                  {stats.top_signals.map((signal, index) => (
                     <div className="signal-row" key={signal.name}>
                       <div>
                         <span className="signal-rank">
@@ -771,7 +784,7 @@ export function Dashboard({
                       <div className="signal-track">
                         <span
                           style={{
-                            width: `${(signal.count / Math.max(1, data.stats!.top_signals![0].count)) * 100}%`,
+                            width: `${(signal.count / Math.max(1, stats.top_signals![0].count)) * 100}%`,
                           }}
                         />
                       </div>
@@ -779,7 +792,14 @@ export function Dashboard({
                   ))}
                 </div>
               ) : (
-                <EmptyState compact title="No signal hits in this period" />
+                <EmptyState
+                  compact
+                  title={
+                    stats
+                      ? "No signal hits in this period"
+                      : "Risk drivers for this range are unavailable"
+                  }
+                />
               )}
             </section>
           </div>
@@ -788,7 +808,7 @@ export function Dashboard({
               title="Analyst audit stream"
               description="Recorded analyst and owner actions, newest ID first."
             />
-            {data.audit?.items.length ? (
+            {audit?.items.length ? (
               <div className="table-scroll">
                 <table aria-label="Analyst audit stream">
                   <thead>
@@ -801,7 +821,7 @@ export function Dashboard({
                     </tr>
                   </thead>
                   <tbody>
-                    {data.audit.items.map((action) => (
+                    {audit.items.map((action) => (
                       <tr key={action.id}>
                         <td>
                           {humanize(action.action)}
@@ -833,7 +853,14 @@ export function Dashboard({
                 </table>
               </div>
             ) : (
-              <EmptyState compact title="No analyst actions in this period" />
+              <EmptyState
+                compact
+                title={
+                  audit
+                    ? "No analyst actions in this period"
+                    : "Audit history for this range is unavailable"
+                }
+              />
             )}
             <div className="dashboard-pagination">
               <span>
@@ -848,12 +875,12 @@ export function Dashboard({
                   Latest actions
                 </button>
               )}
-              {data.audit?.next_before_id && (
+              {audit?.next_before_id && (
                 <button
                   type="button"
                   className="button button-secondary"
                   onClick={() =>
-                    navigate({ before_id: String(data.audit!.next_before_id) })
+                    navigate({ before_id: String(audit.next_before_id) })
                   }
                 >
                   Older actions
