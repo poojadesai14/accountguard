@@ -1,4 +1,11 @@
-import type { Action, Hit, SeriesPoint, StatsPoint, Thresholds } from "./types";
+import type {
+  Action,
+  Hit,
+  RelatedIndicator,
+  SeriesPoint,
+  StatsPoint,
+  Thresholds,
+} from "./types";
 
 export const ACTION_LABELS: Record<Action, string> = {
   allow: "ALLOW",
@@ -152,4 +159,59 @@ export function accountHours(points: SeriesPoint[]): {
     };
   });
   return { hours, incident: hours.find((h) => h.hold || h.block)?.time };
+}
+
+export const INDICATOR_LABELS: Record<RelatedIndicator["kind"], string> = {
+  link_domain: "Link domain",
+  reply_to_domain: "Reply-To domain",
+  ip: "Source IP",
+};
+
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+export function relatedSummary(r: RelatedIndicator) {
+  return [
+    plural(r.accounts, "other account"),
+    r.stopped && `${r.stopped} held or blocked`,
+    r.confirmed && plural(r.confirmed, "confirmed takeover"),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+// relatedVerdict turns cross-account matches into the one line an analyst needs:
+// is this event's infrastructure part of a known campaign?
+export function relatedVerdict(related: RelatedIndicator[]): {
+  tone: "block" | "hold" | "neutral";
+  text: string;
+} {
+  // Accounts can repeat across indicators, and only the top five are listed, so
+  // take the larger of the distinct listed accounts and any one indicator's count.
+  const confirmed = Math.max(
+    new Set(
+      related.flatMap((r) =>
+        r.top.filter((a) => a.confirmed).map((a) => a.account_id),
+      ),
+    ).size,
+    ...related.map((r) => r.confirmed),
+  );
+  if (related.some((r) => r.confirmed))
+    return {
+      tone: "block",
+      text: `Shares infrastructure with ${plural(confirmed, "account")} already confirmed as taken over. Likely the same campaign.`,
+    };
+  if (related.some((r) => r.stopped))
+    return {
+      tone: "hold",
+      text: "Other accounts using the same infrastructure were also held or blocked. Review them together.",
+    };
+  if (related.length)
+    return {
+      tone: "neutral",
+      text: "Seen on other accounts, none stopped or confirmed. Possibly shared, legitimate infrastructure.",
+    };
+  return {
+    tone: "neutral",
+    text: "Not seen on any other account in the 7 days around this event.",
+  };
 }

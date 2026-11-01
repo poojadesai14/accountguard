@@ -3853,3 +3853,69 @@ td strong {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Decision page: the same infrastructure on other accounts */
+.related-verdict {
+  margin: 0 22px 16px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+.related-verdict.related-block {
+  border-color: var(--status-blocked-border);
+  background: var(--status-blocked-bg);
+  color: var(--status-blocked-text);
+}
+.related-verdict.related-hold {
+  border-color: var(--status-hold-border);
+  background: var(--status-hold-bg);
+  color: var(--status-hold-text);
+}
+.related-indicator {
+  padding: 14px 22px;
+  border-top: 1px solid var(--line-soft);
+}
+.related-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  margin-bottom: 8px;
+}
+.related-heading span {
+  color: var(--muted);
+  font-size: 11px;
+  font-family: var(--mono);
+  text-transform: uppercase;
+}
+.related-heading strong {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.related-heading small {
+  color: var(--muted);
+  font-size: 12px;
+}
+.related-accounts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.related-accounts li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-size: 12px;
+}
+.related-accounts a {
+  font-size: 13px;
+}
+.related-accounts small {
+  color: var(--muted);
+}

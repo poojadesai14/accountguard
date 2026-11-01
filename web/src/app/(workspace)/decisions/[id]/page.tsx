@@ -3,11 +3,14 @@ import { notFound } from "next/navigation";
 import { Check, Fingerprint } from "lucide-react";
 import { analystApi } from "@/lib/api";
 import { dateTime, humanize, number, shortId } from "@/lib/format";
-import type { DecisionDetail, Thresholds } from "@/lib/types";
+import type { DecisionDetail, RelatedIndicator, Thresholds } from "@/lib/types";
 import { UUID } from "@/lib/review";
 import {
   ACTION_LABELS,
+  INDICATOR_LABELS,
   explainDecision,
+  relatedSummary,
+  relatedVerdict,
   scoreClassName,
 } from "@/lib/decisions";
 import {
@@ -38,7 +41,7 @@ export default async function DecisionPage({
         <ApiError message={result.error} />
       </>
     );
-  const { decision: d, event, actions, thresholds } = result.data!;
+  const { decision: d, event, actions, thresholds, related } = result.data!;
   const explanation = explainDecision(d, thresholds);
   return (
     <>
@@ -135,6 +138,7 @@ export default async function DecisionPage({
               </strong>
             </div>
           </section>
+          {related && <RelatedPanel related={related} />}
           <section className="card">
             <CardHeader
               title="Event metadata"
@@ -319,5 +323,64 @@ function ScoreScale({
         ))}
       </div>
     </figure>
+  );
+}
+
+// RelatedPanel shows other accounts that used this event's link domains, Reply-To
+// domains or IP. A match with a confirmed takeover turns a judgment call into a fact.
+function RelatedPanel({ related }: { related: RelatedIndicator[] }) {
+  const verdict = relatedVerdict(related);
+  return (
+    <section
+      className="card"
+      aria-label="Same infrastructure on other accounts"
+    >
+      <CardHeader
+        title="Same infrastructure on other accounts"
+        description="Link domains, non-freemail Reply-To domains and the source IP, within 7 days either side. Cloud ASNs are left out: thousands of legitimate senders share them."
+      />
+      <p className={`related-verdict related-${verdict.tone}`}>
+        {verdict.text}
+      </p>
+      {related.map((r) => (
+        <div className="related-indicator" key={`${r.kind} ${r.value}`}>
+          <div className="related-heading">
+            <span>{INDICATOR_LABELS[r.kind]}</span>
+            <strong className="mono">{r.value}</strong>
+            <small>{relatedSummary(r)}</small>
+          </div>
+          <ul className="related-accounts">
+            {r.top.map((a) => (
+              <li key={a.account_id}>
+                <Link
+                  className="text-link mono"
+                  href={
+                    a.decision_id
+                      ? `/decisions/${a.decision_id}`
+                      : `/accounts/${encodeURIComponent(a.account_id)}`
+                  }
+                >
+                  {a.account_id}
+                </Link>
+                <Badge action={a.worst_action} />
+                {a.confirmed && (
+                  <Badge action="block">Confirmed takeover</Badge>
+                )}
+                <small>
+                  {a.events} event{a.events === 1 ? "" : "s"} · last{" "}
+                  {dateTime(a.last_at)}
+                </small>
+              </li>
+            ))}
+            {r.accounts > r.top.length && (
+              <li className="muted">
+                +{r.accounts - r.top.length} more account
+                {r.accounts - r.top.length === 1 ? "" : "s"}
+              </li>
+            )}
+          </ul>
+        </div>
+      ))}
+    </section>
   );
 }

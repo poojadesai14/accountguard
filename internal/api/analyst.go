@@ -177,8 +177,18 @@ func (s *Server) getDecision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actions, err := store.ActionsForDecision(ctx, s.Store.Pool, id)
-	respond(w, map[string]any{"decision": d, "event": ev, "actions": actions, "thresholds": s.thresholds()}, err)
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
+	related, err := store.RelatedIndicators(ctx, s.Store.Pool, d.AccountID, ev, s.Config.Content.Freemail, relatedWindow)
+	respond(w, map[string]any{"decision": d, "event": ev, "actions": actions, "thresholds": s.thresholds(), "related": related}, err)
 }
+
+// relatedWindow is how far either side of an event to look for the same indicators
+// on other accounts: long enough to catch a campaign, short enough that a shared
+// domain from months ago doesn't count.
+const relatedWindow = 7 * 24 * time.Hour
 
 // Thresholds lets the UI explain a decision with the same numbers the engine used.
 type Thresholds struct {

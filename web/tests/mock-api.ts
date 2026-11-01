@@ -95,6 +95,34 @@ function reset() {
     },
     event: { ...event },
     actions: [],
+    related: [
+      {
+        kind: "link_domain",
+        value: "invoice-portal.net",
+        accounts: 7,
+        events: 31,
+        stopped: 5,
+        confirmed: 2,
+        top: [
+          {
+            account_id: "acc_beta",
+            events: 6,
+            worst_action: "block",
+            confirmed: true,
+            decision_id: null,
+            last_at: hours[9],
+          },
+          {
+            account_id: "acc_gamma",
+            events: 4,
+            worst_action: "hold",
+            confirmed: false,
+            decision_id: null,
+            last_at: hours[8],
+          },
+        ],
+      },
+    ],
   };
   suspended = true;
   requests = [];

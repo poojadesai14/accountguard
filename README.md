@@ -164,6 +164,21 @@ How legitimate owners get through, and how the attacker doesn't get to train the
 - **Thresholds by cost:** flag is set by analyst capacity; hold is cheap for owners, so it accepts lower
   precision; block is expensive when wrong, so it needs a high score *and* two categories. All points and
   thresholds live in [config.yaml](config.yaml), and the config version is stored on every decision.
+- **Check the infrastructure across accounts.** Attackers reuse phishing domains and servers, so each decision
+  page lists other accounts that used the same link domain, Reply-To domain or IP within 7 days, and how many
+  were held, blocked or confirmed as takeovers. A match with a confirmed takeover settles the call; a domain
+  seen on many accounts with no stops points to shared, legitimate infrastructure. Cloud ASNs are left out,
+  because thousands of legitimate senders share them. The engine doesn't score this yet (see section 6).
+
+  **Cost at scale.** The lookup runs only when an analyst opens a decision, never while scoring, so send
+  volume doesn't slow the hot path; each page view pays instead, in proportion to how many events share the
+  indicator. Locally (194k events), the attacker's `invoice-portal.net` (484 events) takes 2 ms and
+  `notion.so`, linked from almost every account (30,505 events), takes 33 ms. At Resend's volume a popular
+  domain or shared egress IP would match millions of events, and the answer ("on 40,000 accounts") carries
+  no signal anyway. The fix, in order: (1) stop at ~500 accounts and show "common, ignored"; (2) a rollup
+  table of indicator × account × day with the worst action, written at scoring time, so cost follows the
+  number of accounts sharing an indicator rather than the events they sent; (3) partition events by day, so
+  a ±7 day window reads 15 partitions; (4) at full scale, a columnar store with a materialized view (section 5).
 
 ---
 
@@ -301,7 +316,8 @@ The simulator confirms these misses. Mitigations: finer network detail (IP /24, 
 through shorteners and file-sharing links, recipient behavior (whole list at once vs one-to-one
 transactional), TLS and payload fingerprints, and outcome signals as a second layer.
 
-**Future work:** per-account weights (a new network matters less for a key that changes networks often); a
+**Future work:** a cross-account signal (points when an event's link domain or IP was already confirmed as a
+takeover on another account), which the decision page already shows analysts; per-account weights (a new network matters less for a key that changes networks often); a
 log-odds model, `risk = sigmoid(prior + Σ ln(P(obs | takeover) / P(obs | normal)))`, where the prior encodes how
 rare takeovers are and makes "two signals needed" fall out of the math; and learning the weights with logistic
 regression from analyst labels.
