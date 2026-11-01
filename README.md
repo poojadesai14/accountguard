@@ -276,14 +276,18 @@ Analyst UI (Next.js) ──server-side, analyst token──▶ analyst API ─�
   the case. Marking that decision legitimate does not restore the key (a wrong click would let an attacker
   send again), so the decision page shows the key's state with an inline, audited "Restore access" as the
   step left. The account leaves the queue once the key is restored and nothing else is open, judged by its
-  latest *scored* decision rather than a rejection.
+  latest *scored* decision rather than a rejection. Until then its queue row reads "Marked legitimate · Was
+  block 90 / Key still suspended · Restore access to finish", not a red Block: only when the row is that
+  block, nothing on the account is open, every suspended key is in that state and the account has no
+  confirmed takeover, so the row never hides a takeover or a newer decision.
 - **Resolve the account, not each event.** Analysts reason per account, so the account page has one
   audited **Resolve account** action (`POST /v1/accounts/{id}/resolve`) that closes every open review with
   one outcome in one transaction: *legitimate* labels them, teaches the baseline from each stopped event
   and releases pending holds; *takeover* labels them, drops pending holds and suspends the keys they used.
   Restoring keys is a separate, unticked box, because a wrong call there lets an attacker send again, and
-  it only covers keys the engine suspended because of those reviews: never one an analyst or the owner
-  suspended, or one with a confirmed takeover behind it. The request names the reviews the analyst saw; if
+  it only covers keys the engine suspended because of those reviews or of a block already marked
+  legitimate: never one an analyst or the owner suspended, and nothing on an account with a confirmed
+  takeover (those keys are restored one at a time, on purpose). The request names the reviews the analyst saw; if
   a new one arrived since (an attacker's next send), nothing changes and the analyst reloads. Each change
   is its own audit row. Per-event review stays for one-off calls.
 - **Production version: a case object.** A stored case would group the trigger, its rejections and the

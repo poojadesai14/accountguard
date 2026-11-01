@@ -248,14 +248,27 @@ func OpenDecisions(ctx context.Context, db DBTX, accountID string) ([]*Decision,
 	return out, rows.Err()
 }
 
-// RestorableKeys locks the keys that resolving these decisions as legitimate may
-// restore: ones the engine suspended because of one of them. A key an analyst or
-// the owner suspended, or one tied to any decision labelled takeover, stays as it is.
-func RestorableKeys(ctx context.Context, db DBTX, decisionIDs []string) ([]string, error) {
+// autoSuspendedKey matches a key_status row k that the engine suspended, on an
+// account with no confirmed takeover anywhere (on any key, or none). Restoring one
+// is safe once the decision that suspended it is judged legitimate. A key an
+// analyst or the owner suspended, or any key on an account with a confirmed
+// takeover, stays as it is: those are restored one at a time, on purpose.
+const autoSuspendedKey = `k.status = 'suspended' and k.reason = 'auto'
+	and not exists (select 1 from decisions t where t.account_id = k.account_id and t.label = 'takeover')`
+
+// suspendedForLegitimate adds: the decision that suspended k is labelled legitimate.
+const suspendedForLegitimate = autoSuspendedKey + `
+	and exists (select 1 from decisions kd where kd.decision_id = k.decision_id and kd.label = 'legitimate')`
+
+// RestorableKeys locks the account's keys that resolving these decisions as
+// legitimate may restore: auto-suspended (autoSuspendedKey) by one of them, or by
+// a decision already marked legitimate.
+func RestorableKeys(ctx context.Context, db DBTX, accountID string, decisionIDs []string) ([]string, error) {
 	rows, err := db.Query(ctx, `select k.api_key_id from key_status k
-		where k.status = 'suspended' and k.reason = 'auto' and k.decision_id = any($1::uuid[])
-		and not exists (select 1 from decisions d where d.api_key_id = k.api_key_id and d.label = 'takeover')
-		order by k.api_key_id for update`, decisionIDs)
+		where k.account_id = $1 and `+autoSuspendedKey+`
+		and (k.decision_id = any($2::uuid[])
+			or exists (select 1 from decisions kd where kd.decision_id = k.decision_id and kd.label = 'legitimate'))
+		order by k.api_key_id for update of k`, accountID, decisionIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -279,9 +292,9 @@ func AccountOpenCounts(ctx context.Context, db DBTX, accountID string) (OpenCoun
 			where account_id = $1 and review_status = 'open'), '{}'),
 		(select count(*) from decisions where account_id = $1 and hold_status = 'pending'),
 		(select count(*) from key_status where account_id = $1 and status = 'suspended'),
-		(select count(*) from key_status k where k.account_id = $1 and k.status = 'suspended' and k.reason = 'auto'
-			and k.decision_id in (select decision_id from decisions where account_id = $1 and review_status = 'open')
-			and not exists (select 1 from decisions d where d.api_key_id = k.api_key_id and d.label = 'takeover'))`, accountID,
+		(select count(*) from key_status k where k.account_id = $1 and `+autoSuspendedKey+`
+			and (k.decision_id in (select decision_id from decisions where account_id = $1 and review_status = 'open')
+				or exists (select 1 from decisions kd where kd.decision_id = k.decision_id and kd.label = 'legitimate')))`, accountID,
 	).Scan(&c.DecisionIDs, &c.PendingHolds, &c.SuspendedKeys, &c.RestorableKeys)
 	c.Reviews = len(c.DecisionIDs)
 	return c, err

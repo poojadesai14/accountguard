@@ -565,24 +565,42 @@ export function Dashboard({
                             )}
                           </td>
                           <td className="dashboard-decision">
-                            <div
-                              className="dashboard-outcome"
-                              title={
-                                item.enforced === false
-                                  ? "Computed decision; not enforced"
-                                  : "Recorded decision"
-                              }
-                            >
-                              <Badge action={item.action} />
-                              <span
-                                className={`score-number ${scoreClassName(item.action)}`}
-                                title="Original recorded risk score, out of 100"
-                              >
-                                {item.score ?? "—"}
-                              </span>
-                            </div>
-                            {item.label && (
-                              <small>Reviewed: {humanize(item.label)}</small>
+                            {item.restore_pending ? (
+                              // Reviewed already: the block is history, not the state.
+                              <>
+                                <div className="dashboard-outcome">
+                                  <Badge action="allow">
+                                    Marked legitimate
+                                  </Badge>
+                                </div>
+                                <small>
+                                  Was {item.action} · {item.score ?? "—"}
+                                </small>
+                              </>
+                            ) : (
+                              <>
+                                <div
+                                  className="dashboard-outcome"
+                                  title={
+                                    item.enforced === false
+                                      ? "Computed decision; not enforced"
+                                      : "Recorded decision"
+                                  }
+                                >
+                                  <Badge action={item.action} />
+                                  <span
+                                    className={`score-number ${scoreClassName(item.action)}`}
+                                    title="Original recorded risk score, out of 100"
+                                  >
+                                    {item.score ?? "—"}
+                                  </span>
+                                </div>
+                                {item.label && (
+                                  <small>
+                                    Reviewed: {humanize(item.label)}
+                                  </small>
+                                )}
+                              </>
                             )}
                           </td>
                           <td className="dashboard-driver">
@@ -617,8 +635,24 @@ export function Dashboard({
                                   )}
                                 </>
                               )}
-                              {query.view === "keys" &&
-                              item.key_status === "suspended" ? (
+                              {item.restore_pending ? (
+                                <>
+                                  <span className="suspended-state">
+                                    <LockKeyhole size={13} aria-hidden="true" />
+                                    {!keyedRows && item.suspended_keys > 1
+                                      ? `${item.suspended_keys} keys still suspended`
+                                      : "Key still suspended"}
+                                  </span>
+                                  <small className="muted">
+                                    Restore access to finish
+                                    {query.view === "keys" &&
+                                    item.key_suspended_at
+                                      ? ` · suspended ${dateTime(item.key_suspended_at)}`
+                                      : ""}
+                                  </small>
+                                </>
+                              ) : query.view === "keys" &&
+                                item.key_status === "suspended" ? (
                                 <>
                                   <span className="suspended-state">
                                     <LockKeyhole size={13} aria-hidden="true" />

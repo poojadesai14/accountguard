@@ -65,7 +65,7 @@ export type OpenCounts = {
   reviews: number;
   pending_holds: number;
   suspended_keys: number;
-  /** Suspended keys a legitimate resolution may restore: auto-suspended by these reviews, no takeover behind them. */
+  /** Suspended keys a legitimate resolution may restore: auto-suspended by these reviews or by a decision already marked legitimate, with no takeover behind them. */
   restorable_keys: number;
   /** The open reviews; a resolution is refused if they changed since the page loaded. */
   decision_ids: string[];
@@ -210,6 +210,8 @@ export type DashboardAccount = {
   change_kind: string | null;
   key_suspended_by: "auto" | "analyst" | "owner" | null;
   key_suspended_at: string | null;
+  /** This row's decision suspended its key and was marked legitimate, nothing is open, and every suspended key is in that state: restore to finish. */
+  restore_pending?: boolean;
   occurred_at: string | null;
   ip: string | null;
   asn: number | null;

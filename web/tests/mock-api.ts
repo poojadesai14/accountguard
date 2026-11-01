@@ -276,6 +276,10 @@ function dashboardAccounts(): DashboardAccount[] {
     change_kind: null,
     key_suspended_by: suspended ? "auto" : null,
     key_suspended_at: suspended ? hours[11] : null,
+    restore_pending:
+      suspended &&
+      detail.decision.review_status !== "open" &&
+      detail.decision.label === "legitimate",
     occurred_at: hours[10],
     ip: "203.0.113.9",
     asn: 14061,
@@ -663,8 +667,8 @@ createServer(async (req, res) => {
         suspended_keys: suspended ? 1 : 0,
         restorable_keys:
           suspended &&
-          detail.decision.review_status === "open" &&
-          detail.decision.label !== "takeover"
+          (detail.decision.review_status === "open" ||
+            detail.decision.label === "legitimate")
             ? 1
             : 0,
         decision_ids:
