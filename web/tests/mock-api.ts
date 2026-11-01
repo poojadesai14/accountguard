@@ -555,8 +555,17 @@ createServer(async (req, res) => {
             : stats,
     );
   if (url.pathname === "/v1/accounts") {
-    const accounts = ["acc_acme", "acc_beta", "acc_northstar"].filter((id) =>
-      id.includes(url.searchParams.get("q") ?? ""),
+    // acc_northstar has nothing open, so the "Needs review" filter drops it.
+    const openReviews: Record<string, number> = {
+      acc_acme: 12,
+      acc_beta: 9,
+      acc_northstar: 0,
+    };
+    const accounts = ["acc_acme", "acc_beta", "acc_northstar"].filter(
+      (id) =>
+        id.includes(url.searchParams.get("q") ?? "") &&
+        (url.searchParams.get("needs_review") !== "true" ||
+          openReviews[id] > 0),
     );
     return reply(
       200,
@@ -567,7 +576,7 @@ createServer(async (req, res) => {
             first_seen_at: "2026-09-01T10:00:00Z",
             events_seen: 6200 - i * 1000,
             decisions: 8000 - i * 1000,
-            open_reviews: 12 - i * 3,
+            open_reviews: openReviews[account_id],
             last_at: hours[11],
             last_action: i === 0 ? "block" : "flag",
           })),
