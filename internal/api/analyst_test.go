@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -128,9 +129,10 @@ func (f *apiFixture) learned() profile.Profile {
 }
 
 type decisionDetail struct {
-	Decision store.Decision        `json:"decision"`
-	Event    store.TimelineRow     `json:"event"`
-	Actions  []store.AnalystAction `json:"actions"`
+	Decision   store.Decision        `json:"decision"`
+	Event      store.TimelineRow     `json:"event"`
+	Actions    []store.AnalystAction `json:"actions"`
+	Thresholds Thresholds            `json:"thresholds"`
 }
 
 func (f *apiFixture) detail(id string) decisionDetail {
@@ -273,6 +275,9 @@ func TestAnalystReadEndpoints(t *testing.T) {
 				got := decodeResponse[decisionDetail](t, w)
 				if got.Decision.Score != 100 || got.Event.EventID != block.EventID || len(got.Actions) != 0 {
 					t.Errorf("decision detail = %+v, want score:100, original event and no audit entries", got)
+				}
+				if want := (Thresholds{Flag: 30, Hold: 60, Block: 80, BlockMinCategories: 2, SingleCategoryExempt: []string{"content"}}); !reflect.DeepEqual(got.Thresholds, want) {
+					t.Errorf("thresholds = %+v, want the engine's %+v", got.Thresholds, want)
 				}
 			},
 		},

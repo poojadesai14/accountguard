@@ -3,9 +3,13 @@ import { notFound } from "next/navigation";
 import { Check, Fingerprint } from "lucide-react";
 import { analystApi } from "@/lib/api";
 import { dateTime, humanize, number, shortId } from "@/lib/format";
-import type { DecisionDetail } from "@/lib/types";
+import type { DecisionDetail, Thresholds } from "@/lib/types";
 import { UUID } from "@/lib/review";
-import { ACTION_LABELS, riskClassName } from "@/lib/decisions";
+import {
+  ACTION_LABELS,
+  explainDecision,
+  scoreClassName,
+} from "@/lib/decisions";
 import {
   ApiError,
   Badge,
@@ -34,7 +38,8 @@ export default async function DecisionPage({
         <ApiError message={result.error} />
       </>
     );
-  const { decision: d, event, actions } = result.data!;
+  const { decision: d, event, actions, thresholds } = result.data!;
+  const explanation = explainDecision(d, thresholds);
   return (
     <>
       <PageHeader
@@ -43,7 +48,7 @@ export default async function DecisionPage({
           label: d.account_id,
         }}
         eyebrow="DECISION REVIEW"
-        title="Every signal. One clear decision."
+        title={`${ACTION_LABELS[d.action]} · ${d.account_id}`}
         description={`${shortId(d.decision_id)} · ${dateTime(d.occurred_at)}`}
       >
         <RefreshButton />
@@ -66,15 +71,21 @@ export default async function DecisionPage({
           <section className="card">
             <CardHeader
               title="Why this decision was made"
-              description={
-                d.reason === "key_suspended"
-                  ? "The API key was already suspended."
-                  : "Signal points are added and capped at 100."
-              }
+              description="Signal points are added and capped at 100. The action comes from where the score lands and how many signal categories agree."
             />
+            {thresholds && (
+              <ScoreScale
+                score={d.score}
+                action={d.action}
+                thresholds={thresholds}
+              />
+            )}
+            {explanation && (
+              <p className="decision-explanation">{explanation}</p>
+            )}
             <div className="score-overview">
               <div className={`score-orbit orbit-${d.action}`}>
-                <strong className={riskClassName(d.score)}>{d.score}</strong>
+                <strong className={scoreClassName(d.action)}>{d.score}</strong>
                 <span>/ 100</span>
               </div>
               <div>
@@ -255,5 +266,58 @@ export default async function DecisionPage({
         </aside>
       </div>
     </>
+  );
+}
+
+// ScoreScale draws 0–100 with the engine's action lines, so an analyst can see
+// how close a decision was to the next action.
+function ScoreScale({
+  score,
+  action,
+  thresholds: t,
+}: {
+  score: number;
+  action: DecisionDetail["decision"]["action"];
+  thresholds: Thresholds;
+}) {
+  const bands = [
+    { action: "allow", from: 0, to: t.flag },
+    { action: "flag", from: t.flag, to: t.hold },
+    { action: "hold", from: t.hold, to: t.block },
+    { action: "block", from: t.block, to: 100 },
+  ] as const;
+  const position = Math.min(100, Math.max(0, score));
+  return (
+    <figure
+      className="score-scale"
+      aria-label={`Score ${score} of 100. Flag from ${t.flag}, hold from ${t.hold}, block from ${t.block}.`}
+    >
+      <div className="score-scale-track">
+        {bands.map((band) => (
+          <span
+            key={band.action}
+            className={`score-scale-band band-${band.action}`}
+            style={{ width: `${band.to - band.from}%` }}
+          />
+        ))}
+        <span
+          className={`score-scale-marker marker-${action}`}
+          style={{ left: `${position}%` }}
+        >
+          <span>{score}</span>
+        </span>
+      </div>
+      <div className="score-scale-labels" aria-hidden="true">
+        {bands.map((band) => (
+          <span
+            key={band.action}
+            style={{ left: `${band.from}%` }}
+            className={band.from === 0 ? "first" : undefined}
+          >
+            {band.from > 0 && <b>{band.from}</b>} {ACTION_LABELS[band.action]}
+          </span>
+        ))}
+      </div>
+    </figure>
   );
 }

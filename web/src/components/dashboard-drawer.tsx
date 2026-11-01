@@ -6,7 +6,7 @@ import { Badge, CardHeader, DetailList, EmptyState } from "./ui";
 import { MetadataBlock } from "./investigation-workspace";
 import { ReviewForm } from "./forms";
 import { dateTime, humanize, number } from "@/lib/format";
-import { riskClassName } from "@/lib/decisions";
+import { scoreClassName } from "@/lib/decisions";
 import type { DashboardInspection } from "@/lib/types";
 
 export function DashboardDrawer({
@@ -108,7 +108,7 @@ export function DashboardDrawer({
                     <Badge action={decision.action} />
                   </CardHeader>
                   <div className="drawer-score">
-                    <strong className={riskClassName(decision.score)}>
+                    <strong className={scoreClassName(decision.action)}>
                       {decision.score}
                       <small> / 100</small>
                     </strong>
@@ -143,7 +143,7 @@ export function DashboardDrawer({
                       <span>Reviewed: {humanize(decision.label)}</span>
                     )}
                     {decision.hold_status && (
-                      <span>Quarantine: {decision.hold_status}</span>
+                      <span>Hold: {decision.hold_status}</span>
                     )}
                   </div>
                   {!decision.enforced && (

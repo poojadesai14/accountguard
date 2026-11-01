@@ -235,16 +235,16 @@ func TestDashboardFilters(t *testing.T) {
 		wantScores  []int
 	}{
 		{
-			name:       "high severity includes score eighty",
-			query:      "severity=high",
-			wantTotal:  2,
-			wantScores: []int{85, 80},
+			name:       "block filter matches the decision action",
+			query:      "severity=block",
+			wantTotal:  1,
+			wantScores: []int{85},
 		},
 		{
-			name:       "medium severity includes forty through seventy-nine",
-			query:      "severity=medium",
-			wantTotal:  2,
-			wantScores: []int{79, 40},
+			name:       "flag filter matches every flagged score, not a score band",
+			query:      "severity=flag",
+			wantTotal:  4,
+			wantScores: []int{80, 79, 40, 39},
 		},
 		{
 			name:      "related API key",
@@ -594,7 +594,7 @@ func TestDashboardSort(t *testing.T) {
 		},
 		{
 			name:         "search and severity apply before sorting and pagination",
-			query:        "sort=score_desc&q=hold_&severity=high&limit=2&page=2",
+			query:        "sort=score_desc&q=hold_&severity=hold&limit=2&page=2",
 			wantTotal:    3,
 			wantAccounts: []string{"sort_hold_old"},
 		},

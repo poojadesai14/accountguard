@@ -49,7 +49,7 @@ func (s *Server) getDashboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	search := strings.TrimSpace(q.Get("q"))
-	if (segment != "attention" && segment != "baseline") || (severity != "all" && severity != "high" && severity != "medium") || len(search) > 200 {
+	if (segment != "attention" && segment != "baseline") || (severity != "all" && severity != "flag" && severity != "hold" && severity != "block") || len(search) > 200 {
 		writeError(w, http.StatusBadRequest, "invalid dashboard filter")
 		return
 	}

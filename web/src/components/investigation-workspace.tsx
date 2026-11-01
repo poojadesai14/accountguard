@@ -85,8 +85,11 @@ export function InvestigationWorkspace({ rows }: { rows: TimelineRow[] }) {
             .includes(search),
         )),
   );
+  // Open on the latest event that needed attention, not the latest routine send.
   const selected =
-    filtered.find((row) => row.event_id === selectedId) ?? filtered[0];
+    filtered.find((row) => row.event_id === selectedId) ??
+    filtered.find((row) => row.action && row.action !== "allow") ??
+    filtered[0];
   if (!rows.length)
     return (
       <section className="card">

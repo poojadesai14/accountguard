@@ -110,7 +110,7 @@ func GetDashboard(ctx context.Context, db DBTX, f DashboardFilter) (*Dashboard, 
   entity_kind = (case when $10 = 'healthy' then 'accounts' else $10 end)
   and (case when $10 in ('holds','keys') then true when $4 = 'attention' then attention else not attention and legitimate end)
   and ($10 <> 'healthy' or baseline_ready)
-  and ($5 = 'all' or ($5 = 'high' and score >= 80) or ($5 = 'medium' and score between 40 and 79))
+  and ($5 = 'all' or action = $5)
   and ($3 = '' or strpos(lower(concat_ws(' ', account_id, api_key_id, ip, asn::text, 'AS' || asn::text, asn_org, primary_driver,
    (select string_agg(replace(h->>'name','_',' '),' ') from jsonb_array_elements(hits) h), hits::text)),lower($3)) > 0)
  ), page as (

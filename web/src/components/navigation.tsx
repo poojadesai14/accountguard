@@ -17,15 +17,9 @@ export function Navigation() {
   const pathname = usePathname();
   return (
     <aside className="sidebar">
-      <Link href="/" className="brand" aria-label="Resend ATO overview">
+      <Link href="/" className="brand" aria-label="ATO Console overview">
         <ShieldCheck size={28} className="brand-mark" aria-hidden="true" />
-        <img
-          src="/resend-wordmark-white.svg"
-          width="96"
-          height="24"
-          alt="Resend"
-        />
-        <span className="brand-product">ATO</span>
+        <span className="brand-name">ATO Console</span>
       </Link>
       <div className="workspace">
         <span className="workspace-icon">
@@ -83,13 +77,6 @@ export function Navigation() {
             <ArrowUpRight size={13} />
           </button>
         </form>
-        <div className="analyst-avatar">
-          <span>AN</span>
-          <div>
-            Analyst<small>Review access</small>
-          </div>
-          <span className="online-dot" />
-        </div>
       </div>
     </aside>
   );

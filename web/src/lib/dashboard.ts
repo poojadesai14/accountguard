@@ -5,7 +5,7 @@ export type DashboardQuery = {
   tab: "attention" | "baseline" | "telemetry";
   view: "accounts" | "holds" | "keys" | "healthy";
   q: string;
-  severity: "all" | "high" | "medium";
+  severity: "all" | "flag" | "hold" | "block";
   sort: "priority" | "score_desc";
   page: string;
   period: Period;
@@ -35,7 +35,9 @@ export function dashboardQuery(raw: Record<string, unknown>): DashboardQuery {
     q: typeof raw.q === "string" ? raw.q.trim().slice(0, 200) : "",
     severity:
       tab === "attention" &&
-      (raw.severity === "high" || raw.severity === "medium")
+      (raw.severity === "flag" ||
+        raw.severity === "hold" ||
+        raw.severity === "block")
         ? raw.severity
         : "all",
     sort: raw.sort === "score_desc" ? "score_desc" : "priority",

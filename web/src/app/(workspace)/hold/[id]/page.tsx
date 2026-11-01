@@ -41,6 +41,12 @@ export default async function HoldPage({
           items={[
             ["Account", decision.account_id],
             ["Sender domain", event.sender_domain],
+            // The domains are what an owner can actually recognize or reject.
+            ["Links to", event.link_domains.join(", ") || "No links"],
+            [
+              "Replies go to",
+              event.reply_to_domains.join(", ") || "Your sender domain",
+            ],
             ["Recipients", number(event.recipient_count)],
             ["Time", dateTime(event.occurred_at)],
             [

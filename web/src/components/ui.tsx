@@ -80,7 +80,7 @@ export function ApiError({ message }: { message: string }) {
     <div className="api-error" role="alert">
       <TriangleAlert size={20} />
       <div>
-        <h3>Connection needs attention</h3>
+        <h3>Request failed</h3>
         <p>{message}</p>
         <p className="muted">
           Your data has not been changed. Refresh to try again.

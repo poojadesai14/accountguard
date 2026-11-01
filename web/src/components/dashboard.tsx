@@ -22,7 +22,7 @@ import {
   dashboardScope,
   type DashboardQuery,
 } from "@/lib/dashboard";
-import { riskClassName } from "@/lib/decisions";
+import { scoreClassName } from "@/lib/decisions";
 import { dateTime, humanize, number, periodQuery, PERIODS } from "@/lib/format";
 import type { DashboardAccount, DashboardData } from "@/lib/types";
 import { Badge, CardHeader, EmptyState } from "./ui";
@@ -398,13 +398,14 @@ export function Dashboard({
               <div
                 className="severity-pills"
                 role="group"
-                aria-label="Risk score filter"
+                aria-label="Filter by decision"
               >
                 {(
                   [
                     { value: "all", label: "All" },
-                    { value: "high", label: "High ≥80" },
-                    { value: "medium", label: "Medium 40–79" },
+                    { value: "block", label: "Block" },
+                    { value: "hold", label: "Hold" },
+                    { value: "flag", label: "Flag" },
                   ] as const
                 ).map((item) => (
                   <button
@@ -578,7 +579,7 @@ export function Dashboard({
                             >
                               <Badge action={item.action} />
                               <span
-                                className={`score-number ${riskClassName(item.score)}`}
+                                className={`score-number ${scoreClassName(item.action)}`}
                                 title="Original recorded risk score, out of 100"
                               >
                                 {item.score ?? "—"}
@@ -747,6 +748,26 @@ export function Dashboard({
             <p className="api-error" role="alert">
               {data.telemetry_error} Telemetry may be stale.
             </p>
+          )}
+          {stats && (
+            <dl className="telemetry-totals" aria-label="Decision totals">
+              {(
+                [
+                  ["Events scored", stats.totals.events, ""],
+                  ["Allowed", stats.totals.allow, "allow"],
+                  ["Flagged", stats.totals.flag, "flag"],
+                  ["Held", stats.totals.hold, "hold"],
+                  ["Blocked", stats.totals.block, "block"],
+                ] as const
+              ).map(([label, value, action]) => (
+                <div key={label}>
+                  <dt>{label}</dt>
+                  <dd className={action ? `score-${action}` : undefined}>
+                    {number(value)}
+                  </dd>
+                </div>
+              ))}
+            </dl>
           )}
           <div className="overview-middle">
             <section className="card activity-card">

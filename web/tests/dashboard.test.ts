@@ -12,7 +12,7 @@ test("dashboard query rejects malformed and unbounded filter parameters", () => 
   const query = dashboardQuery({
     tab: "unknown",
     view: ["holds"],
-    severity: ["high"],
+    severity: ["block"],
     sort: ["score_desc"],
     page: "-4",
     q: "x".repeat(500),
@@ -37,7 +37,7 @@ test("dashboard links preserve search and sorting and safely encode inspected ac
     tab: "baseline",
     view: "healthy",
     q: "AS14061",
-    severity: "medium",
+    severity: "hold",
     sort: "score_desc",
     page: "2",
     inspect: "account / one",
@@ -92,11 +92,11 @@ test("metric views persist in links and clear when switching to an incompatible 
 
 test("severity filters stay on attention and cannot hide baselines through old links", () => {
   const attention = dashboardQuery({
-    severity: "high",
+    severity: "block",
     q: "key_good",
     sort: "score_desc",
   });
-  assert.equal(attention.severity, "high");
+  assert.equal(attention.severity, "block");
   for (const tab of ["baseline", "telemetry"] as const) {
     const url = new URL(
       dashboardURL(attention, { tab }),
@@ -105,7 +105,7 @@ test("severity filters stay on attention and cannot hide baselines through old l
     assert.equal(url.searchParams.has("severity"), false);
     assert.equal(url.searchParams.get("q"), "key_good");
     assert.equal(url.searchParams.get("sort"), "score_desc");
-    for (const severity of ["high", "medium"])
+    for (const severity of ["flag", "hold", "block"])
       assert.equal(dashboardQuery({ tab, severity }).severity, "all");
   }
 });
@@ -218,7 +218,7 @@ test("dashboard refuses mismatched API views and verifies card totals before sho
     },
     {
       name: "global totals differ legitimately after severity filtering",
-      query: { severity: "high" },
+      query: { severity: "block" },
       data: { ...snapshot(1), metrics: { ...snapshot(3).metrics } },
       error: false,
     },
@@ -262,7 +262,7 @@ test("cached table rows belong to their exact view filters sort and page", () =>
     { view: "holds" },
     { tab: "baseline" },
     { q: "key" },
-    { severity: "high" },
+    { severity: "block" },
     { sort: "score_desc" },
     { page: "2" },
   ])

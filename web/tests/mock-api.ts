@@ -423,11 +423,11 @@ createServer(async (req, res) => {
         return !!(item.open_reviews || item.suspended_keys);
       })
       .filter((item) =>
-        url.searchParams.get("severity") === "high"
-          ? (item.score ?? 0) >= 80
-          : url.searchParams.get("severity") === "medium"
-            ? (item.score ?? 0) >= 40 && (item.score ?? 0) <= 79
-            : true,
+        ["flag", "hold", "block"].includes(
+          url.searchParams.get("severity") ?? "",
+        )
+          ? item.action === url.searchParams.get("severity")
+          : true,
       )
       .filter((item) =>
         [

@@ -38,26 +38,35 @@ Open `http://localhost:3000` and sign in with `UI_PASSWORD`.
   before audited review controls; baseline details, stored metadata, and audit
   history expand on demand. Legitimate baselines and telemetry have separate tabs.
 - `/accounts`: account search and review filter.
-- `/accounts/[id]`: an event stream with search and outcome filters, selected
-  decision and signal breakdown, and copyable structured metadata; volume with
-  current baseline and spike threshold, ASN
-  observations, content/account markers, decisions on a shared time axis,
-  timeline, profile, key status, and key restoration.
-- `/decisions/[id]`: scores, each signal's evidence, safe event metadata,
-  reason-required analyst actions, and audit history.
-- `/hold/[id]`: owner response demo, behind the same analyst password gate.
+- `/accounts/[id]`: charts first, on one shared time axis: hourly recipients with
+  the current baseline and spike threshold, ASN observations (first-seen in red),
+  content and account-change markers, and flag/hold/block decisions (allowed
+  events are counted, not drawn). A dashed line marks the first hold or block on
+  every lane, which is where a takeover lights several signals up at once.
+  Below: the learned baseline, key status and restoration, then the event stream
+  (opens on the latest flag, hold or block) with its signal breakdown and
+  copyable metadata.
+- `/decisions/[id]`: the score on the engine's own 0–100 scale (flag, hold and
+  block lines from `GET /v1/decisions/{id}` `thresholds`), a plain-language
+  reason for the action (including the one-category cap and the two-category
+  rule for block), each signal's evidence, safe event metadata, reason-required
+  analyst actions, and audit history.
+- `/hold/[id]`: owner response demo, behind the same analyst password gate. It
+  shows the link and Reply-To domains, which are what an owner can recognize.
 
 The visual styling follows the supplied UI specification: black and charcoal
 surfaces, subtle borders, 18px page titles, 12px monospace table text, 10–11px
 metadata, and 24px monospace metric values. Mobile form controls retain larger
 text and touch targets. Existing data fields and audited actions remain in use.
-Score colors are presentation only: green below 40, amber from 40, and rose
-from 75. Scoring rules remain configured by the backend; the existing High
-(80+) and Medium (40–79) filters are unchanged.
+Scores are colored by the action the engine took (allow green, flag yellow,
+hold orange, block red), so colors always match the configured thresholds. The
+review queue filters by action (Block, Hold, Flag), not by score band.
+The app is named "ATO Console" and labeled as a take-home demo; it does not use
+Resend's brand, so the public login page can't be mistaken for Resend's own.
 
 Times are UTC. The selected range filters decisions by event occurrence time.
-QUARANTINE is the UI label for the API's `hold` action. FLAG remains an observation;
-the service does not implement throttling. Charts fill empty time buckets with
+FLAG is an observation: the email is still sent and the service does not
+throttle. Charts fill empty time buckets with
 zero elevated decisions instead of connecting separate incidents across gaps.
 Current baseline values are shown explicitly; the API does not store historical
 baselines. Shadow decisions are labeled and are not presented as enforced holds
@@ -110,7 +119,7 @@ mode until the detection results and upstream enforcement integration are ready.
 `GET /v1/dashboard` provides one consistent snapshot for global metrics and a
 filtered page of accounts, held events, or suspended keys. It accepts
 `segment=attention|baseline`, `view=accounts|holds|keys|healthy`, `q`,
-`severity=all|high|medium`, `sort=priority|score_desc`, `page`, and `limit`
+`severity=all|flag|hold|block` (the representative decision's action), `sort=priority|score_desc`, `page`, and `limit`
 (default 50, capped at 200). Decision priority remains the default; Highest score
 orders matching accounts by recorded score before pagination. Equal scores use
 decision priority, recency, and account ID to keep pages stable. Changing the
@@ -162,7 +171,10 @@ successful real reads. The mode badge uses the API configuration: Monitoring
 only means shadow mode with automatic enforcement disabled; Enforcement active
 means automatic risk decisions are enforced. Each mode has an explanatory tooltip.
 
-Review opens Confirm takeover and Mark legitimate using the audited server actions;
+Review opens Confirm takeover and Mark legitimate using the audited server actions.
+No outcome is preselected: Mark legitimate teaches the baseline, so it must be
+chosen deliberately. Backend 400/409 explanations (for example "hold is not
+pending") are shown as-is.
 Confirm takeover suspends the affected key and drops its pending holds. Both
 require an actor and reason. They preserve historical scores; marking a single
 event legitimate never silently restores a suspended key. No account email,

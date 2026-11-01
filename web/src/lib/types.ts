@@ -134,10 +134,18 @@ export type AuditAction = {
   reason: string;
   created_at: string;
 };
+export type Thresholds = {
+  flag: number;
+  hold: number;
+  block: number;
+  block_min_categories: number;
+  single_category_exempt: string[] | null;
+};
 export type DecisionDetail = {
   decision: Decision;
   event: TimelineRow;
   actions: AuditAction[] | null;
+  thresholds?: Thresholds;
 };
 export type ApiResult<T> =
   | { data: T; error?: never; status?: never }
