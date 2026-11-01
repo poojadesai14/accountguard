@@ -565,16 +565,27 @@ export function Dashboard({
                             )}
                           </td>
                           <td className="dashboard-decision">
-                            {item.restore_pending ? (
-                              // Reviewed already: the block is history, not the state.
+                            {item.label === "legitimate" ||
+                            item.label === "takeover" ? (
+                              // Reviewed: the verdict leads; the engine's call is
+                              // history underneath, with its original score.
                               <>
                                 <div className="dashboard-outcome">
-                                  <Badge action="allow">
-                                    Marked legitimate
-                                  </Badge>
+                                  {item.label === "legitimate" ? (
+                                    <Badge action="allow">
+                                      Marked legitimate
+                                    </Badge>
+                                  ) : (
+                                    <Badge action="block">
+                                      Confirmed takeover
+                                    </Badge>
+                                  )}
                                 </div>
-                                <small>
-                                  Was {item.action} · {item.score ?? "—"}
+                                <small title="The engine's original call and risk score">
+                                  Was {item.action} ·{" "}
+                                  <span className="score-number">
+                                    {item.score ?? "—"}
+                                  </span>
                                 </small>
                               </>
                             ) : (
