@@ -146,6 +146,8 @@ function snapshot(
     review_status: "open",
     hold_status: null,
     hold_expires_at: null,
+    event_type: "email.send",
+    change_kind: null,
     key_suspended_by: null,
     key_suspended_at: null,
     occurred_at: "2026-10-31T00:00:00Z",

@@ -36,6 +36,10 @@ type DashboardAccount struct {
 	ReviewStatus  *string    `json:"review_status"`
 	HoldStatus    *string    `json:"hold_status"`
 	HoldExpiresAt *time.Time `json:"hold_expires_at"`
+	// What the decision was about: email.send, account.change or api.read. Holds
+	// can be on account changes too, so the UI must not assume an email.
+	EventType  *string `json:"event_type"`
+	ChangeKind *string `json:"change_kind"`
 	// Set only while the row's key is suspended: who suspended it (auto, analyst
 	// or owner) and when.
 	KeySuspendedBy *string      `json:"key_suspended_by"`
@@ -70,13 +74,17 @@ func GetDashboard(ctx context.Context, db DBTX, f DashboardFilter) (*Dashboard, 
   count(*) filter (where review_status = 'open') over (partition by account_id) as open_reviews,
   first_value(action) over latest as latest_action,
   first_value(label) over latest as latest_label,
+  -- Follow-on key_suspended rejections rank below scored decisions: they are a
+  -- consequence of a suspension, never the evidence for it.
   row_number() over (partition by account_id order by
    (review_status = 'open') desc,
+   (reason = 'key_suspended') asc nulls first,
    case when review_status = 'open' then array_position(array['allow','flag','hold','block'],action) end desc nulls last,
    case when review_status = 'open' then score end desc nulls last,
    occurred_at desc, decided_at desc, decision_id desc) as position,
   row_number() over (partition by account_id, api_key_id order by
    (review_status = 'open') desc,
+   (reason = 'key_suspended') asc nulls first,
    case when review_status = 'open' then array_position(array['allow','flag','hold','block'],action) end desc nulls last,
    case when review_status = 'open' then score end desc nulls last,
    occurred_at desc, decided_at desc, decision_id desc) as key_position
@@ -98,8 +106,8 @@ func GetDashboard(ctx context.Context, db DBTX, f DashboardFilter) (*Dashboard, 
   d.decision_id::text, d.event_id, coalesce(ent.key_id,d.api_key_id) as api_key_id, d.action, d.score, d.enforced, d.label, d.review_status, d.hold_status, d.hold_expires_at, d.occurred_at,
   case when k.status = 'suspended' then k.reason end as key_suspended_by,
   case when k.status = 'suspended' then k.updated_at end as key_suspended_at,
-  host(e.ip) as ip, e.asn, e.asn_org, coalesce(d.hits,'[]') as hits,
-  coalesce(d.reason, (select h->>'name' from jsonb_array_elements(coalesce(d.hits,'[]')) h order by (h->>'points')::int desc, h->>'name' limit 1), 'No scored signals') as primary_driver,
+  host(e.ip) as ip, e.asn, e.asn_org, e.type as event_type, e.change_kind, coalesce(d.hits,'[]') as hits,
+  coalesce((select h->>'name' from jsonb_array_elements(coalesce(d.hits,'[]')) h order by (h->>'points')::int desc, h->>'name' limit 1), d.reason, 'No scored signals') as primary_driver,
   (coalesce(a.open_reviews,0) > 0 or coalesce(s.suspended_keys,0) > 0) as attention,
   coalesce(a.latest_action = 'allow' or a.latest_label = 'legitimate',false) as legitimate
  from entities ent
@@ -121,8 +129,9 @@ func GetDashboard(ctx context.Context, db DBTX, f DashboardFilter) (*Dashboard, 
   and (case when $10 in ('holds','keys') then true when $4 = 'attention' then attention else not attention and legitimate end)
   and ($10 <> 'healthy' or baseline_ready)
   and ($5 = 'all' or action = $5)
-  and ($3 = '' or strpos(lower(concat_ws(' ', account_id, api_key_id, ip, asn::text, 'AS' || asn::text, asn_org, primary_driver,
-   (select string_agg(replace(h->>'name','_',' '),' ') from jsonb_array_elements(hits) h), hits::text)),lower($3)) > 0)
+  and ($3 = '' or strpos(lower(concat_ws(' ', account_id, api_key_id, ip, asn::text, 'AS' || asn::text, asn_org,
+   primary_driver, replace(primary_driver,'_',' '),
+   (select string_agg(concat_ws(' ', h->>'name', replace(h->>'name','_',' '), h->>'detail'),' ') from jsonb_array_elements(hits) h))),lower($3)) > 0)
  ), page as (
  select * from filtered order by
  case when $9 = 'recent' then occurred_at end desc nulls last,

@@ -17,7 +17,7 @@ type dashboardDecisionInput struct {
 	score                int
 	at                   time.Time
 	review               string
-	label, hold          *string
+	label, hold, reason  *string
 }
 
 func dashboardDecision(t *testing.T, f *apiFixture, input dashboardDecisionInput) string {
@@ -31,9 +31,9 @@ func dashboardDecision(t *testing.T, f *apiFixture, input dashboardDecisionInput
 		t.Fatal(err)
 	}
 	var id string
-	err := f.server.Store.Pool.QueryRow(ctx, `insert into decisions(event_id,account_id,api_key_id,occurred_at,action,enforced,score,hits,config_version,review_status,label,hold_status,hold_expires_at)
+	err := f.server.Store.Pool.QueryRow(ctx, `insert into decisions(event_id,account_id,api_key_id,occurred_at,action,enforced,score,hits,config_version,review_status,label,hold_status,hold_expires_at,reason)
  values($1,$2,$3,$4,$5,true,$6,'[{"name":"new_asn","category":"network","points":30,"detail":"AS14061 first seen"}]','test',$7,$8,$9,
-  case when $9 = 'pending' then $4::timestamptz + interval '24 hours' end) returning decision_id::text`, eventID, input.account, input.key, input.at, input.action, input.score, input.review, input.label, input.hold).Scan(&id)
+  case when $9 = 'pending' then $4::timestamptz + interval '24 hours' end, $10) returning decision_id::text`, eventID, input.account, input.key, input.at, input.action, input.score, input.review, input.label, input.hold, input.reason).Scan(&id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -865,7 +865,48 @@ func TestDashboardKeyAndHoldDetails(t *testing.T) {
 	if h.HoldExpiresAt == nil || !h.HoldExpiresAt.Equal(testNow.Add(2*time.Minute+24*time.Hour)) {
 		t.Errorf("hold expires at %v, want 24 h after the held event", h.HoldExpiresAt)
 	}
+	if h.EventType == nil || *h.EventType != "email.send" {
+		t.Errorf("held row event type = %v, want email.send", h.EventType)
+	}
 	if h.KeyStatus == nil || *h.KeyStatus != "active" || h.KeySuspendedBy != nil || h.KeySuspendedAt != nil {
 		t.Errorf("restored key = status %v, suspended by %v at %v; want active with no suspension details", h.KeyStatus, h.KeySuspendedBy, h.KeySuspendedAt)
+	}
+}
+
+// QA found blocked accounts represented by a later key_suspended rejection
+// (evidence "key suspended", Review opening the wrong decision) and a search
+// that matched JSON keys but not the text on the page.
+func TestDashboardFollowOnRejectionsAndSearch(t *testing.T) {
+	f := newAPIFixture(t)
+	trigger := dashboardDecision(t, f, dashboardDecisionInput{account: "blocked", key: "key_blk", action: "block", score: 90, at: testNow, review: "open"})
+	// Same score, later, open: before the fix it won the tie on recency.
+	dashboardDecision(t, f, dashboardDecisionInput{account: "blocked", key: "key_blk", action: "block", score: 90, at: testNow.Add(time.Minute), review: "open", reason: strp("key_suspended")})
+
+	got := decodeResponse[store.Dashboard](t, f.get("/v1/dashboard"))
+	if len(got.Items) != 1 || got.Items[0].DecisionID == nil || *got.Items[0].DecisionID != trigger {
+		t.Fatalf("queue row = %+v, want the scored block %s", got.Items, trigger)
+	}
+	if got.Items[0].PrimaryDriver != "new_asn" {
+		t.Errorf("primary driver = %q, want the top hit new_asn", got.Items[0].PrimaryDriver)
+	}
+
+	for _, tt := range []struct {
+		q    string
+		want int
+	}{
+		{"new asn", 1},            // as displayed
+		{"new_asn", 1},            // as stored
+		{"AS14061 first seen", 1}, // the evidence line
+		{"points", 0},             // a JSON key, never shown
+		{"category", 0},           // a JSON key, never shown
+	} {
+		if got := decodeResponse[store.Dashboard](t, f.get("/v1/dashboard?q="+url.QueryEscape(tt.q))); got.Total != tt.want {
+			t.Errorf("search %q matched %d accounts, want %d", tt.q, got.Total, tt.want)
+		}
+	}
+
+	accounts := decodeResponse[[]store.AccountSummary](t, f.get("/v1/accounts?q="+url.QueryEscape("%")))
+	if len(accounts) != 0 {
+		t.Errorf("account search for %% matched %d accounts, want 0 (a literal, not a wildcard)", len(accounts))
 	}
 }

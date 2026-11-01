@@ -77,7 +77,9 @@ export function explainDecision(
   t: Thresholds | undefined,
 ): string {
   if (decision.reason === "key_suspended")
-    return "Blocked because this API key was already suspended. The signals below were still scored for the record.";
+    return decision.hits?.length
+      ? "Blocked because this API key was already suspended. The signals below were still scored for the record."
+      : "Blocked because this API key was already suspended. No signals fired on this event itself.";
   if (!t) return "";
   const { action, score } = decision;
   const categories = [...new Set((decision.hits ?? []).map((h) => h.category))];
@@ -238,3 +240,40 @@ export const SUSPENDED_BY: Record<"auto" | "analyst" | "owner", string> = {
   analyst: "Suspended by an analyst",
   owner: "Suspended by the owner",
 };
+
+export const CHANGE_LABELS: Record<string, string> = {
+  "api_key.created": "New API key",
+  "api_key.deleted": "API key deleted",
+  "team_member.added": "Team member added",
+  "webhook.created": "New webhook",
+  "webhook.updated": "Webhook changed",
+  "webhook.deleted": "Webhook deleted",
+  "domain.updated": "Domain changed",
+};
+
+// heldEventLabel names what a hold paused: holds can be on account changes and
+// data reads as well as emails.
+export function heldEventLabel(
+  type: string | null | undefined,
+  changeKind?: string | null,
+) {
+  if (type === "account.change")
+    return (changeKind && CHANGE_LABELS[changeKind]) ?? "Account change";
+  if (type === "api.read") return "Data read";
+  return "Email";
+}
+
+// defaultEvent picks what an account page opens on (rows newest first): the latest
+// event that needed attention, not the latest routine send. Sends rejected only
+// because the key was already suspended come after the decision that explains the
+// account, so they are skipped unless nothing else needed attention.
+export function defaultEvent<
+  T extends { action: Action | null; reason: string | null },
+>(rows: T[]): T | undefined {
+  const elevated = (row: T) => row.action && row.action !== "allow";
+  return (
+    rows.find((row) => elevated(row) && row.reason !== "key_suspended") ??
+    rows.find(elevated) ??
+    rows[0]
+  );
+}

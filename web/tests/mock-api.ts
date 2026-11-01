@@ -261,6 +261,8 @@ function dashboardAccounts(): DashboardAccount[] {
     review_status: detail.decision.review_status,
     hold_status: detail.decision.hold_status,
     hold_expires_at: detail.decision.hold_expires_at,
+    event_type: "email.send",
+    change_kind: null,
     key_suspended_by: suspended ? "auto" : null,
     key_suspended_at: suspended ? hours[11] : null,
     occurred_at: hours[10],

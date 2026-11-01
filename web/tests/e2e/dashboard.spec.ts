@@ -610,7 +610,8 @@ test("metric cards open matching drilldowns and retain selection through reload 
   await expect(table.locator("tbody tr")).toHaveCount(1);
   await expect(table.locator("tbody tr").first()).toContainText("acc_acme");
   // Held events show how long until they are dropped, not the account state.
-  await expect(table.locator("thead")).toContainText("Held email");
+  await expect(table.locator("thead")).toContainText("Held event");
+  await expect(table.locator("tbody tr").first()).toContainText("Email ·");
   await expect(table.locator("tbody tr").first()).toContainText(
     /Expires in \d+h/,
   );
@@ -1073,4 +1074,14 @@ test("an unavailable inspection has a clear error and can be closed", async ({
   await expect(
     page.getByRole("table", { name: "Dashboard accounts" }),
   ).toBeVisible();
+});
+
+test("a page past the end of the list does not claim the queue is empty", async ({
+  page,
+}) => {
+  await signIn(page, "/?page=999");
+  await expect(
+    page.getByText("No accounts on this page", { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("Your review queue is clear.")).toHaveCount(0);
 });

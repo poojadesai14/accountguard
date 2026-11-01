@@ -136,7 +136,8 @@ func ListAccounts(ctx context.Context, db DBTX, q string, needsReview bool) ([]A
 			        order by occurred_at desc, decided_at desc limit 1) as last_action
 			from decisions where account_id = p.account_id
 		) d on true
-		where ($1 = '' or p.account_id ilike '%' || $1 || '%')
+		-- strpos, not ilike: a typed % or _ is text, not a wildcard.
+		where ($1 = '' or strpos(lower(p.account_id), lower($1)) > 0)
 		  and (not $2 or coalesce(d.open_reviews, 0) > 0)
 		order by open_reviews desc, d.last_at desc nulls last
 		limit 200`, q, needsReview)
