@@ -99,8 +99,8 @@ function reset() {
       {
         kind: "link_domain",
         value: "invoice-portal.net",
-        accounts: 7,
-        events: 31,
+        accounts: 9,
+        events: 37,
         stopped: 5,
         confirmed: 2,
         top: [
@@ -120,6 +120,15 @@ function reset() {
             decision_id: null,
             last_at: hours[8],
           },
+          // Seven listed of nine: five show first, two expand, two are unlisted.
+          ...["delta", "epsilon", "zeta", "eta", "theta"].map((name, i) => ({
+            account_id: `acc_${name}`,
+            events: 3,
+            worst_action: (i < 3 ? "hold" : "flag") as "hold" | "flag",
+            confirmed: false,
+            decision_id: null,
+            last_at: hours[7],
+          })),
         ],
       },
     ],

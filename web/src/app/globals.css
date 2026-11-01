@@ -3818,3 +3818,18 @@ td strong {
 .related-accounts small {
   color: var(--muted);
 }
+/* Looks like a link so it reads as clickable, unlike the old "+N more" text. */
+.related-more {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 12px;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  color: var(--muted);
+}
+.related-more:hover,
+.related-more:focus-visible {
+  color: var(--ink);
+}

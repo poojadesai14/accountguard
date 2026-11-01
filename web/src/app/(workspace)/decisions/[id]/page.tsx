@@ -24,6 +24,7 @@ import {
 } from "@/components/ui";
 import { RefreshButton } from "@/components/navigation";
 import { ReviewForm } from "@/components/forms";
+import { RelatedAccounts } from "@/components/related-accounts";
 
 export const metadata = { title: "Decision review" };
 export default async function DecisionPage({
@@ -357,36 +358,7 @@ function RelatedPanel({ related }: { related: RelatedIndicator[] }) {
             <strong className="mono">{r.value}</strong>
             <small>{relatedSummary(r)}</small>
           </div>
-          <ul className="related-accounts">
-            {r.top.map((a) => (
-              <li key={a.account_id}>
-                <Link
-                  className="text-link mono"
-                  href={
-                    a.decision_id
-                      ? `/decisions/${a.decision_id}`
-                      : `/accounts/${encodeURIComponent(a.account_id)}`
-                  }
-                >
-                  {a.account_id}
-                </Link>
-                <Badge action={a.worst_action} />
-                {a.confirmed && (
-                  <Badge action="block">Confirmed takeover</Badge>
-                )}
-                <small>
-                  {a.events} event{a.events === 1 ? "" : "s"} · last{" "}
-                  {dateTime(a.last_at)}
-                </small>
-              </li>
-            ))}
-            {r.accounts > r.top.length && (
-              <li className="muted">
-                +{r.accounts - r.top.length} more account
-                {r.accounts - r.top.length === 1 ? "" : "s"}
-              </li>
-            )}
-          </ul>
+          <RelatedAccounts indicator={r} />
         </div>
       ))}
     </section>
