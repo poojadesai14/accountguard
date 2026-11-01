@@ -3,14 +3,17 @@
 import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { ArrowRight, Check, ChevronDown, LockKeyhole } from "lucide-react";
 import {
+  correctToTakeover,
   login,
   ownerResponse,
   resolveAccount,
   reviewDecision,
+  suspendKey,
   unblockKey,
 } from "@/app/actions";
+import { dateTime, humanize } from "@/lib/format";
 import type { FormState } from "@/lib/review";
-import type { Decision, OpenCounts } from "@/lib/types";
+import type { Decision, OpenCounts, ReviewedDecision } from "@/lib/types";
 
 function Feedback({ state }: { state: FormState }) {
   return (
@@ -200,6 +203,99 @@ export function UnblockForm({ keyId }: { keyId: string }) {
   );
 }
 
+export function SuspendKeyForm({ keyId }: { keyId: string }) {
+  const [state, action, pending] = useActionState(suspendKey, {});
+  return (
+    <form action={action} className="review-form">
+      <input type="hidden" name="key_id" value={keyId} />
+      <ReviewIdentity />
+      <p className="form-help">
+        Suspending stops this key from sending and drops its held emails. The
+        account's other keys keep working.
+      </p>
+      <Feedback state={state} />
+      <button className="button button-danger" disabled={pending}>
+        {pending ? "Suspending…" : "Suspend key"}
+      </button>
+    </form>
+  );
+}
+
+// CorrectionCard undoes a wrong "legitimate": the chosen decisions become
+// takeover, the baseline forgets them and their keys are suspended. Mounted on
+// open, like ResolveCard, so its fields never duplicate another form's.
+export function CorrectionCard({
+  accountId,
+  decisions,
+}: {
+  accountId: string;
+  decisions: ReviewedDecision[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+  if (!expanded && decisions.length === 0) return null;
+  return (
+    <details
+      className="card resolve-card"
+      onToggle={(event) => setExpanded(event.currentTarget.open)}
+    >
+      <summary>
+        <strong>Correct to takeover</strong>
+        <span className="muted">
+          {decisions.length} decision{decisions.length === 1 ? "" : "s"} marked
+          legitimate
+        </span>
+      </summary>
+      {expanded && (
+        <CorrectionForm accountId={accountId} decisions={decisions} />
+      )}
+    </details>
+  );
+}
+
+function CorrectionForm({
+  accountId,
+  decisions,
+}: {
+  accountId: string;
+  decisions: ReviewedDecision[];
+}) {
+  const [state, action, pending] = useActionState(correctToTakeover, {});
+  return (
+    <form action={action} className="review-form resolve-form">
+      <input type="hidden" name="account_id" value={accountId} />
+      <fieldset className="correction-list">
+        <legend>Decisions to relabel takeover</legend>
+        {decisions.map((d) => (
+          <label key={d.decision_id}>
+            <input
+              type="checkbox"
+              name="decision_id"
+              value={d.decision_id}
+              defaultChecked
+            />
+            <span>
+              {humanize(d.action)} {d.score} · {humanize(d.primary_driver)}
+            </span>
+            <small className="muted">
+              {d.api_key_id ?? "no key"} · {dateTime(d.occurred_at)}
+            </small>
+          </label>
+        ))}
+      </fieldset>
+      <p className="form-help">
+        Relabels them takeover, removes them from the baseline, suspends the
+        keys they were sent with and drops those keys' held emails. Emails
+        already released stay sent.
+      </p>
+      <ReviewIdentity />
+      <Feedback state={state} />
+      <button className="button button-danger" disabled={pending}>
+        {pending ? "Correcting…" : "Correct to takeover"}
+      </button>
+    </form>
+  );
+}
+
 export function OwnerForm({ decision }: { decision: Decision }) {
   const [state, action, pending] = useActionState(ownerResponse, {});
   if (decision.hold_status !== "pending")
@@ -252,8 +348,13 @@ export function ResolveAccountForm({
 }) {
   const [state, action, pending] = useActionState(resolveAccount, {});
   const [outcome, setOutcome] = useState<"" | "legitimate" | "takeover">("");
+  const [confirm, setConfirm] = useState("");
   const plural = (n: number, word: string) =>
     `${n} ${word}${n === 1 ? "" : "s"}`;
+  // Releases and restores are hard to take back: over attacker-looking evidence,
+  // "legitimate" needs the account ID typed (the API enforces the same rule).
+  const warnings = outcome === "legitimate" ? (open.warnings ?? []) : [];
+  const confirmed = warnings.length === 0 || confirm.trim() === accountId;
   return (
     <form action={action} className="review-form resolve-form">
       <input type="hidden" name="account_id" value={accountId} />
@@ -316,11 +417,34 @@ export function ResolveAccountForm({
             suspended: restore those one at a time above.
           </p>
         )}
+      {warnings.length > 0 && (
+        <div className="resolve-warning" role="note">
+          <strong>These reviews look like a takeover:</strong>
+          <ul>
+            {warnings.map((w) => (
+              <li key={w.signal}>
+                {humanize(w.signal)}: {w.detail}
+              </li>
+            ))}
+          </ul>
+          <label>
+            Type <span className="mono">{accountId}</span> to confirm they are
+            legitimate
+            <input
+              name="confirm"
+              autoComplete="off"
+              spellCheck={false}
+              value={confirm}
+              onChange={(event) => setConfirm(event.target.value)}
+            />
+          </label>
+        </div>
+      )}
       <ReviewIdentity />
       <Feedback state={state} />
       <button
         className="button button-primary"
-        disabled={pending || !outcome || open.reviews === 0}
+        disabled={pending || !outcome || open.reviews === 0 || !confirmed}
       >
         {pending ? "Resolving…" : "Resolve account"}
       </button>

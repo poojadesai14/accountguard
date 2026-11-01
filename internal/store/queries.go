@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -192,11 +193,12 @@ func KeySuspended(ctx context.Context, db DBTX, apiKeyID string) (bool, error) {
 	return status == "suspended", err
 }
 
-// SuspendKey suspends one API key. The account and its other keys keep working.
+// SuspendKey suspends one API key; decisionID may be empty for a suspension no
+// decision caused (an analyst acting on the key directly). The account and its other keys keep working.
 func SuspendKey(ctx context.Context, db DBTX, apiKeyID, accountID, reason, decisionID string) error {
 	_, err := db.Exec(ctx, `
 		insert into key_status (api_key_id, account_id, status, reason, decision_id)
-		values ($1, $2, 'suspended', $3, $4::uuid)
+		values ($1, $2, 'suspended', $3, nullif($4, '')::uuid)
 		on conflict (api_key_id) do update
 		set status = 'suspended', reason = excluded.reason, decision_id = excluded.decision_id, updated_at = now()`,
 		apiKeyID, accountID, reason, decisionID)
@@ -275,14 +277,97 @@ func RestorableKeys(ctx context.Context, db DBTX, accountID string, decisionIDs 
 	return pgx.CollectRows(rows, pgx.RowTo[string])
 }
 
+// KeyAccount finds the account a key belongs to and whether it is suspended, from
+// its status row or, for a key never suspended, its latest event.
+func KeyAccount(ctx context.Context, db DBTX, apiKeyID string) (accountID string, suspended, found bool, err error) {
+	var status *string
+	err = db.QueryRow(ctx, `select account_id, status from (
+		select account_id, status, 0 as source, null::timestamptz as at from key_status where api_key_id = $1
+		union all
+		(select account_id, null, 1, occurred_at from events where api_key_id = $1 order by occurred_at desc limit 1)
+		) k order by source limit 1`, apiKeyID).Scan(&accountID, &status)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, false, nil
+	}
+	return accountID, status != nil && *status == "suspended", err == nil, err
+}
+
+// DecisionsByIDs locks the account's decisions with these IDs; IDs that aren't the
+// account's are simply absent from the result.
+func DecisionsByIDs(ctx context.Context, db DBTX, accountID string, ids []string) ([]*Decision, error) {
+	rows, err := db.Query(ctx, `select `+decisionCols+` from decisions
+		where account_id = $1 and decision_id = any($2::uuid[])
+		order by occurred_at, decision_id for update`, accountID, ids)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []*Decision
+	for rows.Next() {
+		d, err := scanDecision(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, d)
+	}
+	return out, rows.Err()
+}
+
+// RiskySignals are the hits that make "legitimate" a claim worth a second look:
+// attacker infrastructure and blast radius rather than a new network alone.
+var RiskySignals = []string{"young_domain", "lookalike_domain", "recipient_spike", "freemail_reply_to"}
+
+// Warning is one risky signal among an account's open reviews, with one example.
+type Warning struct {
+	Signal string `json:"signal"`
+	Detail string `json:"detail"`
+}
+
+// Warnings lists the risky signals on these decisions, one per signal name.
+func Warnings(decisions []*Decision) []Warning {
+	out := []Warning{}
+	for _, d := range decisions {
+		for _, h := range d.Hits {
+			if slices.Contains(RiskySignals, h.Name) && !slices.ContainsFunc(out, func(w Warning) bool { return w.Signal == h.Name }) {
+				out = append(out, Warning{h.Name, h.Detail})
+			}
+		}
+	}
+	return out
+}
+
+// ReviewedDecision is a non-allow decision an analyst or owner marked legitimate:
+// what a correction to takeover can act on.
+type ReviewedDecision struct {
+	DecisionID string    `json:"decision_id"`
+	OccurredAt time.Time `json:"occurred_at"`
+	Action     string    `json:"action"`
+	Score      int       `json:"score"`
+	APIKeyID   *string   `json:"api_key_id"`
+	Driver     string    `json:"primary_driver"`
+}
+
+// LegitimateDecisions lists an account's latest 50 such decisions, newest first.
+func LegitimateDecisions(ctx context.Context, db DBTX, accountID string) ([]ReviewedDecision, error) {
+	rows, err := db.Query(ctx, `select decision_id::text, occurred_at, action, score, api_key_id,
+		coalesce((select h->>'name' from jsonb_array_elements(hits) h order by (h->>'points')::int desc, h->>'name' limit 1), 'No scored signals')
+		from decisions where account_id = $1 and label = 'legitimate' and action <> 'allow'
+		order by occurred_at desc, decision_id desc limit 50`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[ReviewedDecision])
+}
+
 // OpenCounts is what an account-level resolution would close. DecisionIDs are the
 // open reviews; the resolution is refused if they change before it is submitted.
 type OpenCounts struct {
-	Reviews        int      `json:"reviews"`
-	PendingHolds   int      `json:"pending_holds"`
-	SuspendedKeys  int      `json:"suspended_keys"`
-	RestorableKeys int      `json:"restorable_keys"`
-	DecisionIDs    []string `json:"decision_ids"`
+	Reviews        int       `json:"reviews"`
+	PendingHolds   int       `json:"pending_holds"`
+	SuspendedKeys  int       `json:"suspended_keys"`
+	RestorableKeys int       `json:"restorable_keys"`
+	DecisionIDs    []string  `json:"decision_ids"`
+	Warnings       []Warning `json:"warnings"` // risky signals: "legitimate" needs a typed confirmation
 }
 
 func AccountOpenCounts(ctx context.Context, db DBTX, accountID string) (OpenCounts, error) {
@@ -297,5 +382,23 @@ func AccountOpenCounts(ctx context.Context, db DBTX, accountID string) (OpenCoun
 				or exists (select 1 from decisions kd where kd.decision_id = k.decision_id and kd.label = 'legitimate')))`, accountID,
 	).Scan(&c.DecisionIDs, &c.PendingHolds, &c.SuspendedKeys, &c.RestorableKeys)
 	c.Reviews = len(c.DecisionIDs)
-	return c, err
+	if err != nil {
+		return c, err
+	}
+	rows, err := db.Query(ctx, `select `+decisionCols+` from decisions
+		where account_id = $1 and review_status = 'open'`, accountID)
+	if err != nil {
+		return c, err
+	}
+	defer rows.Close()
+	var open []*Decision
+	for rows.Next() {
+		d, err := scanDecision(rows)
+		if err != nil {
+			return c, err
+		}
+		open = append(open, d)
+	}
+	c.Warnings = Warnings(open)
+	return c, rows.Err()
 }

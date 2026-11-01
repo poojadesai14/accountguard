@@ -32,7 +32,9 @@ func (s *Server) analystRoutes(mux *http.ServeMux) {
 	mux.Handle("GET /v1/decisions/{id}", auth(s.getDecision))
 	mux.Handle("POST /v1/decisions/{id}/actions", auth(s.postAction))
 	mux.Handle("POST /v1/keys/{key_id}/unblock", auth(s.postUnblock))
+	mux.Handle("POST /v1/keys/{key_id}/suspend", auth(s.postSuspendKey))
 	mux.Handle("POST /v1/accounts/{id}/resolve", auth(s.postResolveAccount))
+	mux.Handle("POST /v1/accounts/{id}/correct", auth(s.postCorrectToTakeover))
 	// Demo: the owner's hold link uses the analyst token. Production: a signed one-time link.
 	mux.Handle("POST /v1/holds/{id}/owner-response", auth(s.postOwnerResponse))
 }
@@ -172,7 +174,12 @@ func (s *Server) getProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	open, err := store.AccountOpenCounts(ctx, s.Store.Pool, id)
-	respond(w, map[string]any{"profile": p, "key_status": keys, "open": open}, err)
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
+	legitimate, err := store.LegitimateDecisions(ctx, s.Store.Pool, id)
+	respond(w, map[string]any{"profile": p, "key_status": keys, "open": open, "legitimate_decisions": legitimate}, err)
 }
 
 func (s *Server) getDecision(w http.ResponseWriter, r *http.Request) {
@@ -279,12 +286,41 @@ func (s *Server) postUnblock(w http.ResponseWriter, r *http.Request) {
 	respond(w, map[string]string{"api_key_id": r.PathValue("key_id"), "status": "active"}, err)
 }
 
+// postSuspendKey suspends a key on an analyst's authority.
+func (s *Server) postSuspendKey(w http.ResponseWriter, r *http.Request) {
+	var req actionRequest
+	if !decodeBody(w, r, &req) || !requireActor(w, req) {
+		return
+	}
+	dropped, err := s.Service.SuspendKey(r.Context(), r.PathValue("key_id"), req.Actor, req.Reason)
+	respond(w, map[string]any{"api_key_id": r.PathValue("key_id"), "status": "suspended", "holds_dropped": dropped}, err)
+}
+
+// postCorrectToTakeover relabels decisions wrongly marked legitimate as takeover.
+func (s *Server) postCorrectToTakeover(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		DecisionIDs []string `json:"decision_ids"`
+		Actor       string   `json:"actor"`
+		Reason      string   `json:"reason"`
+	}
+	if !decodeBody(w, r, &req) || !requireActor(w, actionRequest{Actor: req.Actor, Reason: req.Reason}) {
+		return
+	}
+	if len(req.DecisionIDs) == 0 || len(req.DecisionIDs) > 200 || slices.ContainsFunc(req.DecisionIDs, func(id string) bool { return !uuidRe.MatchString(id) }) {
+		writeError(w, http.StatusBadRequest, "decision_ids must list 1 to 200 decision IDs")
+		return
+	}
+	res, err := s.Service.CorrectToTakeover(r.Context(), r.PathValue("id"), req.DecisionIDs, req.Actor, req.Reason)
+	respond(w, res, err)
+}
+
 // postResolveAccount closes every open review on an account with one outcome.
 func (s *Server) postResolveAccount(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		DecisionIDs []string `json:"decision_ids"` // the open reviews the analyst saw
 		Outcome     string   `json:"outcome"`
 		RestoreKeys bool     `json:"restore_keys"`
+		Confirm     string   `json:"confirm"` // the account ID, when the reviews show risky signals
 		Actor       string   `json:"actor"`
 		Reason      string   `json:"reason"`
 	}
@@ -303,7 +339,7 @@ func (s *Server) postResolveAccount(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "keys can only be restored when resolving as legitimate")
 		return
 	}
-	res, err := s.Service.ResolveAccount(r.Context(), r.PathValue("id"), req.DecisionIDs, req.Outcome, req.RestoreKeys, req.Actor, req.Reason)
+	res, err := s.Service.ResolveAccount(r.Context(), r.PathValue("id"), req.DecisionIDs, req.Outcome, req.RestoreKeys, req.Confirm, req.Actor, req.Reason)
 	respond(w, res, err)
 }
 

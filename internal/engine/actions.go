@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 
@@ -17,6 +18,9 @@ const (
 	ActConfirmTakeover = "confirm_takeover"
 	ActMarkLegitimate  = "mark_legitimate"
 	ActReleaseHold     = "release_hold"
+	// Not decision outcomes: an analyst acting on a key, or correcting a wrong label.
+	ActSuspendKey        = "suspend_key"
+	ActCorrectToTakeover = "correct_to_takeover"
 )
 
 var ErrNotFound = errors.New("not found")
@@ -122,6 +126,16 @@ func (s *Service) apply(ctx context.Context, decisionID, action, actor, reason s
 // learnFromStoredEvent teaches the baseline an event an analyst or owner confirmed as legitimate,
 // so the new network or domain stops scoring.
 func (s *Service) learnFromStoredEvent(ctx context.Context, tx pgx.Tx, accountID, eventID string) error {
+	return s.foldStoredEvent(ctx, tx, accountID, eventID, true)
+}
+
+// unlearnFromStoredEvent takes back what learnFromStoredEvent taught, for an event
+// later found to be an attacker's.
+func (s *Service) unlearnFromStoredEvent(ctx context.Context, tx pgx.Tx, accountID, eventID string) error {
+	return s.foldStoredEvent(ctx, tx, accountID, eventID, false)
+}
+
+func (s *Service) foldStoredEvent(ctx context.Context, tx pgx.Tx, accountID, eventID string, learn bool) error {
 	row, err := store.EventRow(ctx, tx, eventID)
 	if err != nil {
 		return err
@@ -147,8 +161,119 @@ func (s *Service) learnFromStoredEvent(ctx context.Context, tx pgx.Tx, accountID
 	if err != nil {
 		return err
 	}
-	p.Learn(ev, f, s.Config)
+	if learn {
+		p.Learn(ev, f, s.Config)
+	} else {
+		p.Unlearn(ev, f)
+	}
 	return store.SaveProfile(ctx, tx, p)
+}
+
+// SuspendKey suspends a key on an analyst's authority, whatever its decisions say,
+// and drops its pending holds: the way back from a wrong legitimate call.
+func (s *Service) SuspendKey(ctx context.Context, apiKeyID, actor, reason string) (holdsDropped int, err error) {
+	err = pgx.BeginFunc(ctx, s.Store.Pool, func(tx pgx.Tx) error {
+		accountID, suspended, found, err := store.KeyAccount(ctx, tx, apiKeyID)
+		switch {
+		case err != nil:
+			return err
+		case !found:
+			return ErrNotFound
+		case suspended:
+			return conflict("key is already suspended")
+		}
+		if err := store.SuspendKey(ctx, tx, apiKeyID, accountID, "analyst", ""); err != nil {
+			return err
+		}
+		dropped, err := store.DropPendingHolds(ctx, tx, apiKeyID)
+		if err != nil {
+			return err
+		}
+		holdsDropped = int(dropped)
+		return store.InsertAnalystAction(ctx, tx, nil, &apiKeyID, ActSuspendKey, actor, reason)
+	})
+	return holdsDropped, err
+}
+
+// Correction reports what CorrectToTakeover changed.
+type Correction struct {
+	Corrected     int      `json:"corrected"`
+	HoldsDropped  int      `json:"holds_dropped"`
+	KeysSuspended []string `json:"keys_suspended"`
+}
+
+// CorrectToTakeover relabels decisions an analyst or owner wrongly marked legitimate
+// as takeover, in one transaction: the baseline unlearns each event, the keys they
+// were sent with are suspended on the analyst's authority and lose their pending
+// holds. Emails already released stay sent; the audit log says so. Every decision
+// must belong to the account and be labelled legitimate, or nothing changes.
+func (s *Service) CorrectToTakeover(ctx context.Context, accountID string, decisionIDs []string, actor, reason string) (*Correction, error) {
+	ids := slices.Compact(slices.Sorted(slices.Values(decisionIDs)))
+	if len(ids) == 0 {
+		return nil, fmt.Errorf("choose at least one decision to correct")
+	}
+	audit := "correction: " + reason
+	res := &Correction{KeysSuspended: []string{}}
+	err := pgx.BeginFunc(ctx, s.Store.Pool, func(tx pgx.Tx) error {
+		decisions, err := store.DecisionsByIDs(ctx, tx, accountID, ids)
+		if err != nil {
+			return err
+		}
+		if len(decisions) != len(ids) {
+			return conflict("some decisions are not on this account; reload and try again")
+		}
+		keyDecision := map[string]string{} // the first corrected decision sent with each key
+		for _, d := range decisions {
+			if d.Label == nil || *d.Label != "legitimate" {
+				return conflict("decision %s is not marked legitimate; reload and try again", d.DecisionID)
+			}
+			if err := s.unlearnFromStoredEvent(ctx, tx, d.AccountID, d.EventID); err != nil {
+				return err
+			}
+			var hold *string
+			if d.HoldStatus != nil && *d.HoldStatus == "pending" {
+				hold, res.HoldsDropped = ptr("dropped"), res.HoldsDropped+1
+			}
+			if err := store.ResolveDecision(ctx, tx, d.DecisionID, hold, ptr("takeover")); err != nil {
+				return err
+			}
+			if err := store.InsertAnalystAction(ctx, tx, &d.DecisionID, d.APIKeyID, ActCorrectToTakeover, actor, audit); err != nil {
+				return err
+			}
+			if d.APIKeyID != nil {
+				if _, seen := keyDecision[*d.APIKeyID]; !seen {
+					keyDecision[*d.APIKeyID] = d.DecisionID
+				}
+			}
+			res.Corrected++
+		}
+		res.KeysSuspended, err = suspendForTakeover(ctx, tx, accountID, keyDecision, &res.HoldsDropped)
+		return err
+	})
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+// suspendForTakeover suspends each key on the analyst's authority, tied to its first
+// takeover decision, drops its pending holds (adding them to holdsDropped) and
+// returns the keys in order.
+func suspendForTakeover(ctx context.Context, tx pgx.Tx, accountID string, keyDecision map[string]string, holdsDropped *int) ([]string, error) {
+	keys := []string{}
+	for key, decisionID := range keyDecision {
+		if err := store.SuspendKey(ctx, tx, key, accountID, "analyst", decisionID); err != nil {
+			return nil, err
+		}
+		dropped, err := store.DropPendingHolds(ctx, tx, key)
+		if err != nil {
+			return nil, err
+		}
+		*holdsDropped += int(dropped)
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys, nil
 }
 
 // UnblockKey reverses a suspension.
@@ -200,7 +325,10 @@ type AccountResolution struct {
 // call there lets an attacker send again.
 // Takeover labels them takeover, drops their pending holds and suspends the keys
 // they were sent with.
-func (s *Service) ResolveAccount(ctx context.Context, accountID string, seen []string, outcome string, restoreKeys bool, actor, reason string) (*AccountResolution, error) {
+//
+// A legitimate outcome over reviews with risky signals (store.Warnings) also needs
+// confirm to equal the account ID: those releases and restores are hard to take back.
+func (s *Service) ResolveAccount(ctx context.Context, accountID string, seen []string, outcome string, restoreKeys bool, confirm, actor, reason string) (*AccountResolution, error) {
 	if outcome != ResolveLegitimate && outcome != ResolveTakeover {
 		return nil, fmt.Errorf("outcome must be legitimate or takeover")
 	}
@@ -225,6 +353,15 @@ func (s *Service) ResolveAccount(ctx context.Context, accountID string, seen []s
 		slices.Sort(want)
 		if got := slices.Sorted(slices.Values(ids)); !slices.Equal(got, want) {
 			return conflict("this account's open reviews changed since you loaded it; reload and review again")
+		}
+		if outcome == ResolveLegitimate && confirm != accountID {
+			if w := store.Warnings(open); len(w) > 0 {
+				names := make([]string, len(w))
+				for i, x := range w {
+					names[i] = x.Signal
+				}
+				return conflict("these reviews show %s: type the account ID to confirm they are legitimate", strings.Join(names, ", "))
+			}
 		}
 		// Locked before any label changes, so a takeover label written below can't hide a key.
 		var restorable []string
@@ -267,18 +404,9 @@ func (s *Service) ResolveAccount(ctx context.Context, accountID string, seen []s
 			res.Resolved++
 		}
 		if outcome == ResolveTakeover {
-			for key, decisionID := range keyDecision {
-				if err := store.SuspendKey(ctx, tx, key, accountID, "analyst", decisionID); err != nil {
-					return err
-				}
-				dropped, err := store.DropPendingHolds(ctx, tx, key)
-				if err != nil {
-					return err
-				}
-				res.HoldsDropped += int(dropped)
-				res.KeysSuspended = append(res.KeysSuspended, key)
+			if res.KeysSuspended, err = suspendForTakeover(ctx, tx, accountID, keyDecision, &res.HoldsDropped); err != nil {
+				return err
 			}
-			slices.Sort(res.KeysSuspended)
 		}
 		if restoreKeys {
 			for _, key := range restorable {

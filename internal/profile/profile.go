@@ -135,6 +135,38 @@ func (p *Profile) Learn(ev *event.Event, f event.Features, cfg *config.Config) {
 	p.addRecipients(ev.OccurredAt, f.RecipientCount, cfg.Velocity.EWMAAlpha)
 }
 
+// Unlearn takes back what Learn counted for an event later found to be an attacker's:
+// the event count, the key's network and the domains. The recipient EWMA, sender
+// domains and the freemail Reply-To flag are not reversible from one event; the
+// attacker's share of the EWMA decays as the owner keeps sending.
+func (p *Profile) Unlearn(ev *event.Event, f event.Features) {
+	if p.EventsSeen > 0 {
+		p.EventsSeen--
+	}
+	if key := ev.APIKeyID; key != "" && p.KeyASNs[key] != nil {
+		decrement(p.KeyASNs[key], strconv.Itoa(ev.Network.ASN))
+		if len(p.KeyASNs[key]) == 0 {
+			delete(p.KeyASNs, key)
+		}
+	}
+	if ev.Type != event.TypeEmailSend {
+		return
+	}
+	for _, d := range f.Candidates() {
+		decrement(p.KnownDomains, d)
+	}
+}
+
+func decrement(counts map[string]int, k string) {
+	if n, ok := counts[k]; ok {
+		if n <= 1 {
+			delete(counts, k)
+		} else {
+			counts[k] = n - 1
+		}
+	}
+}
+
 // addRecipients keeps one open hour bucket; when an event lands in a later hour, the old bucket
 // is folded into the EWMA. Hours with no sends are skipped, so the baseline means
 // "recipients per hour while this account is sending".

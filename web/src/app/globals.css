@@ -3501,3 +3501,35 @@ td strong {
   background: var(--surface);
   color: var(--ink);
 }
+.resolve-warning {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--block);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.resolve-warning ul {
+  margin: 6px 0 10px;
+  padding-left: 18px;
+}
+.resolve-warning label {
+  display: grid;
+  gap: 6px;
+}
+.correction-list {
+  display: grid;
+  gap: 8px;
+  margin: 8px 0;
+  padding: 0;
+  border: 0;
+}
+.correction-list label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.correction-list small {
+  grid-column: 2;
+}

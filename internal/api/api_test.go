@@ -100,6 +100,18 @@ func TestRouteAuthentication(t *testing.T) {
 			otherToken: testIngestToken,
 		},
 		{
+			name:       "account correction",
+			method:     "POST",
+			path:       "/v1/accounts/acc/correct",
+			otherToken: testIngestToken,
+		},
+		{
+			name:       "key suspension",
+			method:     "POST",
+			path:       "/v1/keys/k/suspend",
+			otherToken: testIngestToken,
+		},
+		{
 			name:       "accounts",
 			method:     "GET",
 			path:       "/v1/accounts",

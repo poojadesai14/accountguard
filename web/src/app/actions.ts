@@ -13,7 +13,11 @@ import {
   SESSION_SECONDS,
 } from "@/lib/session";
 import { reviewFields, UUID, type FormState } from "@/lib/review";
-import type { AccountResolution, DecisionDetail } from "@/lib/types";
+import type {
+  AccountResolution,
+  Correction,
+  DecisionDetail,
+} from "@/lib/types";
 import { restoreIsLastStep } from "@/lib/decisions";
 
 export async function login(
@@ -102,6 +106,60 @@ export async function unblockKey(
   return { success: "Key access restored. This action has been recorded." };
 }
 
+export async function suspendKey(
+  _previous: FormState,
+  form: FormData,
+): Promise<FormState> {
+  await requireSession();
+  const id = String(form.get("key_id") ?? "");
+  if (!id || id.length > 500) return { error: "Choose a valid API key." };
+  const fields = reviewFields(form);
+  if (fields.error) return { error: fields.error };
+  const result = await analystApi<{ holds_dropped: number }>(
+    `/v1/keys/${encodeURIComponent(id)}/suspend`,
+    { actor: fields.actor, reason: fields.reason },
+  );
+  if (result.error) return { error: result.error };
+  revalidatePath("/", "layout");
+  const dropped = result.data?.holds_dropped ?? 0;
+  return {
+    success: `Key suspended${dropped ? ` and ${dropped} held email${dropped === 1 ? "" : "s"} dropped` : ""}. This action has been recorded.`,
+  };
+}
+
+export async function correctToTakeover(
+  _previous: FormState,
+  form: FormData,
+): Promise<FormState> {
+  await requireSession();
+  const account = String(form.get("account_id") ?? "");
+  if (!account || account.length > 200)
+    return { error: "Choose a valid account." };
+  const decisionIds = form.getAll("decision_id").map(String);
+  if (decisionIds.length === 0)
+    return { error: "Choose at least one decision to correct." };
+  if (decisionIds.some((id) => !UUID.test(id)))
+    return { error: "Reload the account: a decision is invalid." };
+  const fields = reviewFields(form);
+  if (fields.error) return { error: fields.error };
+  const result = await analystApi<Correction>(
+    `/v1/accounts/${encodeURIComponent(account)}/correct`,
+    { decision_ids: decisionIds, actor: fields.actor, reason: fields.reason },
+  );
+  if (result.error) return { error: result.error };
+  revalidatePath("/", "layout");
+  const r = result.data!;
+  const parts = [
+    `${r.corrected} decision${r.corrected === 1 ? "" : "s"} relabelled takeover`,
+    r.keys_suspended.length && `suspended ${r.keys_suspended.join(", ")}`,
+    r.holds_dropped &&
+      `${r.holds_dropped} held email${r.holds_dropped === 1 ? "" : "s"} dropped`,
+  ].filter(Boolean);
+  return {
+    success: `Corrected: ${parts.join(", ")}. The baseline no longer counts those events.`,
+  };
+}
+
 export async function ownerResponse(
   _previous: FormState,
   form: FormData,
@@ -146,6 +204,7 @@ export async function resolveAccount(
     `/v1/accounts/${encodeURIComponent(account)}/resolve`,
     {
       decision_ids: decisionIds,
+      confirm: String(form.get("confirm") ?? "").trim(),
       outcome,
       restore_keys: restoreKeys,
       actor: fields.actor,
