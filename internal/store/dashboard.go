@@ -19,28 +19,33 @@ type DashboardMetrics struct {
 	HealthyBaselines   int `json:"healthy_baselines"`
 }
 type DashboardAccount struct {
-	AccountID     string       `json:"account_id"`
-	EventsSeen    int          `json:"events_seen"`
-	ActiveHours   int          `json:"active_hours"`
-	BaselineReady bool         `json:"baseline_ready"`
-	OpenReviews   int          `json:"open_reviews"`
-	SuspendedKeys int          `json:"suspended_keys"`
-	KeyStatus     *string      `json:"key_status"`
-	DecisionID    *string      `json:"decision_id"`
-	EventID       *string      `json:"event_id"`
-	APIKeyID      *string      `json:"api_key_id"`
-	Action        *string      `json:"action"`
-	Score         *int         `json:"score"`
-	Enforced      *bool        `json:"enforced"`
-	Label         *string      `json:"label"`
-	ReviewStatus  *string      `json:"review_status"`
-	HoldStatus    *string      `json:"hold_status"`
-	OccurredAt    *time.Time   `json:"occurred_at"`
-	IP            *string      `json:"ip"`
-	ASN           *int         `json:"asn"`
-	ASNOrg        *string      `json:"asn_org"`
-	PrimaryDriver string       `json:"primary_driver"`
-	Hits          []signal.Hit `json:"hits"`
+	AccountID     string     `json:"account_id"`
+	EventsSeen    int        `json:"events_seen"`
+	ActiveHours   int        `json:"active_hours"`
+	BaselineReady bool       `json:"baseline_ready"`
+	OpenReviews   int        `json:"open_reviews"`
+	SuspendedKeys int        `json:"suspended_keys"`
+	KeyStatus     *string    `json:"key_status"`
+	DecisionID    *string    `json:"decision_id"`
+	EventID       *string    `json:"event_id"`
+	APIKeyID      *string    `json:"api_key_id"`
+	Action        *string    `json:"action"`
+	Score         *int       `json:"score"`
+	Enforced      *bool      `json:"enforced"`
+	Label         *string    `json:"label"`
+	ReviewStatus  *string    `json:"review_status"`
+	HoldStatus    *string    `json:"hold_status"`
+	HoldExpiresAt *time.Time `json:"hold_expires_at"`
+	// Set only while the row's key is suspended: who suspended it (auto, analyst
+	// or owner) and when.
+	KeySuspendedBy *string      `json:"key_suspended_by"`
+	KeySuspendedAt *time.Time   `json:"key_suspended_at"`
+	OccurredAt     *time.Time   `json:"occurred_at"`
+	IP             *string      `json:"ip"`
+	ASN            *int         `json:"asn"`
+	ASNOrg         *string      `json:"asn_org"`
+	PrimaryDriver  string       `json:"primary_driver"`
+	Hits           []signal.Hit `json:"hits"`
 }
 type Dashboard struct {
 	View        string             `json:"view"`
@@ -84,13 +89,15 @@ func GetDashboard(ctx context.Context, db DBTX, f DashboardFilter) (*Dashboard, 
  union all
  select 'holds', account_id, decision_id, null::text from decisions where $10 = 'holds' and hold_status = 'pending'
  union all
- select 'keys', account_id, null::uuid, api_key_id from key_status where $10 = 'keys' and status = 'suspended'
+ select 'keys', account_id, decision_id, api_key_id from key_status where $10 = 'keys' and status = 'suspended'
  ), cases as (
  select ent.kind as entity_kind, ent.account_id, coalesce(p.events_seen,0) as events_seen, coalesce(p.active_hours,0) as active_hours,
   (coalesce(p.events_seen,0) >= $1 and coalesce(p.active_hours,0) >= $2) as baseline_ready,
   coalesce(a.open_reviews,0)::int as open_reviews, coalesce(s.suspended_keys,0) as suspended_keys,
   case when coalesce(ent.key_id,d.api_key_id) is null then null else coalesce(k.status,'active') end as key_status,
-  d.decision_id::text, d.event_id, coalesce(ent.key_id,d.api_key_id) as api_key_id, d.action, d.score, d.enforced, d.label, d.review_status, d.hold_status, d.occurred_at,
+  d.decision_id::text, d.event_id, coalesce(ent.key_id,d.api_key_id) as api_key_id, d.action, d.score, d.enforced, d.label, d.review_status, d.hold_status, d.hold_expires_at, d.occurred_at,
+  case when k.status = 'suspended' then k.reason end as key_suspended_by,
+  case when k.status = 'suspended' then k.updated_at end as key_suspended_at,
   host(e.ip) as ip, e.asn, e.asn_org, coalesce(d.hits,'[]') as hits,
   coalesce(d.reason, (select h->>'name' from jsonb_array_elements(coalesce(d.hits,'[]')) h order by (h->>'points')::int desc, h->>'name' limit 1), 'No scored signals') as primary_driver,
   (coalesce(a.open_reviews,0) > 0 or coalesce(s.suspended_keys,0) > 0) as attention,
@@ -100,6 +107,9 @@ func GetDashboard(ctx context.Context, db DBTX, f DashboardFilter) (*Dashboard, 
  left join ranked a on a.account_id = ent.account_id and a.position = 1
  left join ranked d on d.account_id = ent.account_id and
   (case when ent.kind = 'holds' then d.decision_id = ent.decision_id
+   -- A key row shows the decision that suspended it. Later sends on a suspended key
+   -- are blocked as key_suspended and must not pose as the cause.
+   when ent.kind = 'keys' and ent.decision_id is not null then d.decision_id = ent.decision_id
    when ent.kind = 'keys' then d.api_key_id = ent.key_id and d.key_position = 1
    else d.position = 1 end)
  left join suspended s on s.account_id = ent.account_id

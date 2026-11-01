@@ -31,8 +31,9 @@ func dashboardDecision(t *testing.T, f *apiFixture, input dashboardDecisionInput
 		t.Fatal(err)
 	}
 	var id string
-	err := f.server.Store.Pool.QueryRow(ctx, `insert into decisions(event_id,account_id,api_key_id,occurred_at,action,enforced,score,hits,config_version,review_status,label,hold_status)
- values($1,$2,$3,$4,$5,true,$6,'[{"name":"new_asn","category":"network","points":30,"detail":"AS14061 first seen"}]','test',$7,$8,$9) returning decision_id::text`, eventID, input.account, input.key, input.at, input.action, input.score, input.review, input.label, input.hold).Scan(&id)
+	err := f.server.Store.Pool.QueryRow(ctx, `insert into decisions(event_id,account_id,api_key_id,occurred_at,action,enforced,score,hits,config_version,review_status,label,hold_status,hold_expires_at)
+ values($1,$2,$3,$4,$5,true,$6,'[{"name":"new_asn","category":"network","points":30,"detail":"AS14061 first seen"}]','test',$7,$8,$9,
+  case when $9 = 'pending' then $4::timestamptz + interval '24 hours' end) returning decision_id::text`, eventID, input.account, input.key, input.at, input.action, input.score, input.review, input.label, input.hold).Scan(&id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -408,11 +409,17 @@ func TestDashboardMetricViews(t *testing.T) {
 					decision = *item.DecisionID
 				}
 				decisions = append(decisions, decision)
-				if got.View == "holds" && (item.HoldStatus == nil || *item.HoldStatus != "pending") {
-					t.Error("held event is not pending")
+				if got.View == "holds" && (item.HoldStatus == nil || *item.HoldStatus != "pending" || item.HoldExpiresAt == nil) {
+					t.Error("held event is not pending or has no expiry")
 				}
-				if got.View == "keys" && (item.KeyStatus == nil || *item.KeyStatus != "suspended") {
-					t.Error("key is not suspended")
+				if got.View == "keys" && (item.KeyStatus == nil || *item.KeyStatus != "suspended" || item.KeySuspendedBy == nil || item.KeySuspendedAt == nil) {
+					t.Error("key is not suspended or is missing who suspended it and when")
+				}
+				if item.KeyStatus != nil && *item.KeyStatus != "suspended" && (item.KeySuspendedBy != nil || item.KeySuspendedAt != nil) {
+					t.Error("an active key reports suspension details")
+				}
+				if *item.APIKeyID == "key_orphan" && *item.KeySuspendedBy != "owner" {
+					t.Errorf("key_orphan suspended by %s, want owner", *item.KeySuspendedBy)
 				}
 			}
 			if tt.wantKeys != nil && !slices.Equal(keys, tt.wantKeys) {
@@ -823,5 +830,42 @@ func TestAnalystAuditFeed(t *testing.T) {
 				t.Errorf("historical score/action changed: %+v", stored)
 			}
 		})
+	}
+}
+
+func TestDashboardKeyAndHoldDetails(t *testing.T) {
+	f := newAPIFixture(t)
+	trigger := dashboardDecision(t, f, dashboardDecisionInput{account: "trig", key: "key_t", action: "block", score: 85, at: testNow, review: "open"})
+	// A later, higher-scoring block on the suspended key outranks the trigger by
+	// severity, but it is a consequence of the suspension, not its cause.
+	dashboardDecision(t, f, dashboardDecisionInput{account: "trig", key: "key_t", action: "block", score: 95, at: testNow.Add(time.Minute), review: "open"})
+	held := dashboardDecision(t, f, dashboardDecisionInput{account: "trig", key: "key_restored", action: "hold", score: 70, at: testNow.Add(2 * time.Minute), review: "open", hold: strp("pending")})
+	ctx := context.Background()
+	if _, err := f.server.Store.Pool.Exec(ctx, `insert into key_status(api_key_id,account_id,status,reason,decision_id) values('key_t','trig','suspended','auto',$1)`, trigger); err != nil {
+		t.Fatal(err)
+	}
+	// Suspended and then restored: the row stays, now active with reason analyst.
+	if _, err := f.server.Store.Pool.Exec(ctx, `insert into key_status(api_key_id,account_id,status,reason) values('key_restored','trig','active','analyst')`); err != nil {
+		t.Fatal(err)
+	}
+
+	keys := decodeResponse[store.Dashboard](t, f.get("/v1/dashboard?view=keys"))
+	if len(keys.Items) != 1 || keys.Items[0].DecisionID == nil || *keys.Items[0].DecisionID != trigger {
+		t.Fatalf("keys view = %+v, want key_t with its triggering decision %s", keys.Items, trigger)
+	}
+	if k := keys.Items[0]; k.KeySuspendedBy == nil || *k.KeySuspendedBy != "auto" || k.KeySuspendedAt == nil {
+		t.Errorf("key_t suspension = %v at %v, want auto with a time", k.KeySuspendedBy, k.KeySuspendedAt)
+	}
+
+	holds := decodeResponse[store.Dashboard](t, f.get("/v1/dashboard?view=holds"))
+	if len(holds.Items) != 1 || *holds.Items[0].DecisionID != held {
+		t.Fatalf("holds view = %+v, want the held decision %s", holds.Items, held)
+	}
+	h := holds.Items[0]
+	if h.HoldExpiresAt == nil || !h.HoldExpiresAt.Equal(testNow.Add(2*time.Minute+24*time.Hour)) {
+		t.Errorf("hold expires at %v, want 24 h after the held event", h.HoldExpiresAt)
+	}
+	if h.KeyStatus == nil || *h.KeyStatus != "active" || h.KeySuspendedBy != nil || h.KeySuspendedAt != nil {
+		t.Errorf("restored key = status %v, suspended by %v at %v; want active with no suspension details", h.KeyStatus, h.KeySuspendedBy, h.KeySuspendedAt)
 	}
 }

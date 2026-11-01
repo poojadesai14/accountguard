@@ -609,6 +609,11 @@ test("metric cards open matching drilldowns and retain selection through reload 
   ).toBeVisible();
   await expect(table.locator("tbody tr")).toHaveCount(1);
   await expect(table.locator("tbody tr").first()).toContainText("acc_acme");
+  // Held events show how long until they are dropped, not the account state.
+  await expect(table.locator("thead")).toContainText("Held email");
+  await expect(table.locator("tbody tr").first()).toContainText(
+    /Expires in \d+h/,
+  );
   await expect(
     page.locator(".dashboard-table-controls .count-pill"),
   ).toHaveText("1 event");
@@ -621,6 +626,18 @@ test("metric cards open matching drilldowns and retain selection through reload 
   await expect(keys).toHaveAttribute("aria-pressed", "true");
   await expect(table.locator("tbody tr")).toHaveCount(2);
   await expect(table).not.toContainText("acc_beta");
+  // Keys lead with the key and say who suspended it, so the list is not a
+  // copy of the account queue.
+  await expect(table.locator("thead")).toContainText("API key");
+  await expect(table.locator("thead")).toContainText("Suspension");
+  const firstKey = table.locator("tbody tr").first().locator("td").first();
+  await expect(firstKey.locator(".account-inspect")).toHaveText("key_high");
+  await expect(firstKey).toContainText("Account acc_high");
+  await expect(
+    table.getByRole("button", { name: /^key_high on acc_high/ }),
+  ).toBeVisible();
+  await expect(table).toContainText("Suspended automatically");
+  await expect(table).toContainText("Suspended by an analyst");
   await expect(
     page.locator(".dashboard-table-controls .count-pill"),
   ).toHaveText("2 keys");

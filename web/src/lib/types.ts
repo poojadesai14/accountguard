@@ -186,6 +186,9 @@ export type DashboardAccount = {
   label: string | null;
   review_status: string | null;
   hold_status: string | null;
+  hold_expires_at: string | null;
+  key_suspended_by: "auto" | "analyst" | "owner" | null;
+  key_suspended_at: string | null;
   occurred_at: string | null;
   ip: string | null;
   asn: number | null;

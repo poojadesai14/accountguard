@@ -4,6 +4,7 @@ import {
   accountHours,
   decisionSeries,
   explainDecision,
+  holdCountdown,
   relatedSummary,
   relatedVerdict,
 } from "../src/lib/decisions";
@@ -235,4 +236,33 @@ test("cross-account matches lead with confirmed takeovers, then stopped accounts
     "1 other account · 1 held or blocked · 1 confirmed takeover",
   );
   assert.equal(relatedSummary(indicator()), "3 other accounts");
+});
+
+test("hold countdown is measured from the snapshot and flags the last two hours", () => {
+  const now = "2026-11-01T10:00:00Z";
+  assert.deepEqual(holdCountdown("2026-11-01T15:30:00Z", now), {
+    text: "Expires in 5h",
+    urgent: false,
+  });
+  assert.deepEqual(holdCountdown("2026-11-01T11:20:00Z", now), {
+    text: "Expires in 1h 20m",
+    urgent: true,
+  });
+  assert.deepEqual(holdCountdown("2026-11-01T10:45:00Z", now), {
+    text: "Expires in 45m",
+    urgent: true,
+  });
+  assert.deepEqual(holdCountdown("2026-11-01T10:00:30Z", now), {
+    text: "Expires in 1m",
+    urgent: true,
+  });
+  assert.deepEqual(holdCountdown("2026-11-01T10:00:00Z", now), {
+    text: "Expired",
+    urgent: true,
+  });
+  assert.deepEqual(holdCountdown("2026-11-01T09:59:00Z", now), {
+    text: "Expired",
+    urgent: true,
+  });
+  assert.equal(holdCountdown(null, now), null);
 });

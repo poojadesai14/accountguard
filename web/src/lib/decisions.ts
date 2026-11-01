@@ -215,3 +215,26 @@ export function relatedVerdict(related: RelatedIndicator[]): {
     text: "Not seen on any other account in the 7 days around this event.",
   };
 }
+
+// holdCountdown says how long a held email has before it expires and is dropped,
+// measured from the snapshot time so server and browser render the same text.
+export function holdCountdown(expiresAt: string | null, now: string) {
+  if (!expiresAt) return null;
+  const ms = Date.parse(expiresAt) - Date.parse(now);
+  if (!Number.isFinite(ms)) return null;
+  if (ms <= 0) return { text: "Expired", urgent: true };
+  // Round up: a hold with 30 s left is still pending and actionable.
+  const minutes = Math.ceil(ms / 60_000);
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return {
+    text: `Expires in ${h ? `${h}h ` : ""}${h < 2 ? `${m}m` : ""}`.trim(),
+    urgent: minutes < 120,
+  };
+}
+
+export const SUSPENDED_BY: Record<"auto" | "analyst" | "owner", string> = {
+  auto: "Suspended automatically",
+  analyst: "Suspended by an analyst",
+  owner: "Suspended by the owner",
+};
