@@ -141,11 +141,29 @@ export type Thresholds = {
   block_min_categories: number;
   single_category_exempt: string[] | null;
 };
+export type RelatedAccount = {
+  account_id: string;
+  events: number;
+  worst_action: Action;
+  confirmed: boolean;
+  decision_id: string | null;
+  last_at: string;
+};
+export type RelatedIndicator = {
+  kind: "link_domain" | "reply_to_domain" | "ip";
+  value: string;
+  accounts: number;
+  events: number;
+  stopped: number;
+  confirmed: number;
+  top: RelatedAccount[];
+};
 export type DecisionDetail = {
   decision: Decision;
   event: TimelineRow;
   actions: AuditAction[] | null;
   thresholds?: Thresholds;
+  related?: RelatedIndicator[];
 };
 export type ApiResult<T> =
   | { data: T; error?: never; status?: never }

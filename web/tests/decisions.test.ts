@@ -4,8 +4,15 @@ import {
   accountHours,
   decisionSeries,
   explainDecision,
+  relatedSummary,
+  relatedVerdict,
 } from "../src/lib/decisions";
-import type { Hit, SeriesPoint, Thresholds } from "../src/lib/types";
+import type {
+  Hit,
+  RelatedIndicator,
+  SeriesPoint,
+  Thresholds,
+} from "../src/lib/types";
 
 test("separate incidents keep their counts and have zero activity between them", () => {
   const series = decisionSeries(
@@ -186,4 +193,46 @@ test("very long account ranges plot only hours with events", () => {
     point("2026-10-01T00:00:00Z"),
   ]);
   assert.equal(hours.length, 2);
+});
+
+test("cross-account matches lead with confirmed takeovers, then stopped accounts", () => {
+  const indicator = (
+    over: Partial<RelatedIndicator> = {},
+    confirmedAccounts: string[] = [],
+  ): RelatedIndicator => ({
+    kind: "link_domain",
+    value: "invoice-portal.net",
+    accounts: 3,
+    events: 9,
+    stopped: 0,
+    confirmed: confirmedAccounts.length,
+    top: confirmedAccounts.map((account_id) => ({
+      account_id,
+      events: 3,
+      worst_action: "block",
+      confirmed: true,
+      decision_id: null,
+      last_at: "2026-10-30T03:00:00Z",
+    })),
+    ...over,
+  });
+
+  assert.equal(relatedVerdict([]).tone, "neutral");
+  assert.match(relatedVerdict([]).text, /Not seen on any other account/);
+  assert.match(relatedVerdict([indicator()]).text, /legitimate infrastructure/);
+  assert.equal(relatedVerdict([indicator({ stopped: 2 })]).tone, "hold");
+
+  // The same confirmed account behind two indicators is counted once.
+  const confirmed = relatedVerdict([
+    indicator({ stopped: 1 }, ["acc_beta"]),
+    indicator({ kind: "ip", value: "203.0.113.9" }, ["acc_beta"]),
+  ]);
+  assert.equal(confirmed.tone, "block");
+  assert.match(confirmed.text, /1 account already confirmed/);
+
+  assert.equal(
+    relatedSummary(indicator({ accounts: 1, stopped: 1 }, ["acc_beta"])),
+    "1 other account · 1 held or blocked · 1 confirmed takeover",
+  );
+  assert.equal(relatedSummary(indicator()), "3 other accounts");
 });

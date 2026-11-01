@@ -49,8 +49,11 @@ Open `http://localhost:3000` and sign in with `UI_PASSWORD`.
 - `/decisions/[id]`: the score on the engine's own 0–100 scale (flag, hold and
   block lines from `GET /v1/decisions/{id}` `thresholds`), a plain-language
   reason for the action (including the one-category cap and the two-category
-  rule for block), each signal's evidence, safe event metadata, reason-required
-  analyst actions, and audit history.
+  rule for block), each signal's evidence, the same infrastructure on other
+  accounts (link domains, non-freemail Reply-To domains and source IP within 7
+  days, with how many of those accounts were held, blocked or confirmed as
+  takeovers), safe event metadata, reason-required analyst actions, and audit
+  history.
 - `/hold/[id]`: owner response demo, behind the same analyst password gate. It
   shows the link and Reply-To domains, which are what an owner can recognize.
 

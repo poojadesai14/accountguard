@@ -329,6 +329,20 @@ test("review requires a reason and records actor, action, evidence and audit his
   await expect(page.locator(".score-overview .badge")).toHaveText("HOLD");
   await expect(page.locator(".hit-row")).toHaveCount(3);
   await expect(page.locator(".hit-points").first()).toHaveText("+30pts");
+  const related = page.getByRole("region", {
+    name: "Same infrastructure on other accounts",
+  });
+  await expect(related.locator(".related-verdict")).toHaveText(
+    /2 accounts already confirmed as taken over/,
+  );
+  await expect(related.locator(".related-heading")).toContainText(
+    "7 other accounts · 5 held or blocked · 2 confirmed takeovers",
+  );
+  await expect(related.getByRole("link", { name: "acc_beta" })).toHaveAttribute(
+    "href",
+    "/accounts/acc_beta",
+  );
+  await expect(related.getByText("+5 more accounts")).toBeVisible();
   await page.getByLabel("Review outcome").selectOption("confirm_takeover");
   await page.getByLabel("Your name").fill("Pooja");
   await page.getByRole("button", { name: "Record review" }).click();

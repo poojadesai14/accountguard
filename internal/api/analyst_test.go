@@ -129,10 +129,11 @@ func (f *apiFixture) learned() profile.Profile {
 }
 
 type decisionDetail struct {
-	Decision   store.Decision        `json:"decision"`
-	Event      store.TimelineRow     `json:"event"`
-	Actions    []store.AnalystAction `json:"actions"`
-	Thresholds Thresholds            `json:"thresholds"`
+	Decision   store.Decision           `json:"decision"`
+	Event      store.TimelineRow        `json:"event"`
+	Actions    []store.AnalystAction    `json:"actions"`
+	Thresholds Thresholds               `json:"thresholds"`
+	Related    []store.RelatedIndicator `json:"related"`
 }
 
 func (f *apiFixture) detail(id string) decisionDetail {
