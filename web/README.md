@@ -44,8 +44,9 @@ Open `http://localhost:3000` and sign in with `UI_PASSWORD`.
   events are counted, not drawn). A dashed line marks the first hold or block on
   every lane, which is where a takeover lights several signals up at once.
   Below: the learned baseline, key status and restoration, then the event stream
-  (opens on the latest flag, hold or block) with its signal breakdown and
-  copyable metadata.
+  (opens on the latest flag, hold or block) beside one card for the selected
+  event: its decision, signal evidence and a link to the full review, with
+  copyable raw metadata collapsed underneath.
 - `/decisions/[id]`: the score on the engine's own 0–100 scale (flag, hold and
   block lines from `GET /v1/decisions/{id}` `thresholds`), a plain-language
   reason for the action (including the one-category cap and the two-category
@@ -57,8 +58,9 @@ Open `http://localhost:3000` and sign in with `UI_PASSWORD`.
 - `/hold/[id]`: owner response demo, behind the same analyst password gate. It
   shows the link and Reply-To domains, which are what an owner can recognize.
 
-The visual styling follows the supplied UI specification: black and charcoal
-surfaces, subtle borders, 18px page titles, 12px monospace table text, 10–11px
+The visual styling follows the supplied UI specification: near-black and
+charcoal surfaces (not pure black, which tires the eyes over long shifts),
+text greys that meet WCAG AA contrast (4.5:1) on every surface, subtle borders, 18px page titles, 12px monospace table text, 10–11px
 metadata, and 24px monospace metric values. Mobile form controls retain larger
 text and touch targets. Existing data fields and audited actions remain in use.
 Scores are colored by the action the engine took (allow green, flag yellow,

@@ -223,8 +223,10 @@ test("event selection, filters, and copy controls keep the investigation panels 
     selected.getByRole("heading", { name: "HOLD", exact: true }),
   ).toBeVisible();
   await expect(
-    selected.getByRole("table", { name: "Selected event signals" }),
-  ).toContainText("30");
+    selected.getByRole("list", { name: "Selected event signals" }),
+  ).toContainText("+30");
+  // Raw metadata starts collapsed so the signals are read first.
+  await expect(metadata).toBeHidden();
   await workspace
     .getByRole("button", { name: "Inspect evt_normal_001", exact: true })
     .click();
@@ -234,6 +236,7 @@ test("event selection, filters, and copy controls keep the investigation panels 
   await expect(
     selected.getByRole("heading", { name: "No scoring signals fired" }),
   ).toBeVisible();
+  await selected.getByText("Raw metadata", { exact: true }).click();
   await expect(
     metadata.getByRole("region", { name: "Network metadata" }),
   ).toContainText("198.51.100.20");

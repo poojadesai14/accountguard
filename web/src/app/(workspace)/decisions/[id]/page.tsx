@@ -130,13 +130,6 @@ export default async function DecisionPage({
                 No scoring signals fired for this event.
               </p>
             )}
-            <div className="score-total">
-              <span>Final score</span>
-              <strong>
-                {d.score}
-                <span> / 100</span>
-              </strong>
-            </div>
           </section>
           {related && <RelatedPanel related={related} />}
           <section className="card">

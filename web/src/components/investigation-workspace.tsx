@@ -247,62 +247,27 @@ export function InvestigationWorkspace({ rows }: { rows: TimelineRow[] }) {
                   {humanize(selected.reason)}
                 </p>
               )}
-              <div className="selected-event-footer">
-                <p className="selected-event-id mono" title={selected.event_id}>
-                  {selected.event_id}
-                </p>
-                {selected.decision_id && (
-                  <Link
-                    className="button button-secondary"
-                    href={`/decisions/${selected.decision_id}`}
-                  >
-                    Open full review <ArrowUpRight size={15} />
-                  </Link>
-                )}
-              </div>
-            </section>
-            <section className="card stream-signals">
-              <CardHeader
-                title="Signal breakdown"
-                description="Evidence and points for the selected event."
-              >
-                <span className="count-pill">
-                  {selected.hits.length} signals
-                </span>
-              </CardHeader>
               {selected.hits.length ? (
-                <div className="table-scroll">
-                  <table
-                    className="telemetry-table"
-                    aria-label="Selected event signals"
-                  >
-                    <thead>
-                      <tr>
-                        <th scope="col">Signal & evidence</th>
-                        <th scope="col">Category</th>
-                        <th scope="col">Points</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {selected.hits.map((hit) => (
-                        <tr key={hit.name}>
-                          <th scope="row">
-                            <strong>{humanize(hit.name)}</strong>
-                            <p>{hit.detail}</p>
-                          </th>
-                          <td>
-                            <span className="telemetry-category">
-                              {hit.category}
-                            </span>
-                          </td>
-                          <td className="telemetry-points mono">
-                            +{hit.points}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                <ul className="hit-list" aria-label="Selected event signals">
+                  {selected.hits.map((hit) => (
+                    <li className="hit-row" key={hit.name}>
+                      <span
+                        className={`category-marker category-${hit.category}`}
+                      />
+                      <div className="hit-evidence">
+                        <div className="hit-heading">
+                          <strong>{humanize(hit.name)}</strong>
+                          <span className="hit-category">{hit.category}</span>
+                        </div>
+                        <p>{hit.detail}</p>
+                      </div>
+                      <span className="hit-points">
+                        +{hit.points}
+                        <small>pts</small>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
               ) : (
                 <EmptyState
                   compact
@@ -317,77 +282,72 @@ export function InvestigationWorkspace({ rows }: { rows: TimelineRow[] }) {
                     : "There are no signal scores to show for this event."}
                 </EmptyState>
               )}
-              <div className="stream-signal-footer">
-                <span>
-                  {new Set(selected.hits.map((hit) => hit.category)).size}{" "}
-                  categories
-                </span>
-                <span>
-                  Final score{" "}
-                  <strong className="mono">
-                    {selected.score ?? "—"} / 100
-                  </strong>
-                </span>
+              <div className="selected-event-footer">
+                <p className="selected-event-id mono" title={selected.event_id}>
+                  {selected.event_id}
+                </p>
+                {selected.decision_id && (
+                  <Link
+                    className="button button-secondary"
+                    href={`/decisions/${selected.decision_id}`}
+                  >
+                    Open full review <ArrowUpRight size={15} />
+                  </Link>
+                )}
               </div>
+              {/* Raw fields for copying into a ticket; closed so analysts read the signals first. */}
+              <details className="raw-metadata">
+                <summary>Raw metadata</summary>
+                <aside
+                  className="metadata-blocks"
+                  aria-label="Selected event metadata"
+                >
+                  <MetadataBlock
+                    title="Event"
+                    value={{
+                      event_id: selected.event_id,
+                      type: selected.type,
+                      occurred_at: selected.occurred_at,
+                      source: selected.source,
+                      api_key_id: selected.api_key_id,
+                    }}
+                  />
+                  <MetadataBlock
+                    title="Network"
+                    value={{
+                      ip: selected.ip,
+                      asn: selected.asn,
+                      asn_org: selected.asn_org,
+                      user_agent: selected.user_agent,
+                    }}
+                  />
+                  <MetadataBlock
+                    title="Content"
+                    value={{
+                      sender_domain: selected.sender_domain,
+                      recipient_count: selected.recipient_count,
+                      link_domains: selected.link_domains,
+                      reply_to_domains: selected.reply_to_domains,
+                      body_email_domains: selected.body_email_domains,
+                    }}
+                  />
+                  <MetadataBlock
+                    title="Decision"
+                    value={{
+                      decision_id: selected.decision_id,
+                      action: selected.action,
+                      enforced: selected.enforced,
+                      score: selected.score,
+                      reason: selected.reason,
+                      hold_status: selected.hold_status,
+                      review_status: selected.review_status,
+                      label: selected.label,
+                    }}
+                  />
+                </aside>
+              </details>
             </section>
           </section>
-
-          <aside
-            className="card stream-metadata"
-            aria-label="Selected event metadata"
-            key={`metadata-${selected.event_id}`}
-          >
-            <div className="stream-panel-header">
-              <div>
-                <h2>Signal deep dive</h2>
-                <p>Stored metadata · No email content</p>
-              </div>
-            </div>
-            <div className="metadata-blocks">
-              <MetadataBlock
-                title="Event"
-                value={{
-                  event_id: selected.event_id,
-                  type: selected.type,
-                  occurred_at: selected.occurred_at,
-                  source: selected.source,
-                  api_key_id: selected.api_key_id,
-                }}
-              />
-              <MetadataBlock
-                title="Network"
-                value={{
-                  ip: selected.ip,
-                  asn: selected.asn,
-                  asn_org: selected.asn_org,
-                  user_agent: selected.user_agent,
-                }}
-              />
-              <MetadataBlock
-                title="Content"
-                value={{
-                  sender_domain: selected.sender_domain,
-                  recipient_count: selected.recipient_count,
-                  link_domains: selected.link_domains,
-                  reply_to_domains: selected.reply_to_domains,
-                  body_email_domains: selected.body_email_domains,
-                }}
-              />
-              <MetadataBlock
-                title="Decision"
-                value={{
-                  decision_id: selected.decision_id,
-                  action: selected.action,
-                  enforced: selected.enforced,
-                  score: selected.score,
-                  reason: selected.reason,
-                  hold_status: selected.hold_status,
-                  review_status: selected.review_status,
-                  label: selected.label,
-                }}
-              />
-            </div>
-          </aside>
         </>
       ) : (
         <section className="card no-selected-event">
