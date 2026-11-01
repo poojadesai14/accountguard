@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -93,4 +94,27 @@ func TestRelatedIgnoresKeySuspendedRejections(t *testing.T) {
 		}
 	}
 	t.Fatal("github.com was not reported as shared with the collateral account")
+}
+
+// The panel shows five accounts and expands to the rest, so the API lists more
+// than five; before, "+2 more accounts" had nothing behind it.
+func TestRelatedListsBeyondFive(t *testing.T) {
+	f := newAPIFixture(t)
+	for i := 0; i < 7; i++ {
+		ev := f.email(testNow.Add(-time.Duration(i+1)*time.Hour), 14061, "invoice-portal.net")
+		ev.AccountID, ev.APIKeyID, ev.Network.IP = fmt.Sprintf("other_%d", i), fmt.Sprintf("other_%d_key", i), fmt.Sprintf("198.51.100.%d", 10+i)
+		decodeResponse[DecisionResponse](t, request(t, f.handler, "POST", "/v1/events", testIngestToken, ev))
+	}
+	ev := f.email(testNow, 14061, "invoice-portal.net")
+	ev.Network.IP = "203.0.113.99"
+	d := decodeResponse[DecisionResponse](t, request(t, f.handler, "POST", "/v1/events", testIngestToken, ev))
+	for _, r := range f.detail(d.DecisionID).Related {
+		if r.Kind == "link_domain" {
+			if r.Accounts != 7 || len(r.Top) != 7 {
+				t.Errorf("link domain lists %d of %d accounts, want all 7", len(r.Top), r.Accounts)
+			}
+			return
+		}
+	}
+	t.Fatal("invoice-portal.net was not reported as shared")
 }

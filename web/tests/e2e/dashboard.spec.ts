@@ -340,13 +340,23 @@ test("review requires a reason and records actor, action, evidence and audit his
     /2 accounts already confirmed as taken over/,
   );
   await expect(related.locator(".related-heading")).toContainText(
-    "7 other accounts · 5 held or blocked · 2 confirmed takeovers",
+    "9 other accounts · 5 held or blocked · 2 confirmed takeovers",
   );
   await expect(related.getByRole("link", { name: "acc_beta" })).toHaveAttribute(
     "href",
     "/accounts/acc_beta",
   );
-  await expect(related.getByText("+5 more accounts")).toBeVisible();
+  // Five listed first; the rest open in place, then the unlisted remainder is counted.
+  const accounts = related.locator(".related-accounts a");
+  await expect(accounts).toHaveCount(5);
+  const more = related.getByRole("button", { name: "Show 2 more accounts" });
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  await more.click();
+  await expect(accounts).toHaveCount(7);
+  await expect(related.getByRole("link", { name: "acc_theta" })).toBeVisible();
+  await expect(related.getByText("+2 more accounts not listed")).toBeVisible();
+  await related.getByRole("button", { name: "Show fewer" }).click();
+  await expect(accounts).toHaveCount(5);
   await page.getByLabel("Review outcome").selectOption("confirm_takeover");
   await page.getByLabel("Your name").fill("Pooja");
   await page.getByRole("button", { name: "Record review" }).click();
