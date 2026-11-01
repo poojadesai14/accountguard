@@ -14,7 +14,7 @@ services:
     autoDeployTrigger: checksPass
     envVars:
       - key: ATO_MODE
-        value: shadow
+        value: enforce
       - key: CONFIG_PATH
         value: /app/config.yaml
       - key: DATABASE_URL

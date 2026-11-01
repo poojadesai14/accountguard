@@ -241,7 +241,8 @@ Analyst UI (Next.js) ──server-side, analyst token──▶ analyst API ─�
 - **Fail open.** If scoring or the database fails, or misses the 200 ms deadline, the answer is `allow` with
   `unscored: true`, and the error is logged. A detector outage must not stop every customer's email.
 - **Shadow mode** (`ATO_MODE=shadow`): compute and store real decisions, always answer allow, never hold or
-  suspend. Used to roll out new rules safely. The hosted demo currently runs in shadow mode.
+  suspend. Used to roll out new rules safely. The hosted demo runs in enforce mode because its traffic is
+  all synthetic, so holds and key suspensions show up; a real rollout would start in shadow.
 - **Atomic and idempotent.** One transaction per event; a repeated `event_id` returns the original decision.
   The account's profile row is locked, so concurrent events on one account can't lose baseline updates.
 - **Graduated, reversible actions.** Holds expire after 24 h and stay in the review queue. Analysts can release
