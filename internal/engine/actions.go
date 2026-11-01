@@ -32,9 +32,11 @@ func (e *ConflictError) Error() string { return e.Msg }
 
 func conflict(format string, a ...any) error { return &ConflictError{fmt.Sprintf(format, a...)} }
 
-// ApplyAction applies an analyst action and logs who did it and why.
-func (s *Service) ApplyAction(ctx context.Context, decisionID, action, actor, reason string) (*store.Decision, error) {
-	return s.apply(ctx, decisionID, action, actor, reason, false)
+// ApplyAction applies an analyst action and logs who did it and why. Marking a
+// decision with risky signals (store.Warnings) legitimate also needs confirm to
+// equal its account ID, as in ResolveAccount.
+func (s *Service) ApplyAction(ctx context.Context, decisionID, action, confirm, actor, reason string) (*store.Decision, error) {
+	return s.apply(ctx, decisionID, action, confirm, actor, reason, false)
 }
 
 // OwnerRespond records the account owner's answer to a hold: "this_was_me" or "not_me".
@@ -43,10 +45,10 @@ func (s *Service) OwnerRespond(ctx context.Context, decisionID, response string)
 	if action == "" {
 		return nil, fmt.Errorf("response must be this_was_me or not_me")
 	}
-	return s.apply(ctx, decisionID, action, "owner", "owner response: "+response, true)
+	return s.apply(ctx, decisionID, action, "", "owner", "owner response: "+response, true)
 }
 
-func (s *Service) apply(ctx context.Context, decisionID, action, actor, reason string, byOwner bool) (*store.Decision, error) {
+func (s *Service) apply(ctx context.Context, decisionID, action, confirm, actor, reason string, byOwner bool) (*store.Decision, error) {
 	err := pgx.BeginFunc(ctx, s.Store.Pool, func(tx pgx.Tx) error {
 		d, err := store.DecisionByID(ctx, tx, decisionID, true)
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -86,6 +88,13 @@ func (s *Service) apply(ctx context.Context, decisionID, action, actor, reason s
 		case ActMarkLegitimate:
 			if d.Label != nil {
 				return conflict("decision already labeled %s", *d.Label)
+			}
+			// The owner answering their own hold is the strongest evidence there is;
+			// an analyst overriding attacker-looking evidence types the account ID.
+			if !byOwner && confirm != d.AccountID {
+				if err := requireConfirm(store.Warnings([]*store.Decision{d})); err != nil {
+					return err
+				}
 			}
 			if byOwner {
 				logged = "owner_this_was_me"
@@ -294,6 +303,19 @@ func (s *Service) UnblockKey(ctx context.Context, apiKeyID, actor, reason string
 
 func ptr[T any](v T) *T { return &v }
 
+// requireConfirm refuses a legitimate call over risky signals that wasn't confirmed
+// by typing the account ID.
+func requireConfirm(warnings []store.Warning) error {
+	if len(warnings) == 0 {
+		return nil
+	}
+	names := make([]string, len(warnings))
+	for i, w := range warnings {
+		names[i] = w.Signal
+	}
+	return conflict("the evidence shows %s: type the account ID to confirm this is legitimate", strings.Join(names, ", "))
+}
+
 // Outcomes of an account-level resolution.
 const (
 	ResolveLegitimate = "legitimate"
@@ -355,12 +377,8 @@ func (s *Service) ResolveAccount(ctx context.Context, accountID string, seen []s
 			return conflict("this account's open reviews changed since you loaded it; reload and review again")
 		}
 		if outcome == ResolveLegitimate && confirm != accountID {
-			if w := store.Warnings(open); len(w) > 0 {
-				names := make([]string, len(w))
-				for i, x := range w {
-					names[i] = x.Signal
-				}
-				return conflict("these reviews show %s: type the account ID to confirm they are legitimate", strings.Join(names, ", "))
+			if err := requireConfirm(store.Warnings(open)); err != nil {
+				return err
 			}
 		}
 		// Locked before any label changes, so a takeover label written below can't hide a key.

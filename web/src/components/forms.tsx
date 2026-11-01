@@ -11,6 +11,7 @@ import {
   suspendKey,
   unblockKey,
 } from "@/app/actions";
+import { riskyHits } from "@/lib/decisions";
 import { dateTime, humanize } from "@/lib/format";
 import type { FormState } from "@/lib/review";
 import type { Decision, OpenCounts, ReviewedDecision } from "@/lib/types";
@@ -120,6 +121,15 @@ export function ReviewForm({
   );
   const labeled = Boolean(decision.label);
   const canRelease = decision.hold_status === "pending";
+  const [chosen, setChosen] = useState(
+    labeled ? "release_hold" : (initialAction ?? ""),
+  );
+  const [confirm, setConfirm] = useState("");
+  // Over attacker-looking evidence, "legitimate" needs the account ID typed.
+  const warnings =
+    chosen === "mark_legitimate" ? riskyHits(decision.hits ?? []) : [];
+  const confirmed =
+    warnings.length === 0 || confirm.trim() === decision.account_id;
   if (labeled && !canRelease)
     return (
       <div className="resolved-notice">
@@ -146,7 +156,8 @@ export function ReviewForm({
           name="action"
           id="action"
           required
-          defaultValue={labeled ? "release_hold" : (initialAction ?? "")}
+          value={chosen}
+          onChange={(event) => setChosen(event.target.value)}
         >
           {!labeled && (
             // No default: "Mark legitimate" teaches the baseline, so it must
@@ -174,10 +185,36 @@ export function ReviewForm({
         Confirming a takeover suspends the key and drops its pending holds.
         Marking legitimate teaches the baseline
         {canRelease ? " and releases this pending hold" : ""}; it does not
-        unblock the key.
+        unblock the key, and the account's other reviews stay open.
       </p>
+      {warnings.length > 0 && (
+        <div className="resolve-warning" role="note">
+          <strong>This looks like a takeover:</strong>
+          <ul>
+            {warnings.map((w) => (
+              <li key={w.name}>
+                {humanize(w.name)}: {w.detail}
+              </li>
+            ))}
+          </ul>
+          <label>
+            Type <span className="mono">{decision.account_id}</span> to confirm
+            it is legitimate
+            <input
+              name="confirm"
+              autoComplete="off"
+              spellCheck={false}
+              value={confirm}
+              onChange={(event) => setConfirm(event.target.value)}
+            />
+          </label>
+        </div>
+      )}
       <Feedback state={state} />
-      <button className="button button-primary" disabled={pending}>
+      <button
+        className="button button-primary"
+        disabled={pending || !confirmed}
+      >
         {pending ? "Recording…" : "Record review"}
         <ArrowRight size={15} />
       </button>

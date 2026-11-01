@@ -249,9 +249,10 @@ func (s *Server) thresholds() Thresholds {
 }
 
 type actionRequest struct {
-	Action string `json:"action"`
-	Actor  string `json:"actor"`
-	Reason string `json:"reason"`
+	Action  string `json:"action"`
+	Confirm string `json:"confirm"` // the account ID, to mark risky evidence legitimate
+	Actor   string `json:"actor"`
+	Reason  string `json:"reason"`
 }
 
 func (s *Server) postAction(w http.ResponseWriter, r *http.Request) {
@@ -273,7 +274,7 @@ func (s *Server) postAction(w http.ResponseWriter, r *http.Request) {
 	if !requireActor(w, req) {
 		return
 	}
-	d, err := s.Service.ApplyAction(r.Context(), id, req.Action, req.Actor, req.Reason)
+	d, err := s.Service.ApplyAction(r.Context(), id, req.Action, req.Confirm, req.Actor, req.Reason)
 	respond(w, d, err)
 }
 
