@@ -912,7 +912,7 @@ test("inspection drawer traps focus, closes with Escape, and records audited sus
     .fill("Confirmed account takeover with the owner.");
   await drawer.getByRole("button", { name: "Record review" }).click();
   await expect(drawer.locator(".dashboard-toast")).toContainText(
-    "Action recorded",
+    "Takeover confirmed: key key_prod_1 suspended",
   );
   await expect(drawer.locator(".drawer-score > strong")).toHaveText("75 / 100");
   await expect(
@@ -972,7 +972,7 @@ test("legitimate approval refreshes membership while preserving the original hol
   await page.locator(".resolve-warning input").fill("acc_acme");
   await drawer.getByRole("button", { name: "Record review" }).click();
   await expect(drawer.locator(".dashboard-toast")).toContainText(
-    "Action recorded",
+    "Nothing else is open on this account, so it moves to Healthy.",
   );
   await expect(drawer.locator(".drawer-score > strong")).toHaveText("75 / 100");
   await expect(
@@ -1151,6 +1151,7 @@ test("marking legitimate says the suspended key is the step left, and offers it"
 test("the drawer's review message names the restore, and a restore confirms in place", async ({
   page,
 }) => {
+  await page.clock.install();
   await signIn(page);
   await page
     .getByRole("button", { name: "Inspect acc_acme", exact: true })
@@ -1163,10 +1164,20 @@ test("the drawer's review message names the restore, and a restore confirms in p
     .getByLabel("Reason", { exact: true })
     .fill("Owner confirmed the new network.");
   await drawer.getByRole("button", { name: "Record review" }).click();
-  await expect(drawer.locator(".dashboard-toast")).toContainText(
+  const toast = drawer.locator(".dashboard-toast");
+  await expect(toast).toContainText(
     "Key key_prod_1 is still suspended: restore access to finish.",
   );
-  await drawer.getByRole("button", { name: "Close inspection" }).click();
+  // The pop-up links to the step left, opened and ready; it doesn't time out.
+  await page.clock.runFor(10_000);
+  await expect(toast).toBeVisible();
+  await toast.getByRole("link", { name: "Restore key_prod_1" }).click();
+  await expect(page).toHaveURL(/\/accounts\/acc_acme\?restore=key_prod_1/);
+  const opened = page.locator(".key-line").first();
+  await expect(opened.getByLabel("Your name")).toBeVisible();
+  await expect(
+    opened.getByRole("button", { name: "Restore key access" }),
+  ).toBeVisible();
 
   // Restoring on the decision page keeps its confirmation after the key turns active.
   await page.goto(`/decisions/${id}`);

@@ -30,6 +30,8 @@ import type { DashboardAccount, DashboardData } from "@/lib/types";
 import { Badge, CardHeader, EmptyState } from "./ui";
 import { DecisionChart } from "./charts";
 import { DashboardDrawer } from "./dashboard-drawer";
+import { NextSteps } from "./forms";
+import type { NextStep } from "@/lib/review";
 
 export function Dashboard({
   query,
@@ -45,6 +47,8 @@ export function Dashboard({
   const [dirty, setDirty] = useState(false);
   const [pending, setPending] = useState(false);
   const [toast, setToast] = useState("");
+  // Links to the step left; a toast with one stays until dismissed.
+  const [toastNext, setToastNext] = useState<NextStep[]>([]);
   const [navigationPending, startNavigation] = useTransition();
   const currentQuery = useRef(query);
   currentQuery.current = query;
@@ -135,10 +139,10 @@ export function Dashboard({
     };
   }, [refresh]);
   useEffect(() => {
-    if (!toast) return;
+    if (!toast || toastNext.length) return;
     const timer = setTimeout(() => setToast(""), 7000);
     return () => clearTimeout(timer);
-  }, [toast]);
+  }, [toast, toastNext]);
   function navigate(patch: Partial<DashboardQuery>) {
     if (submitting.current) return;
     if (draft.current && !window.confirm("Discard the unsaved review?")) return;
@@ -149,9 +153,10 @@ export function Dashboard({
     );
   }
   const onSuccess = useCallback(
-    (message: string) => {
+    (message: string, next?: NextStep[]) => {
       onDirty(false);
       setToast(message);
+      setToastNext(next ?? []);
       void refresh(true);
     },
     [onDirty, refresh],
@@ -991,13 +996,17 @@ export function Dashboard({
           onPending={onPending}
           onSuccess={onSuccess}
           toast={toast}
+          toastNext={toastNext}
           dismissToast={() => setToast("")}
         />
       )}
       {toast && !query.inspect && (
         <div className="dashboard-toast" role="status">
           <Check size={18} />
-          <span>{toast}</span>
+          <span>
+            {toast}
+            <NextSteps next={toastNext} />
+          </span>
           <button
             type="button"
             className="text-button"

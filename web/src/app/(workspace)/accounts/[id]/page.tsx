@@ -16,10 +16,15 @@ export default async function AccountPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ period?: string }>;
+  searchParams: Promise<{
+    period?: string;
+    restore?: string;
+    resolve?: string;
+  }>;
 }) {
   const { id } = await params;
-  const { period, query } = periodQuery((await searchParams).period);
+  const search = await searchParams;
+  const { period, query } = periodQuery(search.period);
   const accountPath = `/v1/accounts/${encodeURIComponent(id)}`;
   const [profile, series, timeline] = await Promise.all([
     analystApi<ProfileResponse>(`${accountPath}/profile`),
@@ -67,12 +72,17 @@ export default async function AccountPage({
       {/* One line per key: red with an audited restore while suspended, muted
           with an audited suspension while active. */}
       {keys.map((key) => (
-        <KeyLine key={key.api_key_id} keyStatus={key} />
+        <KeyLine
+          key={key.api_key_id}
+          keyStatus={key}
+          initiallyOpen={search.restore === key.api_key_id}
+        />
       ))}
       {open && (
         <ResolveCard
           accountId={id}
           open={open}
+          initiallyOpen={search.resolve === "1"}
           summary={[
             open.reviews &&
               `${open.reviews} open review${open.reviews === 1 ? "" : "s"}`,
