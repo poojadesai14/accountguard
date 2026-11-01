@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { ArrowUpRight, Check, Copy, Search, ShieldCheck } from "lucide-react";
-import { ACTION_LABELS } from "@/lib/decisions";
+import { ACTION_LABELS, defaultEvent } from "@/lib/decisions";
 import { dateTime, humanize, number } from "@/lib/format";
 import type { TimelineRow } from "@/lib/types";
 import { Badge, CardHeader, EmptyState } from "./ui";
@@ -85,11 +85,9 @@ export function InvestigationWorkspace({ rows }: { rows: TimelineRow[] }) {
             .includes(search),
         )),
   );
-  // Open on the latest event that needed attention, not the latest routine send.
   const selected =
     filtered.find((row) => row.event_id === selectedId) ??
-    filtered.find((row) => row.action && row.action !== "allow") ??
-    filtered[0];
+    defaultEvent(filtered);
   if (!rows.length)
     return (
       <section className="card">
@@ -153,8 +151,8 @@ export function InvestigationWorkspace({ rows }: { rows: TimelineRow[] }) {
                 <li key={row.event_id}>
                   <button
                     type="button"
-                    className={`stream-event ${selected.event_id === row.event_id ? "selected" : ""}`}
-                    aria-pressed={selected.event_id === row.event_id}
+                    className={`stream-event ${selected?.event_id === row.event_id ? "selected" : ""}`}
+                    aria-pressed={selected?.event_id === row.event_id}
                     aria-label={`Inspect ${row.event_id}`}
                     onClick={() => setSelectedId(row.event_id)}
                   >

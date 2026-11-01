@@ -168,8 +168,9 @@ export function ReviewForm({
       </p>
       <p className="form-help">
         Confirming a takeover suspends the key and drops its pending holds.
-        Marking legitimate teaches the baseline and releases this pending hold;
-        it does not unblock the key.
+        Marking legitimate teaches the baseline
+        {canRelease ? " and releases this pending hold" : ""}; it does not
+        unblock the key.
       </p>
       <Feedback state={state} />
       <button className="button button-primary" disabled={pending}>

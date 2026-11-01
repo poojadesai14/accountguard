@@ -22,7 +22,12 @@ import {
   dashboardScope,
   type DashboardQuery,
 } from "@/lib/dashboard";
-import { holdCountdown, scoreClassName, SUSPENDED_BY } from "@/lib/decisions";
+import {
+  heldEventLabel,
+  holdCountdown,
+  scoreClassName,
+  SUSPENDED_BY,
+} from "@/lib/decisions";
 import { dateTime, humanize, number, periodQuery, PERIODS } from "@/lib/format";
 import type { DashboardAccount, DashboardData } from "@/lib/types";
 import { Badge, CardHeader, EmptyState } from "./ui";
@@ -531,7 +536,7 @@ export function Dashboard({
                         {query.view === "keys"
                           ? "API key"
                           : query.view === "holds"
-                            ? "Held email"
+                            ? "Held event"
                             : "Account"}
                       </th>
                       <th>
@@ -603,7 +608,9 @@ export function Dashboard({
                                   {item.api_key_id ?? "No related API key"}
                                 </small>
                                 <small className="dashboard-event-time">
-                                  {query.view === "holds" ? "Sent " : ""}
+                                  {query.view === "holds"
+                                    ? `${heldEventLabel(item.event_type, item.change_kind)} · `
+                                    : ""}
                                   {dateTime(item.occurred_at)}
                                 </small>
                               </>
@@ -743,22 +750,26 @@ export function Dashboard({
                 title={
                   data.error
                     ? "Dashboard data is unavailable"
-                    : query.q || query.severity !== "all"
-                      ? `No ${unit} match these filters`
-                      : query.view === "holds"
-                        ? "No events on hold"
-                        : query.view === "keys"
-                          ? "No suspended API keys"
-                          : query.view === "healthy"
-                            ? "No healthy accounts yet"
-                            : query.tab === "baseline"
-                              ? "No legitimate baselines yet"
-                              : "Your review queue is clear."
+                    : tableSnapshot && tableSnapshot.total > 0
+                      ? `No ${unit} on this page`
+                      : query.q || query.severity !== "all"
+                        ? `No ${unit} match these filters`
+                        : query.view === "holds"
+                          ? "No events on hold"
+                          : query.view === "keys"
+                            ? "No suspended API keys"
+                            : query.view === "healthy"
+                              ? "No healthy accounts yet"
+                              : query.tab === "baseline"
+                                ? "No legitimate baselines yet"
+                                : "Your review queue is clear."
                 }
               >
                 {data.error
                   ? "Refresh to try again."
-                  : "Try another filter or open Accounts to inspect all stored history."}
+                  : tableSnapshot && tableSnapshot.total > 0
+                    ? "This page is past the end of the list. Go back to page 1."
+                    : "Try another filter or open Accounts to inspect all stored history."}
               </EmptyState>
             )}
             <div className="dashboard-pagination">

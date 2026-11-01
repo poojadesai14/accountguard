@@ -4,6 +4,7 @@ import { analystApi } from "@/lib/api";
 import { dateTime, number } from "@/lib/format";
 import type { DecisionDetail } from "@/lib/types";
 import { UUID } from "@/lib/review";
+import { heldEventLabel } from "@/lib/decisions";
 import { ApiError, DetailList, PageHeader } from "@/components/ui";
 import { OwnerForm } from "@/components/forms";
 
@@ -20,6 +21,48 @@ export default async function HoldPage({
   if (result.error) return <ApiError message={result.error} />;
   const { decision, event } = result.data!;
   if (!decision.hold_status) notFound();
+  const network: [string, React.ReactNode] = [
+    "Network",
+    event.asn ? (
+      `AS${event.asn} ${event.asn_org ?? ""}`
+    ) : (
+      <span className="mono" key="ip">
+        {event.ip ?? "—"}
+      </span>
+    ),
+  ];
+  // A hold can pause an account change or a data read, not only an email, so the
+  // owner sees the fields of what was actually paused.
+  const what = heldEventLabel(event.type, event.change_kind);
+  const details: [string, React.ReactNode][] =
+    event.type === "account.change"
+      ? [
+          ["Account", decision.account_id],
+          ["Change", what],
+          ["Target", event.change_target_id ?? "—"],
+          ["Time", dateTime(event.occurred_at)],
+          network,
+        ]
+      : event.type === "api.read"
+        ? [
+            ["Account", decision.account_id],
+            ["Read", event.read_resource ?? "—"],
+            ["Time", dateTime(event.occurred_at)],
+            network,
+          ]
+        : [
+            ["Account", decision.account_id],
+            ["Sender domain", event.sender_domain],
+            // The domains are what an owner can actually recognize or reject.
+            ["Links to", event.link_domains.join(", ") || "No links"],
+            [
+              "Replies go to",
+              event.reply_to_domains.join(", ") || "Your sender domain",
+            ],
+            ["Recipients", number(event.recipient_count)],
+            ["Time", dateTime(event.occurred_at)],
+            network,
+          ];
   return (
     <>
       <PageHeader
@@ -32,33 +75,20 @@ export default async function HoldPage({
         <span className="hold-symbol">
           <Pause size={25} />
         </span>
-        <h2>We paused a message for review.</h2>
+        <h2>
+          {event.type === "account.change"
+            ? `We paused an account change for review: ${what}.`
+            : event.type === "api.read"
+              ? "We paused a data read for review."
+              : "We paused a message for review."}
+        </h2>
         <p>
           Check the event details and let us know whether you recognize this
           activity.
         </p>
         <DetailList
           items={[
-            ["Account", decision.account_id],
-            ["Sender domain", event.sender_domain],
-            // The domains are what an owner can actually recognize or reject.
-            ["Links to", event.link_domains.join(", ") || "No links"],
-            [
-              "Replies go to",
-              event.reply_to_domains.join(", ") || "Your sender domain",
-            ],
-            ["Recipients", number(event.recipient_count)],
-            ["Time", dateTime(event.occurred_at)],
-            [
-              "Network",
-              event.asn ? (
-                `AS${event.asn} ${event.asn_org ?? ""}`
-              ) : (
-                <span className="mono" key="ip">
-                  {event.ip ?? "—"}
-                </span>
-              ),
-            ],
+            ...details,
             ["Hold status", decision.hold_status ?? "No hold"],
           ]}
         />

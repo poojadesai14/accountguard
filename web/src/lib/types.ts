@@ -187,6 +187,8 @@ export type DashboardAccount = {
   review_status: string | null;
   hold_status: string | null;
   hold_expires_at: string | null;
+  event_type: "email.send" | "account.change" | "api.read" | null;
+  change_kind: string | null;
   key_suspended_by: "auto" | "analyst" | "owner" | null;
   key_suspended_at: string | null;
   occurred_at: string | null;

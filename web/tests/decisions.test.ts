@@ -3,12 +3,15 @@ import test from "node:test";
 import {
   accountHours,
   decisionSeries,
+  defaultEvent,
   explainDecision,
+  heldEventLabel,
   holdCountdown,
   relatedSummary,
   relatedVerdict,
 } from "../src/lib/decisions";
 import type {
+  Action,
   Hit,
   RelatedIndicator,
   SeriesPoint,
@@ -265,4 +268,70 @@ test("hold countdown is measured from the snapshot and flags the last two hours"
     urgent: true,
   });
   assert.equal(holdCountdown(null, now), null);
+});
+
+test("held events are named by what was paused, not assumed to be emails", () => {
+  assert.equal(heldEventLabel("email.send"), "Email");
+  assert.equal(
+    heldEventLabel("account.change", "api_key.created"),
+    "New API key",
+  );
+  assert.equal(
+    heldEventLabel("account.change", "something.new"),
+    "Account change",
+  );
+  assert.equal(heldEventLabel("api.read"), "Data read");
+});
+
+test("a key_suspended block only mentions scored signals when some fired", () => {
+  const base = {
+    action: "block" as const,
+    score: 0,
+    reason: "key_suspended",
+    api_key_id: "key_1",
+  };
+  assert.match(
+    explainDecision({ ...base, hits: [] }, undefined),
+    /No signals fired on this event itself/,
+  );
+  assert.match(
+    explainDecision(
+      {
+        ...base,
+        score: 30,
+        hits: [
+          { name: "new_asn", category: "network", points: 30, detail: "x" },
+        ],
+      },
+      undefined,
+    ),
+    /still scored for the record/,
+  );
+});
+
+test("an account opens on the decision that explains it, not a follow-on rejection", () => {
+  const row = (
+    id: string,
+    action: Action | null,
+    reason: string | null = null,
+  ) => ({
+    id,
+    action,
+    reason,
+  });
+  // Newest first: two rejections after the suspension, then the scored block.
+  const rows = [
+    row("late", "block", "key_suspended"),
+    row("later", "block", "key_suspended"),
+    row("trigger", "block"),
+    row("normal", "allow"),
+  ];
+  assert.equal(defaultEvent(rows)?.id, "trigger");
+  assert.equal(
+    defaultEvent([row("only", "block", "key_suspended"), row("n", "allow")])
+      ?.id,
+    "only",
+  );
+  assert.equal(defaultEvent([row("n1", "allow"), row("n2", null)])?.id, "n1");
+  assert.equal(defaultEvent([]), undefined);
 });

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -54,4 +55,42 @@ func TestDecisionRelatedIndicators(t *testing.T) {
 	if len(byIndicator) != 3 {
 		t.Errorf("indicators = %v, want link domain, reply-to domain and IP", byIndicator)
 	}
+}
+
+// A key_suspended rejection means the key was already suspended for something
+// else; it must not make a shared domain look like campaign infrastructure.
+func TestRelatedIgnoresKeySuspendedRejections(t *testing.T) {
+	f := newAPIFixture(t)
+	ctx := context.Background()
+	if _, err := f.server.Store.Pool.Exec(ctx, `insert into events(event_id,type,occurred_at,account_id,api_key_id,source,ip,link_domains)
+		values('collateral_evt','email.send',$1,'collateral','collateral_key','api','198.51.100.9',array['github.com'])`, testNow.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	// The rejection's own signals scored 40, above the genuine allow below, so a
+	// score tie-break alone would link the "allow" row to the blocked rejection.
+	if _, err := f.server.Store.Pool.Exec(ctx, `insert into decisions(event_id,account_id,api_key_id,occurred_at,action,enforced,score,hits,config_version,reason)
+		values('collateral_evt','collateral','collateral_key',$1,'block',true,40,'[]','test','key_suspended')`, testNow.Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	var allowed string
+	if _, err := f.server.Store.Pool.Exec(ctx, `insert into events(event_id,type,occurred_at,account_id,api_key_id,source,ip,link_domains)
+		values('collateral_ok','email.send',$1,'collateral','collateral_key','api','198.51.100.9',array['github.com'])`, testNow.Add(-2*time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.server.Store.Pool.QueryRow(ctx, `insert into decisions(event_id,account_id,api_key_id,occurred_at,action,enforced,score,hits,config_version)
+		values('collateral_ok','collateral','collateral_key',$1,'allow',true,0,'[]','test') returning decision_id::text`, testNow.Add(-2*time.Hour)).Scan(&allowed); err != nil {
+		t.Fatal(err)
+	}
+	ev := f.email(testNow, 16509, "github.com")
+	ev.Network.IP = "203.0.113.77"
+	d := decodeResponse[DecisionResponse](t, request(t, f.handler, "POST", "/v1/events", testIngestToken, ev))
+	for _, r := range f.detail(d.DecisionID).Related {
+		if r.Kind == "link_domain" && r.Value == "github.com" {
+			if r.Accounts != 1 || r.Stopped != 0 || r.Top[0].WorstAction != "allow" || r.Top[0].DecisionID != allowed {
+				t.Errorf("github.com = %+v, want 1 account, 0 stopped, worst action allow linking the allowed decision %s", r, allowed)
+			}
+			return
+		}
+	}
+	t.Fatal("github.com was not reported as shared with the collateral account")
 }

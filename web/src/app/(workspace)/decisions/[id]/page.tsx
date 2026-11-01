@@ -9,6 +9,7 @@ import {
   ACTION_LABELS,
   INDICATOR_LABELS,
   explainDecision,
+  heldEventLabel,
   relatedSummary,
   relatedVerdict,
   scoreClassName,
@@ -157,6 +158,20 @@ export default async function DecisionPage({
                     </Link>,
                   ],
                   ["Event type", humanize(event.type)],
+                  ...(event.type === "account.change"
+                    ? ([
+                        [
+                          "Change",
+                          heldEventLabel(event.type, event.change_kind),
+                        ],
+                        ["Change target", event.change_target_id ?? "—"],
+                      ] as [string, string][])
+                    : event.type === "api.read"
+                      ? ([
+                          ["Read resource", event.read_resource ?? "—"],
+                          ["Read status", String(event.read_status ?? "—")],
+                        ] as [string, string][])
+                      : []),
                   ["Source", event.source],
                   [
                     "API key",
