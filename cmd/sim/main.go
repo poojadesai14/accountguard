@@ -379,41 +379,60 @@ func main() {
 	if n := unscoredRetries.Load(); n > 0 {
 		fmt.Printf("%d events missed the scoring deadline and were resent (production would allow them unscored)\n", n)
 	}
-}
-
-// unscoredRetries counts events the server failed open on and that were resent.
-var unscoredRetries atomic.Int64
-
-// post sends one event. A fail-open answer rolls the event back on the server, so
-// resending the same event_id is safe; a few retries absorb latency spikes on a
-// small hosted instance without dropping the event from the report.
-func post(c *http.Client, url, token string, ev *event.Event) response {
-	body, _ := json.Marshal(ev)
-	for attempt := 1; ; attempt++ {
-		r := postOnce(c, url, token, ev.EventID, body)
-		if !r.Unscored {
-			return r
-		}
-		if attempt == 3 {
-			fail("%s was not scored after %d attempts (server failed open) - check the server log", ev.EventID, attempt)
-		}
-		unscoredRetries.Add(1)
+	if n := networkRetries.Load(); n > 0 {
+		fmt.Printf("%d posts were resent after a dropped connection or a 5xx\n", n)
 	}
 }
 
-func postOnce(c *http.Client, url, token, eventID string, body []byte) response {
+// unscoredRetries counts events the server failed open on and that were resent;
+// networkRetries counts resends after a dropped connection or a 5xx.
+var unscoredRetries, networkRetries atomic.Int64
+
+// post sends one event. Resending is safe: event_id makes ingestion idempotent,
+// and a fail-open answer rolls the event back. A few retries absorb latency spikes
+// and dropped connections on a small hosted instance without losing the event.
+func post(c *http.Client, url, token string, ev *event.Event) response {
+	body, _ := json.Marshal(ev)
+	const attempts = 5
+	for attempt := 1; ; attempt++ {
+		r, err := postOnce(c, url, token, ev.EventID, body)
+		switch {
+		case err == nil && !r.Unscored:
+			return r
+		case attempt == attempts && err != nil:
+			fail("post %s: %v (after %d attempts)", ev.EventID, err, attempt)
+		case attempt == attempts:
+			fail("%s was not scored after %d attempts (server failed open) - check the server log", ev.EventID, attempt)
+		case err != nil:
+			networkRetries.Add(1)
+			time.Sleep(time.Duration(attempt) * time.Second)
+		default:
+			unscoredRetries.Add(1)
+		}
+	}
+}
+
+// postOnce returns an error only for failures worth retrying: a dropped or timed
+// out connection, or a 5xx. A 4xx means the event itself is wrong, so it stops the run.
+func postOnce(c *http.Client, url, token, eventID string, body []byte) (response, error) {
 	req, _ := http.NewRequest("POST", strings.TrimRight(url, "/")+"/v1/events", bytes.NewReader(body))
 	req.Header.Set("Authorization", "Bearer "+token)
 	res, err := c.Do(req)
 	if err != nil {
-		fail("post %s: %v", eventID, err)
+		return response{}, err
 	}
 	defer res.Body.Close()
+	if res.StatusCode >= 500 {
+		return response{}, fmt.Errorf("HTTP %d", res.StatusCode)
+	}
 	var r response
-	if res.StatusCode != http.StatusOK || json.NewDecoder(res.Body).Decode(&r) != nil {
+	if res.StatusCode != http.StatusOK {
 		fail("post %s: HTTP %d", eventID, res.StatusCode)
 	}
-	return r
+	if err := json.NewDecoder(res.Body).Decode(&r); err != nil {
+		return response{}, err
+	}
+	return r, nil
 }
 
 var rank = map[string]int{"allow": 0, "flag": 1, "hold": 2, "block": 3}
