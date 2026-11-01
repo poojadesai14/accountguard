@@ -169,8 +169,8 @@ func TestAnalystReadEndpoints(t *testing.T) {
 				if len(got.Series) != 1 || got.Series[0].Flag != 1 || got.Series[0].Hold != 1 || got.Series[0].Block != 1 {
 					t.Errorf("series = %+v, want one bucket with flag:1 hold:1 block:1", got.Series)
 				}
-				if len(got.ReviewQueue) != 1 || got.ReviewQueue[0].OpenCount != 3 || got.ReviewQueue[0].MaxAction != "block" {
-					t.Errorf("review queue = %+v, want one account with three open reviews and maximum block", got.ReviewQueue)
+				if len(got.ReviewQueue) != 1 || got.ReviewQueue[0].OpenCount != 2 || got.ReviewQueue[0].MaxAction != "block" {
+					t.Errorf("review queue = %+v, want one account with two open reviews (hold, block; flags are not queued) and maximum block", got.ReviewQueue)
 				}
 				if len(got.TopSignals) != 4 || got.TopSignals[0] != (store.SignalCount{Name: "new_asn", Count: 3}) {
 					t.Errorf("top signals = %+v, want four signals led by new_asn:3", got.TopSignals)
@@ -205,8 +205,8 @@ func TestAnalystReadEndpoints(t *testing.T) {
 				if len(got) != 1 {
 					t.Fatalf("accounts = %d, want 1", len(got))
 				}
-				if got[0].OpenReviews != 3 || got[0].Decisions != 63 || got[0].LastAction == nil || *got[0].LastAction != "block" {
-					t.Errorf("account = %+v, want 63 decisions, 3 open reviews, latest block", got[0])
+				if got[0].OpenReviews != 2 || got[0].Decisions != 63 || got[0].LastAction == nil || *got[0].LastAction != "block" {
+					t.Errorf("account = %+v, want 63 decisions, 2 open reviews, latest block", got[0])
 				}
 			},
 		},

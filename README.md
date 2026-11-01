@@ -205,7 +205,8 @@ Per takeover type (accounts with history):
 What the numbers say:
 - **Hold and block were never wrong** in this run, and when they fired the attacker's first email was already held.
 - **Flags come from deliberate changes,** not normal traffic (normal accounts: 0%). Every cloud migration is
-  flagged until an analyst marks it legitimate, by design. The rate is inflated by a scenario mix that is
+  flagged, by design. Flags are logged and charted but don't open a review; only hold and block (which stop
+  mail) go to the analyst queue, so a lone new network doesn't page anyone. The rate is inflated by a scenario mix that is
   mostly accounts making changes.
 - **Per-signal precision** matches the weights: `young_domain` and `lookalike_domain` 100%, `first_read` 98%,
   `new_asn` and `new_domain` 89%, `recent_account_change` 43%, `recipient_spike` 24%.

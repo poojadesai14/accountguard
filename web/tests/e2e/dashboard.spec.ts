@@ -529,7 +529,7 @@ test("dashboard filters and pagination are reflected in the URL", async ({
   await expect(
     table.getByRole("button", { name: "Inspect acc_learning", exact: true }),
   ).toHaveCount(0);
-  await page.goto("/?tab=baseline&severity=high&sort=score_desc");
+  await page.goto("/?tab=baseline&severity=high&sort=recent");
   await expect(
     table.getByRole("button", { name: "Inspect acc_good", exact: true }),
   ).toBeVisible();
@@ -540,7 +540,7 @@ test("dashboard filters and pagination are reflected in the URL", async ({
     page.getByRole("group", { name: "Filter by decision" }),
   ).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "Sort by" })).toHaveValue(
-    "score_desc",
+    "recent",
   );
   await request.post("http://127.0.0.1:3102/__many-accounts");
   await page.goto("/");
@@ -564,7 +564,7 @@ test("metric cards open matching drilldowns and retain selection through reload 
   page,
   request,
 }) => {
-  await signIn(page, "/?q=missing&severity=high&page=2&sort=score_desc");
+  await signIn(page, "/?q=missing&severity=high&page=2&sort=recent");
   const table = page.getByRole("table", { name: "Dashboard accounts" });
   const holds = page.getByRole("button", {
     name: "View events on hold",
@@ -726,7 +726,7 @@ test("failed filter changes never show cached rows under a different bucket", as
   );
 });
 
-test("highest score sorts across pages, preserves filters, and explains monitoring mode", async ({
+test("newest-first sorts across pages, preserves filters, and explains monitoring mode", async ({
   page,
   request,
 }) => {
@@ -742,8 +742,8 @@ test("highest score sorts across pages, preserves filters, and explains monitori
     page.getByText(/Database reachable|Database unverified/),
   ).toHaveCount(0);
 
-  await sort.selectOption("score_desc");
-  await expect(page).toHaveURL(/sort=score_desc/);
+  await sort.selectOption("recent");
+  await expect(page).toHaveURL(/sort=recent/);
   await expect(page).not.toHaveURL(/page=2/);
   await expect(page).toHaveURL(/q=acc_/);
   await expect(table.locator("tbody tr").first()).toContainText("acc_bulk_054");
@@ -752,10 +752,10 @@ test("highest score sorts across pages, preserves filters, and explains monitori
   ).toHaveText("99");
   await page.getByRole("button", { name: "Flag", exact: true }).click();
   await expect(page).toHaveURL(/severity=flag/);
-  await expect(sort).toHaveValue("score_desc");
+  await expect(sort).toHaveValue("recent");
   await expect(table.locator("tbody tr")).toHaveCount(2);
   await page.reload();
-  await expect(sort).toHaveValue("score_desc");
+  await expect(sort).toHaveValue("recent");
   await expect(table.locator("tbody tr").first()).toContainText("acc_bulk_054");
 
   const calls: { path: string }[] = await (
@@ -766,7 +766,7 @@ test("highest score sorts across pages, preserves filters, and explains monitori
       const url = new URL(path, "http://fixture.invalid");
       return (
         url.pathname === "/v1/dashboard" &&
-        url.searchParams.get("sort") === "score_desc" &&
+        url.searchParams.get("sort") === "recent" &&
         url.searchParams.get("severity") === "flag" &&
         url.searchParams.get("q") === "acc_"
       );
@@ -775,7 +775,7 @@ test("highest score sorts across pages, preserves filters, and explains monitori
 
   await sort.selectOption("priority");
   await expect(page).not.toHaveURL(/sort=/);
-  // The Flag filter is still applied, so priority order starts with the
+  // The Flag filter is still applied, so severity order starts with the
   // highest-scoring flag.
   await expect(table.locator("tbody tr").first()).toContainText("acc_bulk_054");
   for (const width of [320, 390, 768, 1440]) {

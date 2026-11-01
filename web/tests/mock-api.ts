@@ -301,6 +301,7 @@ function dashboardAccounts(): DashboardAccount[] {
               api_key_id: `key_bulk_${String(index).padStart(3, "0")}`,
               action: index === 54 ? "flag" : base.action,
               score: index === 54 ? 99 : base.score,
+              occurred_at: index === 54 ? hours[11] : base.occurred_at,
               decision_id: null,
             }))
           : []),
@@ -442,8 +443,11 @@ createServer(async (req, res) => {
     const priority = { allow: 0, flag: 1, hold: 2, block: 3 };
     filtered.sort((a, b) => {
       const scores = (b.score ?? -1) - (a.score ?? -1);
+      const recency =
+        Date.parse(b.occurred_at ?? "1970-01-01") -
+        Date.parse(a.occurred_at ?? "1970-01-01");
       return (
-        (url.searchParams.get("sort") === "score_desc" ? scores : 0) ||
+        (url.searchParams.get("sort") === "recent" ? recency : 0) ||
         (b.action ? priority[b.action] : -1) -
           (a.action ? priority[a.action] : -1) ||
         scores ||

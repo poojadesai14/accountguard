@@ -564,7 +564,7 @@ func TestDashboardSort(t *testing.T) {
 		wantAccounts []string
 	}{
 		{
-			name:         "default preserves decision priority before score",
+			name:         "default puts the most severe action first, then score",
 			wantTotal:    7,
 			wantAccounts: []string{"sort_block", "sort_hold_a", "sort_hold_b", "sort_hold_old", "sort_flag_high", "sort_flag_equal", "sort_unscored"},
 		},
@@ -575,32 +575,32 @@ func TestDashboardSort(t *testing.T) {
 			wantAccounts: []string{"sort_block", "sort_hold_a", "sort_hold_b", "sort_hold_old", "sort_flag_high", "sort_flag_equal", "sort_unscored"},
 		},
 		{
-			name:         "highest score wins across actions with stable ties and missing scores last",
-			query:        "sort=score_desc",
+			name:         "newest first, severity breaks ties, accounts without decisions last",
+			query:        "sort=recent",
 			wantTotal:    7,
-			wantAccounts: []string{"sort_flag_high", "sort_hold_a", "sort_hold_b", "sort_hold_old", "sort_flag_equal", "sort_block", "sort_unscored"},
+			wantAccounts: []string{"sort_flag_equal", "sort_block", "sort_hold_a", "sort_hold_b", "sort_flag_high", "sort_hold_old", "sort_unscored"},
 		},
 		{
-			name:         "highest score is selected before the first page",
-			query:        "sort=score_desc&limit=2",
+			name:         "newest is selected before the first page",
+			query:        "sort=recent&limit=2",
 			wantTotal:    7,
-			wantAccounts: []string{"sort_flag_high", "sort_hold_a"},
+			wantAccounts: []string{"sort_flag_equal", "sort_block"},
 		},
 		{
-			name:         "tied scores cross page boundaries without repeats",
-			query:        "sort=score_desc&limit=2&page=2",
+			name:         "tied times cross page boundaries without repeats",
+			query:        "sort=recent&limit=2&page=2",
 			wantTotal:    7,
-			wantAccounts: []string{"sort_hold_b", "sort_hold_old"},
+			wantAccounts: []string{"sort_hold_a", "sort_hold_b"},
 		},
 		{
 			name:         "search and severity apply before sorting and pagination",
-			query:        "sort=score_desc&q=hold_&severity=hold&limit=2&page=2",
+			query:        "sort=recent&q=hold_&severity=hold&limit=2&page=2",
 			wantTotal:    3,
 			wantAccounts: []string{"sort_hold_old"},
 		},
 		{
 			name:         "baseline sorting preserves a reviewed historical score",
-			query:        "segment=baseline&sort=score_desc",
+			query:        "segment=baseline&sort=recent",
 			wantTotal:    2,
 			wantAccounts: []string{"baseline_reviewed", "baseline_low"},
 		},

@@ -115,7 +115,7 @@ func GetDashboard(ctx context.Context, db DBTX, f DashboardFilter) (*Dashboard, 
    (select string_agg(replace(h->>'name','_',' '),' ') from jsonb_array_elements(hits) h), hits::text)),lower($3)) > 0)
  ), page as (
  select * from filtered order by
- case when $9 = 'score_desc' then score end desc nulls last,
+ case when $9 = 'recent' then occurred_at end desc nulls last,
  array_position(array['allow','flag','hold','block'],action) desc nulls last,
  score desc nulls last, occurred_at desc nulls last, account_id, api_key_id nulls last, decision_id nulls last limit $6 offset $7
  )
