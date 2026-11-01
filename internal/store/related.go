@@ -59,12 +59,12 @@ func RelatedIndicators(ctx context.Context, db DBTX, accountID string, ev *Timel
 ), per_account as (
   select h.kind, h.value, h.account_id, count(*)::int as events, max(h.occurred_at) as last_at,
     coalesce((array_agg(d.action order by array_position(array['allow','flag','hold','block'], d.action) desc nulls last, d.score desc nulls last))[1], 'allow') as worst_action,
-    (array_agg(d.decision_id::text order by array_position(array['allow','flag','hold','block'], d.action) desc nulls last, d.score desc nulls last, h.occurred_at desc))[1] as decision_id,
+    (array_agg(d.decision_id::text order by array_position(array['allow','flag','hold','block'], d.action) desc nulls last, d.rejected asc nulls first, d.score desc nulls last, h.occurred_at desc))[1] as decision_id,
     exists(select 1 from decisions c where c.account_id = h.account_id and c.label = 'takeover') as confirmed
   -- A key_suspended rejection says the key was already suspended for something
   -- else, not that this indicator was stopped; count those events as allowed.
   from hits h left join (
-    select decision_id, event_id, score,
+    select decision_id, event_id, score, reason = 'key_suspended' as rejected,
       case when reason = 'key_suspended' then 'allow' else action end as action
     from decisions
   ) d on d.event_id = h.event_id

@@ -74,17 +74,18 @@ func GetDashboard(ctx context.Context, db DBTX, f DashboardFilter) (*Dashboard, 
   count(*) filter (where review_status = 'open') over (partition by account_id) as open_reviews,
   first_value(action) over latest as latest_action,
   first_value(label) over latest as latest_label,
-  -- Follow-on key_suspended rejections rank below scored decisions: they are a
-  -- consequence of a suspension, never the evidence for it.
+  -- Follow-on key_suspended rejections rank below every scored decision, even a
+  -- resolved one: they are a consequence of a suspension, never the evidence for
+  -- it, and they stay open after an analyst has confirmed the triggering block.
   row_number() over (partition by account_id order by
-   (review_status = 'open') desc,
    (reason = 'key_suspended') asc nulls first,
+   (review_status = 'open') desc,
    case when review_status = 'open' then array_position(array['allow','flag','hold','block'],action) end desc nulls last,
    case when review_status = 'open' then score end desc nulls last,
    occurred_at desc, decided_at desc, decision_id desc) as position,
   row_number() over (partition by account_id, api_key_id order by
-   (review_status = 'open') desc,
    (reason = 'key_suspended') asc nulls first,
+   (review_status = 'open') desc,
    case when review_status = 'open' then array_position(array['allow','flag','hold','block'],action) end desc nulls last,
    case when review_status = 'open' then score end desc nulls last,
    occurred_at desc, decided_at desc, decision_id desc) as key_position
@@ -107,7 +108,7 @@ func GetDashboard(ctx context.Context, db DBTX, f DashboardFilter) (*Dashboard, 
   case when k.status = 'suspended' then k.reason end as key_suspended_by,
   case when k.status = 'suspended' then k.updated_at end as key_suspended_at,
   host(e.ip) as ip, e.asn, e.asn_org, e.type as event_type, e.change_kind, coalesce(d.hits,'[]') as hits,
-  coalesce((select h->>'name' from jsonb_array_elements(coalesce(d.hits,'[]')) h order by (h->>'points')::int desc, h->>'name' limit 1), d.reason, 'No scored signals') as primary_driver,
+  coalesce(d.reason, (select h->>'name' from jsonb_array_elements(coalesce(d.hits,'[]')) h order by (h->>'points')::int desc, h->>'name' limit 1), 'No scored signals') as primary_driver,
   (coalesce(a.open_reviews,0) > 0 or coalesce(s.suspended_keys,0) > 0) as attention,
   coalesce(a.latest_action = 'allow' or a.latest_label = 'legitimate',false) as legitimate
  from entities ent

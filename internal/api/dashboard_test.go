@@ -910,3 +910,50 @@ func TestDashboardFollowOnRejectionsAndSearch(t *testing.T) {
 		t.Errorf("account search for %% matched %d accounts, want 0 (a literal, not a wildcard)", len(accounts))
 	}
 }
+
+// After an analyst confirms the triggering block it is resolved, but the attacker's
+// later sends keep arriving as open key_suspended rejections. Those must still not
+// represent the account or the key; a row that is itself a rejection says so.
+func TestDashboardRejectionsAfterResolution(t *testing.T) {
+	f := newAPIFixture(t)
+	trigger := dashboardDecision(t, f, dashboardDecisionInput{account: "confirmed", key: "key_c1", action: "block", score: 90, at: testNow, review: "resolved", label: strp("takeover")})
+	dashboardDecision(t, f, dashboardDecisionInput{account: "confirmed", key: "key_c1", action: "block", score: 95, at: testNow.Add(time.Minute), review: "open", reason: strp("key_suspended")})
+	// Only a rejection on this account: it is shown, labelled as one.
+	dashboardDecision(t, f, dashboardDecisionInput{account: "only_rejected", key: "key_r1", action: "block", score: 40, at: testNow, review: "open", reason: strp("key_suspended")})
+	// Owner suspension (no triggering decision): the key row falls back to the
+	// key's ranking, which must also put rejections last.
+	scored := dashboardDecision(t, f, dashboardDecisionInput{account: "owner_susp", key: "key_o1", action: "block", score: 60, at: testNow, review: "open"})
+	dashboardDecision(t, f, dashboardDecisionInput{account: "owner_susp", key: "key_o1", action: "block", score: 80, at: testNow.Add(time.Minute), review: "open", reason: strp("key_suspended")})
+	ctx := context.Background()
+	for _, k := range [][2]string{{"key_c1", "confirmed"}, {"key_r1", "only_rejected"}, {"key_o1", "owner_susp"}} {
+		reason := "auto"
+		if k[0] == "key_o1" {
+			reason = "owner"
+		}
+		if _, err := f.server.Store.Pool.Exec(ctx, `insert into key_status(api_key_id,account_id,status,reason) values($1,$2,'suspended',$3)`, k[0], k[1], reason); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	rows := map[string]store.DashboardAccount{}
+	for _, item := range decodeResponse[store.Dashboard](t, f.get("/v1/dashboard")).Items {
+		rows[item.AccountID] = item
+	}
+	if r := rows["confirmed"]; r.DecisionID == nil || *r.DecisionID != trigger || r.PrimaryDriver != "new_asn" {
+		t.Errorf("confirmed account row = %v / %q, want the resolved trigger %s driven by new_asn", r.DecisionID, r.PrimaryDriver, trigger)
+	}
+	if r := rows["only_rejected"]; r.PrimaryDriver != "key_suspended" {
+		t.Errorf("rejection-only row driver = %q, want key_suspended rather than its hits", r.PrimaryDriver)
+	}
+	if got := decodeResponse[store.Dashboard](t, f.get("/v1/dashboard?q="+url.QueryEscape("key suspended"))); got.Total != 1 {
+		t.Errorf(`search "key suspended" matched %d accounts, want 1`, got.Total)
+	}
+
+	keys := map[string]store.DashboardAccount{}
+	for _, item := range decodeResponse[store.Dashboard](t, f.get("/v1/dashboard?view=keys")).Items {
+		keys[*item.APIKeyID] = item
+	}
+	if k := keys["key_o1"]; k.DecisionID == nil || *k.DecisionID != scored {
+		t.Errorf("owner-suspended key row = %v, want the scored block %s, not the later rejection", k.DecisionID, scored)
+	}
+}
