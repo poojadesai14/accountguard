@@ -96,6 +96,67 @@ test("dashboard metrics and telemetry charts use real API data and date filters"
   });
 });
 
+test("telemetry chart totals follow each selected range", async ({
+  page,
+  request,
+}) => {
+  await request.post("http://127.0.0.1:3102/__telemetry-history");
+  await signIn(page);
+  await page.getByRole("button", { name: "Telemetry", exact: true }).click();
+  for (const { range, totals } of [
+    { range: "7 days", totals: ["324", "5", "3"] },
+    { range: "24 hours", totals: ["65", "2", "1"] },
+    { range: "30 days", totals: ["354", "10", "7"] },
+    { range: "All time", totals: ["364", "17", "15"] },
+    { range: "24 hours", totals: ["65", "2", "1"] },
+  ]) {
+    await page.getByRole("button", { name: range, exact: true }).click();
+    await expect(
+      page.locator(".decision-trends .trend-heading strong"),
+    ).toHaveText(totals);
+  }
+});
+
+test("failed telemetry range changes hide old totals and recover without losing the selected range", async ({
+  page,
+  request,
+}) => {
+  await request.post("http://127.0.0.1:3102/__telemetry-history");
+  await signIn(page);
+  await page.getByRole("button", { name: "Telemetry", exact: true }).click();
+  const totals = page.locator(".decision-trends .trend-heading strong");
+  await expect(totals).toHaveText(["324", "5", "3"]);
+  await request.post("http://127.0.0.1:3102/__unavailable");
+  await page.getByRole("button", { name: "24 hours", exact: true }).click();
+  await expect(page).toHaveURL(/period=24h/);
+  await expect(
+    page.getByText("Telemetry for this range is unavailable", { exact: true }),
+  ).toBeVisible();
+  await expect(totals).toHaveCount(0);
+  await expect(
+    page.getByText("Risk drivers for this range are unavailable", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
+    page.getByText("Audit history for this range is unavailable", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await request.post("http://127.0.0.1:3102/__recover");
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(totals).toHaveText(["65", "2", "1"]);
+  await expect(
+    page.getByRole("button", { name: "24 hours", exact: true }),
+  ).toHaveClass("selected");
+  await request.post("http://127.0.0.1:3102/__unavailable");
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(
+    page.locator(".dashboard > .api-error[role=alert]"),
+  ).toContainText("Showing the last successful snapshot");
+  await expect(totals).toHaveText(["65", "2", "1"]);
+});
+
 test("account search, shared-time charts, timeline and baseline", async ({
   page,
 }) => {

@@ -1,3 +1,5 @@
+import type { Period } from "./format";
+
 export type Action = "allow" | "flag" | "hold" | "block";
 export type Hit = {
   name: string;
@@ -196,6 +198,8 @@ export type DashboardInspection = {
 };
 export type DashboardData = {
   scope: string;
+  telemetry_period: Period;
+  audit_before_id: string;
   snapshot?: DashboardSnapshot;
   database_ok: boolean;
   stats?: Stats;

@@ -68,6 +68,7 @@ let requests: { path: string; body?: Record<string, string> }[] = [];
 let empty = false;
 let unavailable = false;
 let singleBucket = false;
+let telemetryHistory = false;
 let manyAccounts = false;
 let legacyDashboard = false;
 let auditRecords: GlobalAuditAction[] = [];
@@ -100,6 +101,7 @@ function reset() {
   empty = false;
   unavailable = false;
   singleBucket = false;
+  telemetryHistory = false;
   manyAccounts = false;
   legacyDashboard = false;
   auditRecords = [];
@@ -164,6 +166,53 @@ const stats: Stats = {
     },
   ],
 };
+
+function telemetryStats(url: URL): Stats {
+  const from = url.searchParams.get("from");
+  const to = url.searchParams.get("to");
+  const interval =
+    url.searchParams.get("bucket") === "1d" ? 86_400_000 : 3_600_000;
+  const history = [
+    { hoursAgo: 1, flag: 65, hold: 2, block: 1 },
+    { hoursAgo: 48, flag: 259, hold: 3, block: 2 },
+    { hoursAgo: 240, flag: 30, hold: 5, block: 4 },
+    { hoursAgo: 960, flag: 10, hold: 7, block: 8 },
+  ];
+  const buckets = new Map<
+    number,
+    { t: string; flag: number; hold: number; block: number }
+  >();
+  for (const point of history) {
+    const time = Date.now() - point.hoursAgo * 3_600_000;
+    if ((from && time < Date.parse(from)) || (to && time >= Date.parse(to)))
+      continue;
+    const bucket = Math.floor(time / interval) * interval;
+    const previous = buckets.get(bucket);
+    buckets.set(bucket, {
+      t: new Date(bucket).toISOString(),
+      flag: (previous?.flag ?? 0) + point.flag,
+      hold: (previous?.hold ?? 0) + point.hold,
+      block: (previous?.block ?? 0) + point.block,
+    });
+  }
+  const series = [...buckets.values()].sort((a, b) => a.t.localeCompare(b.t));
+  const totals = series.reduce(
+    (sum, point) => ({
+      events: sum.events + point.flag + point.hold + point.block,
+      allow: 0,
+      flag: sum.flag + point.flag,
+      hold: sum.hold + point.hold,
+      block: sum.block + point.block,
+    }),
+    { events: 0, allow: 0, flag: 0, hold: 0, block: 0 },
+  );
+  return {
+    totals,
+    series,
+    top_signals: [{ name: "new_asn", count: totals.flag }],
+    review_queue: [],
+  };
+}
 
 function dashboardAccounts(): DashboardAccount[] {
   const base: DashboardAccount = {
@@ -279,6 +328,10 @@ createServer(async (req, res) => {
   }
   if (url.pathname === "/__single-bucket" && req.method === "POST") {
     singleBucket = true;
+    return reply(200, {});
+  }
+  if (url.pathname === "/__telemetry-history" && req.method === "POST") {
+    telemetryHistory = true;
     return reply(200, {});
   }
   if (url.pathname === "/__many-accounts" && req.method === "POST") {
@@ -452,7 +505,9 @@ createServer(async (req, res) => {
               totals: { events: 1, allow: 0, flag: 0, hold: 1, block: 0 },
               series: [{ t: hours[10], flag: 0, hold: 1, block: 0 }],
             }
-          : stats,
+          : telemetryHistory
+            ? telemetryStats(url)
+            : stats,
     );
   if (url.pathname === "/v1/accounts") {
     const accounts = ["acc_acme", "acc_beta", "acc_northstar"].filter((id) =>
