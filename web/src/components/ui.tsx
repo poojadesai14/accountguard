@@ -137,3 +137,14 @@ export function DetailList({ items }: { items: [string, React.ReactNode][] }) {
     </dl>
   );
 }
+
+// ModeChip states the engine mode once, globally. The visible text carries the
+// meaning (no tooltip needed), so it reads the same with a keyboard or on touch.
+export function ModeChip({ mode }: { mode: "shadow" | "enforce" }) {
+  return (
+    <span className={`mode-chip mode-${mode}`}>
+      <span className="mode-dot" aria-hidden="true" />
+      {mode === "shadow" ? "Shadow · not enforced" : "Enforcing"}
+    </span>
+  );
+}

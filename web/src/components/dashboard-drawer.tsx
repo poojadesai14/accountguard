@@ -1,11 +1,10 @@
 "use client";
 import Link from "next/link";
 import { useCallback, useEffect, useRef } from "react";
-import { Check, X } from "lucide-react";
-import { Badge, CardHeader, DetailList, EmptyState } from "./ui";
-import { MetadataBlock } from "./investigation-workspace";
+import { ArrowRight, Check, X } from "lucide-react";
+import { Badge, EmptyState } from "./ui";
 import { ReviewForm } from "./forms";
-import { dateTime, humanize, number } from "@/lib/format";
+import { dateTime, humanize } from "@/lib/format";
 import { scoreClassName } from "@/lib/decisions";
 import type { DashboardInspection } from "@/lib/types";
 
@@ -53,7 +52,6 @@ export function DashboardDrawer({
   }, []);
   const detail = inspection?.detail;
   const decision = detail?.decision;
-  const profile = inspection?.profile?.profile;
   const selectedKey = inspection?.profile?.key_status?.find(
     (key) => key.api_key_id === decision?.api_key_id,
   );
@@ -75,15 +73,6 @@ export function DashboardDrawer({
           <h2 id="inspection-title">{account}</h2>
         </div>
         <div className="drawer-header-actions">
-          {decision && !inspection?.error && (
-            <button
-              type="button"
-              className="button button-secondary"
-              onClick={focusReview}
-            >
-              Review event
-            </button>
-          )}
           <button
             type="button"
             className="icon-button"
@@ -94,230 +83,116 @@ export function DashboardDrawer({
           </button>
         </div>
       </div>
+      {/* A light triage view: the call, its top evidence and the review form.
+          Baseline, raw metadata and history live on the account and decision
+          pages, so there is one detailed view to keep correct. */}
       <div className="drawer-body">
         {inspection?.error ? (
           <p className="api-error" role="alert">
             {inspection.error}
           </p>
-        ) : (
+        ) : decision ? (
           <>
-            {decision ? (
-              <>
-                <section className="card">
-                  <CardHeader title="Recorded decision">
-                    <Badge action={decision.action} />
-                  </CardHeader>
-                  <div className="drawer-score">
-                    <strong className={scoreClassName(decision.action)}>
-                      {decision.score}
-                      <small> / 100</small>
-                    </strong>
-                    <span className="muted">Historical risk score</span>
-                  </div>
-                  <div className="drawer-decision-meta">
-                    <span className="mono">
-                      {decision.api_key_id ?? "No API key"}
-                    </span>
-                    {selectedKey && (
-                      <span
-                        className={
-                          selectedKey.status === "suspended"
-                            ? "suspended-state"
-                            : "muted"
-                        }
-                      >
-                        Key {selectedKey.status}
-                      </span>
-                    )}
-                    {detail?.event.ip && (
-                      <span className="mono">
-                        {detail.event.ip}
-                        {detail.event.asn ? ` · AS${detail.event.asn}` : ""}
-                      </span>
-                    )}
-                    <span>{dateTime(decision.occurred_at)}</span>
-                    <span>
-                      {decision.enforced ? "Enforced" : "Monitoring only"}
-                    </span>
-                    {decision.label && (
-                      <span>Reviewed: {humanize(decision.label)}</span>
-                    )}
-                    {decision.hold_status && (
-                      <span>Hold: {decision.hold_status}</span>
-                    )}
-                  </div>
-                  {!decision.enforced && (
-                    <p className="aside-note">
-                      This is a computed decision. The send API returned ALLOW.
-                    </p>
-                  )}
-                </section>
-                <section className="card">
-                  <CardHeader
-                    title="Signal evidence"
-                    description="Points and evidence retained for this event."
-                  />
-                  {decision.hits.length ? (
-                    <div className="hit-list">
-                      {decision.hits.map((hit) => (
-                        <div className="hit-row" key={hit.name}>
-                          <span
-                            className={`category-marker category-${hit.category}`}
-                          />
-                          <div className="hit-evidence">
-                            <div className="hit-heading">
-                              <strong>{humanize(hit.name)}</strong>
-                              <span className="hit-category">
-                                {hit.category}
-                              </span>
-                            </div>
-                            <p>{hit.detail}</p>
-                          </div>
-                          <span className="hit-points">
-                            +{hit.points}
-                            <small>pts</small>
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <EmptyState compact title="No scoring signals fired" />
-                  )}
-                </section>
-              </>
-            ) : (
-              <EmptyState compact title="No recorded decision">
-                The baseline is available below. Open the account to inspect its
-                event history.
-              </EmptyState>
-            )}
-            {decision && (
-              <section className="card" ref={reviewRef}>
-                <CardHeader title="Review this event" />
-                <ReviewForm
-                  key={decision.decision_id}
-                  decision={decision}
-                  initialAction={initialAction}
-                  onDirtyChange={onDirty}
-                  onPendingChange={onPending}
-                  onSuccess={onSuccess}
-                />
-              </section>
-            )}
-            {profile && (
-              <details className="drawer-disclosure">
-                <summary>Baseline & key state</summary>
-                <DetailList
-                  items={[
-                    ["Learned events", number(profile.events_seen)],
-                    ["Active hours", number(profile.active_hours)],
-                    ["Hourly baseline", number(profile.hourly_ewma)],
-                    [
-                      "Sender domains",
-                      profile.sender_domains.join(", ") || "—",
-                    ],
-                  ]}
-                />
-                <div className="drawer-keys">
-                  {inspection?.profile?.key_status?.length ? (
-                    inspection.profile.key_status.map((key) => (
-                      <div key={key.api_key_id}>
-                        <span className="mono">{key.api_key_id}</span>
-                        <Badge
-                          action={
-                            key.status === "suspended" ? "block" : "allow"
-                          }
-                        >
-                          {key.status}
-                        </Badge>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="muted">
-                      Observed keys have no explicit suspension.
-                    </p>
-                  )}
-                </div>
-              </details>
-            )}
-            {detail && (
-              <details className="drawer-disclosure">
-                <summary>Stored metadata</summary>
-                <div className="drawer-metadata">
-                  <MetadataBlock
-                    title="Event"
-                    value={{
-                      event_id: detail.event.event_id,
-                      type: detail.event.type,
-                      occurred_at: detail.event.occurred_at,
-                      api_key_id: detail.event.api_key_id,
-                      source: detail.event.source,
-                    }}
-                  />
-                  <MetadataBlock
-                    title="Network"
-                    value={{
-                      ip: detail.event.ip,
-                      asn: detail.event.asn,
-                      asn_org: detail.event.asn_org,
-                      user_agent: detail.event.user_agent,
-                    }}
-                  />
-                  <MetadataBlock
-                    title="Content"
-                    value={{
-                      sender_domain: detail.event.sender_domain,
-                      recipient_count: detail.event.recipient_count,
-                      link_domains: detail.event.link_domains,
-                      reply_to_domains: detail.event.reply_to_domains,
-                      body_email_domains: detail.event.body_email_domains,
-                    }}
-                  />
-                </div>
-              </details>
-            )}
-            {detail && (
-              <details
-                className="drawer-disclosure"
-                open={!!detail.actions?.length}
-              >
-                <summary>Audit history ({detail.actions?.length ?? 0})</summary>
-                {detail.actions?.length ? (
-                  <ol className="audit-history">
-                    {detail.actions.map((action) => (
-                      <li key={action.id}>
-                        <div>
-                          <strong>{humanize(action.action)}</strong>
-                          <p>{action.reason}</p>
-                          <small>
-                            {action.actor} · {dateTime(action.created_at)}
-                          </small>
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                ) : (
-                  <EmptyState compact title="No review actions yet." />
+            <div className="drawer-summary">
+              <Badge action={decision.action} />
+              <div className="drawer-score">
+                <strong className={scoreClassName(decision.action)}>
+                  {decision.score}
+                  <small> / 100</small>
+                </strong>
+              </div>
+              <p className="drawer-meta">
+                {[
+                  decision.enforced ? "Enforced" : "Shadow, not enforced",
+                  dateTime(decision.occurred_at),
+                  decision.label && `Reviewed: ${humanize(decision.label)}`,
+                ]
+                  .filter(Boolean)
+                  .map((part) => (
+                    <span key={String(part)}>{part}</span>
+                  ))}
+              </p>
+            </div>
+            {(selectedKey?.status === "suspended" ||
+              decision.hold_status === "pending") && (
+              <p className="drawer-state">
+                {selectedKey?.status === "suspended" && (
+                  <span className="suspended-state">
+                    <span className="mono">{selectedKey.api_key_id}</span>{" "}
+                    suspended
+                  </span>
                 )}
-              </details>
+                {decision.hold_status === "pending" && (
+                  <span className="held-state">
+                    Hold pending
+                    {decision.hold_expires_at
+                      ? ` · expires ${dateTime(decision.hold_expires_at)}`
+                      : ""}
+                  </span>
+                )}
+              </p>
             )}
+            {decision.hits.length ? (
+              <div className="hit-list">
+                {decision.hits.slice(0, 3).map((hit) => (
+                  <div className="hit-row" key={hit.name}>
+                    <span
+                      className={`category-marker category-${hit.category}`}
+                    />
+                    <div className="hit-evidence">
+                      <div className="hit-heading">
+                        <strong>{humanize(hit.name)}</strong>
+                        <span className="hit-category">{hit.category}</span>
+                      </div>
+                      <p>{hit.detail}</p>
+                    </div>
+                    <span className="hit-points">+{hit.points}</span>
+                  </div>
+                ))}
+                {decision.hits.length > 3 && (
+                  <Link
+                    className="text-link drawer-more"
+                    href={`/decisions/${decision.decision_id}`}
+                  >
+                    +{decision.hits.length - 3} more signals
+                  </Link>
+                )}
+              </div>
+            ) : (
+              <p className="muted">No scoring signals fired.</p>
+            )}
+            <section className="drawer-review" ref={reviewRef}>
+              <h3>Decide</h3>
+              <ReviewForm
+                key={decision.decision_id}
+                decision={decision}
+                initialAction={initialAction}
+                onDirtyChange={onDirty}
+                onPendingChange={onPending}
+                onSuccess={onSuccess}
+              />
+            </section>
           </>
+        ) : (
+          <EmptyState compact title="No recorded decision">
+            Open the account to see its baseline and event history.
+          </EmptyState>
         )}
         <div className="drawer-links">
-          <Link
-            className="button button-secondary"
-            href={`/accounts/${encodeURIComponent(account)}`}
-          >
-            Open account investigation
-          </Link>
           {decision && (
             <Link
-              className="button button-secondary"
+              className="text-link"
               href={`/decisions/${decision.decision_id}`}
             >
-              Open full decision
+              Open full decision <ArrowRight size={14} aria-hidden="true" />
             </Link>
           )}
+          <Link
+            className="text-link"
+            href={`/accounts/${encodeURIComponent(account)}`}
+          >
+            Open account <ArrowRight size={14} aria-hidden="true" />
+          </Link>
         </div>
       </div>
       {toast && (

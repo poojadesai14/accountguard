@@ -7,14 +7,11 @@ import {
   Check,
   ChevronLeft,
   ChevronRight,
-  CircleCheck,
-  Clock3,
   Flag,
   LockKeyhole,
   RefreshCw,
   Search,
   ShieldAlert,
-  ShieldCheck,
 } from "lucide-react";
 import { loadDashboard } from "@/app/dashboard-data";
 import {
@@ -34,11 +31,6 @@ import { Badge, CardHeader, EmptyState } from "./ui";
 import { DecisionChart } from "./charts";
 import { DashboardDrawer } from "./dashboard-drawer";
 
-const TABS = [
-  { id: "attention", label: "Review queue" },
-  { id: "baseline", label: "Legitimate baselines" },
-  { id: "telemetry", label: "Telemetry" },
-] as const;
 export function Dashboard({
   query,
   initial,
@@ -216,95 +208,71 @@ export function Dashboard({
     {
       tab: "attention",
       view: "accounts",
-      label: "Accounts to review",
+      label: "To review",
+      name: "accounts to review",
       value: metrics?.attention_accounts,
       description: "Accounts with open reviews or suspended keys",
       tone: "flag",
-      icon: <ShieldAlert size={18} />,
     },
     {
       tab: "attention",
       view: "holds",
-      label: "Events on hold",
+      label: "On hold",
+      name: "events on hold",
       value: metrics?.pending_quarantines,
       description: "Individual events waiting for release or review",
       tone: "hold",
-      icon: <Clock3 size={18} />,
     },
     {
       tab: "attention",
       view: "keys",
-      label: "Suspended API keys",
+      label: "Keys suspended",
+      name: "suspended API keys",
       value: metrics?.suspended_keys,
       description: "Keys with access currently suspended",
       tone: "block",
-      icon: <LockKeyhole size={18} />,
     },
     {
       tab: "baseline",
       view: "healthy",
-      label: "Healthy accounts",
+      label: "Healthy",
+      name: "healthy accounts",
       value: metrics?.healthy_baselines,
       description: "Legitimate, learned accounts with no open issues",
       tone: "allow",
-      icon: <ShieldCheck size={18} />,
     },
   ] as const;
   return (
     <div className="dashboard">
       <header className="dashboard-header">
-        <div>
-          <h1 tabIndex={-1}>Account reviews</h1>
-          <p className="page-description">
-            Investigate unusual activity and act on the evidence.
-          </p>
-        </div>
-        <div className="dashboard-header-tools">
-          <div className="dashboard-status">
-            <span
-              className={`connection-badge ${data.error ? "connection-stale" : ""}`}
-            >
-              <span className="online-dot" />
-              {data.error ? "API unavailable" : "API connected"}
-            </span>
-            {snapshot && (
-              <span
-                className="connection-badge"
-                title={
-                  snapshot.engine_mode === "shadow"
-                    ? "Shadow mode: events are scored, but holds and blocks are not enforced automatically."
-                    : "Enforcement mode: risk decisions automatically control whether events are allowed, held, or blocked."
-                }
-              >
-                {snapshot.engine_mode === "shadow"
-                  ? "Monitoring only"
-                  : "Enforcement active"}
-              </span>
-            )}
-            <button
-              type="button"
-              className="button button-secondary"
-              disabled={busy || dirty}
-              onClick={() => void refresh()}
-            >
-              <RefreshCw size={15} className={refreshing ? "spin" : ""} />
-              {refreshing ? "Refreshing…" : "Refresh"}
-            </button>
-          </div>
-          <div
-            className="dashboard-freshness"
-            title="Updates automatically every 30 seconds while visible"
-          >
-            <span
-              title={snapshot ? dateTime(snapshot.generated_at) : undefined}
-            >
-              {snapshot
-                ? `Updated ${new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" }).format(new Date(snapshot.generated_at))} UTC`
-                : "Waiting for an update"}
-            </span>
-            {(dirty || pending) && <span>Updates paused while reviewing</span>}
-          </div>
-        </div>
+        <h1 tabIndex={-1}>
+          {query.tab === "telemetry"
+            ? "Telemetry"
+            : query.tab === "baseline"
+              ? "Legitimate baselines"
+              : "Review queue"}
+        </h1>
+        {/* Refreshes on its own every 30 s while visible; this shows when, and
+            refreshes now. The API is only mentioned when it fails (alert below). */}
+        <button
+          type="button"
+          className="refresh-text"
+          disabled={busy || dirty}
+          onClick={() => void refresh()}
+          title="Updates automatically every 30 seconds while visible"
+        >
+          {dirty || pending
+            ? "Updates paused while reviewing"
+            : snapshot
+              ? `Updated ${new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" }).format(new Date(snapshot.generated_at))} UTC`
+              : "Waiting for an update"}
+          <RefreshCw
+            size={13}
+            className={refreshing ? "spin" : ""}
+            aria-hidden="true"
+          />
+          <span className="sr-only">Refresh</span>
+        </button>
       </header>
       {data.error && (
         <div className="api-error" role="alert">
@@ -322,67 +290,29 @@ export function Dashboard({
           </div>
         </div>
       )}
-      <div
-        className="stat-grid dashboard-metrics"
-        role="group"
-        aria-label="Dashboard views"
-      >
-        {metricCards.map((card) => (
-          <button
-            type="button"
-            className={`stat-card stat-${card.tone}`}
-            key={card.label}
-            title={`View all: ${card.description}`}
-            aria-label={`View ${card.label.toLowerCase()}`}
-            aria-controls="dashboard-results"
-            aria-describedby={`metric-count-${card.view}`}
-            aria-pressed={
-              query.tab === card.tab &&
-              query.view === card.view &&
-              !hasTableFilters
-            }
-            disabled={busy || card.value === undefined}
-            onClick={() =>
-              navigate({
-                tab: card.tab,
-                view: card.view,
-                q: "",
-                severity: "all",
-                page: "1",
-                before_id: "",
-                inspect: "",
-                decision: "",
-                review: "",
-              })
-            }
-          >
-            <span className="stat-label">
-              {card.label}
-              <span>{card.icon}</span>
-            </span>
-            <strong className="stat-number" id={`metric-count-${card.view}`}>
-              {card.value === undefined ? "—" : number(card.value)}
-            </strong>
-          </button>
-        ))}
-      </div>
-      <p className="dashboard-counts-note">
-        Global totals · account, event and key counts overlap.
-      </p>
-      <div className="dashboard-toolbar">
-        <nav className="dashboard-tabs" aria-label="Dashboard sections">
-          {TABS.map((tab) => (
+      {query.tab !== "telemetry" && (
+        <div className="view-counts" role="group" aria-label="Dashboard views">
+          {metricCards.map((card) => (
             <button
               type="button"
-              key={tab.id}
-              aria-current={query.tab === tab.id ? "page" : undefined}
-              className={query.tab === tab.id ? "selected" : ""}
-              disabled={busy}
+              className="view-count-button"
+              key={card.label}
+              title={`View all: ${card.description}`}
+              aria-label={`View ${card.name}`}
+              aria-controls="dashboard-results"
+              aria-describedby={`metric-count-${card.view}`}
+              aria-pressed={
+                query.tab === card.tab &&
+                query.view === card.view &&
+                !hasTableFilters
+              }
+              disabled={busy || card.value === undefined}
               onClick={() =>
                 navigate({
-                  tab: tab.id,
-                  view: "accounts",
-                  severity: tab.id === "attention" ? query.severity : "all",
+                  tab: card.tab,
+                  view: card.view,
+                  q: "",
+                  severity: "all",
                   page: "1",
                   before_id: "",
                   inspect: "",
@@ -391,11 +321,17 @@ export function Dashboard({
                 })
               }
             >
-              {tab.label}
+              <span>{card.label}</span>
+              <strong
+                className={`view-count count-${card.tone}`}
+                id={`metric-count-${card.view}`}
+              >
+                {card.value === undefined ? "—" : number(card.value)}
+              </strong>
             </button>
           ))}
-        </nav>
-      </div>
+        </div>
+      )}
       {query.tab !== "telemetry" ? (
         <>
           <div className="dashboard-filters">
@@ -445,13 +381,6 @@ export function Dashboard({
                   onChange={(event) => setSearch(event.target.value)}
                 />
               </div>
-              <button
-                type="submit"
-                className="button button-secondary"
-                disabled={busy}
-              >
-                Search
-              </button>
               {(query.q || query.severity !== "all") && (
                 <button
                   type="button"
@@ -535,11 +464,10 @@ export function Dashboard({
               <div className="table-scroll">
                 <table aria-label="Dashboard accounts">
                   <colgroup>
-                    <col style={{ width: "23%" }} />
+                    <col style={{ width: "25%" }} />
                     <col style={{ width: "17%" }} />
-                    <col style={{ width: "30%" }} />
-                    <col style={{ width: "19%" }} />
-                    <col style={{ width: "11%" }} />
+                    <col style={{ width: "34%" }} />
+                    <col style={{ width: "24%" }} />
                   </colgroup>
                   <thead>
                     <tr>
@@ -563,9 +491,6 @@ export function Dashboard({
                             ? "Hold"
                             : "Current state"}
                       </th>
-                      <th>
-                        <span className="sr-only">Review</span>
-                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -581,6 +506,8 @@ export function Dashboard({
                             )
                           : null;
                       return (
+                        // The whole row opens the drawer for the mouse; the
+                        // first-cell button is the keyboard and screen-reader target.
                         <tr
                           key={
                             query.view === "holds"
@@ -589,6 +516,14 @@ export function Dashboard({
                                 ? item.api_key_id
                                 : item.account_id
                           }
+                          className="clickable-row"
+                          onClick={(event) => {
+                            if (
+                              (event.target as HTMLElement).closest("button, a")
+                            )
+                              return;
+                            inspect(item);
+                          }}
                         >
                           <td className="dashboard-account">
                             {query.view === "keys" ? (
@@ -717,7 +652,7 @@ export function Dashboard({
                                   </span>
                                 )
                               )}
-                              {item.open_reviews > 0 && (
+                              {item.open_reviews > 1 && (
                                 <span>
                                   {item.open_reviews}{" "}
                                   {keyedRows ? "account review" : "open review"}
@@ -737,19 +672,6 @@ export function Dashboard({
                                     : "Learning baseline"}
                                 </span>
                               )}
-                            </div>
-                          </td>
-                          <td className="dashboard-row-action">
-                            <div className="row-actions">
-                              <button
-                                type="button"
-                                className="button button-secondary"
-                                onClick={() => inspect(item)}
-                              >
-                                {query.tab === "baseline" || !item.decision_id
-                                  ? "View"
-                                  : "Review"}
-                              </button>
                             </div>
                           </td>
                         </tr>
@@ -1013,11 +935,6 @@ export function Dashboard({
           </section>
         </>
       )}
-      <p className="privacy-line">
-        <CircleCheck size={14} />
-        Stored metadata only. Email bodies, subjects, and recipient addresses
-        are never displayed.
-      </p>
       {query.inspect && (
         <DashboardDrawer
           key={query.inspect + query.decision + query.review}

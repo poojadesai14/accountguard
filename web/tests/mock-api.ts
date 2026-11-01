@@ -365,6 +365,18 @@ createServer(async (req, res) => {
     res.end(JSON.stringify(value));
   };
   if (url.pathname === "/healthz") return reply(200, { ok: true });
+  if (url.pathname === "/v1/config")
+    return reply(200, {
+      mode: "shadow",
+      config_version: "test",
+      thresholds: {
+        flag: 30,
+        hold: 60,
+        block: 80,
+        block_min_categories: 2,
+        single_category_exempt: ["content"],
+      },
+    });
   if (url.pathname === "/__reset" && req.method === "POST") {
     reset();
     return reply(200, {});
