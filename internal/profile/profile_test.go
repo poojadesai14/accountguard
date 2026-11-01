@@ -254,3 +254,33 @@ func TestTrimKnownDomains(t *testing.T) {
 		})
 	}
 }
+
+// Unlearn takes back exactly what Learn counted for one event, leaving the owner's
+// own history for the same key, network and domains in place.
+func TestUnlearnReversesLearnedCounts(t *testing.T) {
+	cfg := testConfig(t)
+	p := New("a", time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC))
+	owner, ownerF := send(time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC), 5)
+	p.Learn(owner, ownerF, cfg)
+	attack := &event.Event{Type: event.TypeEmailSend, OccurredAt: owner.OccurredAt.Add(time.Minute), APIKeyID: "k1", Network: event.Network{ASN: 7922}}
+	attackF := event.Features{RecipientCount: 20, LinkDomains: []string{"docs-share-portal.com", "stripe.com"}}
+	p.Learn(attack, attackF, cfg)
+	p.Unlearn(attack, attackF)
+
+	if p.EventsSeen != 1 {
+		t.Errorf("events seen = %d, want 1", p.EventsSeen)
+	}
+	if !reflect.DeepEqual(p.KeyASNs, map[string]map[string]int{"k1": {"16509": 1}}) {
+		t.Errorf("key ASNs = %v, want only the owner's network", p.KeyASNs)
+	}
+	if !reflect.DeepEqual(p.KnownDomains, map[string]int{"stripe.com": 1}) {
+		t.Errorf("known domains = %v, want only the owner's stripe.com", p.KnownDomains)
+	}
+	// Unlearning twice, or an event that was never learned, never goes negative.
+	p.Unlearn(attack, attackF)
+	p.Unlearn(owner, ownerF)
+	p.Unlearn(owner, ownerF)
+	if p.EventsSeen != 0 || len(p.KeyASNs) != 0 || len(p.KnownDomains) != 0 {
+		t.Errorf("after unlearning everything: %d events, %v, %v", p.EventsSeen, p.KeyASNs, p.KnownDomains)
+	}
+}

@@ -69,11 +69,28 @@ export type OpenCounts = {
   restorable_keys: number;
   /** The open reviews; a resolution is refused if they changed since the page loaded. */
   decision_ids: string[];
+  /** Risky signals on the open reviews: "legitimate" then needs the account ID typed. */
+  warnings?: { signal: string; detail: string }[];
+};
+/** A non-allow decision marked legitimate: what a correction to takeover can act on. */
+export type ReviewedDecision = {
+  decision_id: string;
+  occurred_at: string;
+  action: Action;
+  score: number;
+  api_key_id: string | null;
+  primary_driver: string;
+};
+export type Correction = {
+  corrected: number;
+  holds_dropped: number;
+  keys_suspended: string[];
 };
 export type ProfileResponse = {
   profile: Profile;
   key_status: KeyStatus[] | null;
   open?: OpenCounts;
+  legitimate_decisions?: ReviewedDecision[];
 };
 export type AccountResolution = {
   outcome: "legitimate" | "takeover";

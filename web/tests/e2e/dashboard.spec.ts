@@ -1211,7 +1211,7 @@ test("an account's incident resolves in one audited step, keys only on request",
   page,
 }) => {
   await signIn(page, "/accounts/acc_acme");
-  const card = page.locator(".resolve-card");
+  const card = page.locator(".resolve-card", { hasText: "Resolve account" });
   await expect(card.locator("summary")).toContainText(
     "1 open review · 1 held email · 1 suspended key",
   );
@@ -1235,14 +1235,16 @@ test("an account's incident resolves in one audited step, keys only on request",
     "key_prod_1 suspended",
   );
   await page.reload();
-  await expect(page.locator(".resolve-card")).toHaveCount(0);
+  await expect(
+    page.locator(".resolve-card", { hasText: "Resolve account" }),
+  ).toHaveCount(0);
 });
 
 test("the restore box brings back only the key the resolved reviews suspended", async ({
   page,
 }) => {
   await signIn(page, "/accounts/acc_acme");
-  const card = page.locator(".resolve-card");
+  const card = page.locator(".resolve-card", { hasText: "Resolve account" });
   await card.locator("summary").click();
   await card.getByLabel("Legitimate").check();
   await card.getByLabel("Also restore 1 automatically suspended key").check();
@@ -1251,7 +1253,9 @@ test("the restore box brings back only the key the resolved reviews suspended", 
   await card.getByRole("button", { name: "Resolve account" }).click();
   await expect(card.getByRole("status")).toContainText("restored key_prod_1");
   await page.reload();
-  await expect(page.locator(".resolve-card")).toHaveCount(0);
+  await expect(
+    page.locator(".resolve-card", { hasText: "Resolve account" }),
+  ).toHaveCount(0);
   await expect(page.locator(".key-line").first()).toContainText(
     "key_prod_1 active",
   );
@@ -1262,7 +1266,7 @@ test("a resolution is refused when the account's reviews changed since it loaded
   request,
 }) => {
   await signIn(page, "/accounts/acc_acme");
-  const card = page.locator(".resolve-card");
+  const card = page.locator(".resolve-card", { hasText: "Resolve account" });
   await card.locator("summary").click();
   await card.getByLabel("Takeover").check();
   await expect(card).toContainText("drops 1 held email");
@@ -1279,4 +1283,83 @@ test("a resolution is refused when the account's reviews changed since it loaded
   await expect(card.getByRole("alert")).toContainText(
     "open reviews changed since you loaded it",
   );
+});
+
+test("legitimate over takeover evidence needs the account typed, and a wrong call can be corrected", async ({
+  page,
+  request,
+}) => {
+  await request.post("http://127.0.0.1:3102/__risky-review");
+  await signIn(page, "/accounts/acc_acme");
+  const card = page
+    .locator(".resolve-card", { hasText: "Resolve account" })
+    .first();
+  await card.locator("summary").click();
+  await card.getByLabel("Legitimate").check();
+  const warning = card.locator(".resolve-warning");
+  await expect(warning).toContainText("young domain");
+  await expect(warning).toContainText("docs-share-portal.com");
+  const submit = card.getByRole("button", { name: "Resolve account" });
+  await card.getByLabel("Also restore 1 automatically suspended key").check();
+  await card.getByLabel("Your name").fill("Pooja");
+  await card.getByLabel("Reason", { exact: true }).fill("Owner says fine.");
+  await expect(submit).toBeDisabled();
+  const confirm = warning.getByLabel(/to confirm they are legitimate/);
+  await confirm.fill("acc_other");
+  await expect(submit).toBeDisabled();
+  await confirm.fill("acc_acme");
+  await submit.click();
+  await expect(card.getByRole("status")).toContainText("restored key_prod_1");
+
+  // The wrong call is corrected: relabelled takeover and the key locked again.
+  await page.reload();
+  await expect(page.locator(".key-line").first()).toContainText(
+    "key_prod_1 active",
+  );
+  const correction = page.locator(".resolve-card", {
+    hasText: "Correct to takeover",
+  });
+  await expect(correction.locator("summary")).toContainText(
+    "1 decision marked legitimate",
+  );
+  await correction.locator("summary").click();
+  await expect(correction.getByRole("checkbox")).toBeChecked();
+  await correction.getByLabel("Your name").fill("Pooja");
+  await correction
+    .getByLabel("Reason", { exact: true })
+    .fill("Phishing domain, not the owner.");
+  await correction.getByRole("button", { name: "Correct to takeover" }).click();
+  await expect(correction.getByRole("status")).toContainText(
+    "Corrected: 1 decision relabelled takeover, suspended key_prod_1",
+  );
+  await page.reload();
+  await expect(page.locator(".key-line").first()).toContainText(
+    "key_prod_1 suspended",
+  );
+  await expect(
+    page.locator(".resolve-card", { hasText: "Correct to takeover" }),
+  ).toHaveCount(0);
+});
+
+test("an active key can be suspended directly from its key line", async ({
+  page,
+}) => {
+  await signIn(page, "/accounts/acc_acme");
+  // Restore first, so the key is active.
+  const keyLine = page.locator(".key-line").first();
+  await keyLine.getByText("Restore access", { exact: true }).click();
+  await keyLine.getByLabel("Your name").fill("Pooja");
+  await keyLine.getByLabel("Reason", { exact: true }).fill("Rotated.");
+  await keyLine.getByRole("button", { name: "Restore key access" }).click();
+  await expect(keyLine).toContainText("key_prod_1 active");
+  await page.reload();
+
+  await keyLine.getByText("Suspend key", { exact: true }).click();
+  await keyLine.getByLabel("Your name").fill("Pooja");
+  await keyLine
+    .getByLabel("Reason", { exact: true })
+    .fill("Resolved as legitimate by mistake.");
+  await keyLine.getByRole("button", { name: "Suspend key" }).click();
+  await expect(keyLine.getByRole("status")).toContainText("Key suspended");
+  await expect(keyLine).toContainText("key_prod_1 suspended");
 });

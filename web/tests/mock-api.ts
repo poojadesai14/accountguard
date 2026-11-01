@@ -65,6 +65,7 @@ const event: TimelineRow = {
 let detail: DecisionDetail;
 let suspended = true;
 let newerReview = false; // a review the page hasn't seen yet
+let riskyReview = false; // the open review carries a young domain
 let requests: { path: string; body?: Record<string, string> }[] = [];
 let empty = false;
 let unavailable = false;
@@ -136,6 +137,7 @@ function reset() {
   };
   suspended = true;
   newerReview = false;
+  riskyReview = false;
   requests = [];
   empty = false;
   unavailable = false;
@@ -387,6 +389,10 @@ createServer(async (req, res) => {
     reset();
     return reply(200, {});
   }
+  if (url.pathname === "/__risky-review" && req.method === "POST") {
+    riskyReview = true;
+    return reply(200, {});
+  }
   if (url.pathname === "/__newer-review" && req.method === "POST") {
     newerReview = true;
     return reply(200, {});
@@ -434,11 +440,44 @@ createServer(async (req, res) => {
       account_id: "acc_acme",
       api_key_id: "key_prod_1",
       decision_id: decisionId,
-      action: body.action ?? "unblock_key",
+      action:
+        body.action ??
+        (url.pathname.endsWith("/suspend")
+          ? "suspend_key"
+          : url.pathname.endsWith("/correct")
+            ? "correct_to_takeover"
+            : "unblock_key"),
       actor: body.actor ?? "owner",
       reason: body.reason ?? "Owner response",
       created_at: new Date().toISOString(),
     });
+    if (url.pathname.endsWith("/suspend")) {
+      if (suspended) return reply(409, { error: "key is already suspended" });
+      suspended = true;
+      const dropped = detail.decision.hold_status === "pending" ? 1 : 0;
+      if (dropped) detail.decision.hold_status = "dropped";
+      return reply(200, {
+        api_key_id: "key_prod_1",
+        status: "suspended",
+        holds_dropped: dropped,
+      });
+    }
+    if (url.pathname.endsWith("/correct")) {
+      if (
+        detail.decision.label !== "legitimate" ||
+        JSON.stringify(body.decision_ids) !== JSON.stringify([decisionId])
+      )
+        return reply(409, {
+          error: "decision is not marked legitimate; reload and try again",
+        });
+      detail.decision.label = "takeover";
+      suspended = true;
+      return reply(200, {
+        corrected: 1,
+        holds_dropped: 0,
+        keys_suspended: ["key_prod_1"],
+      });
+    }
     if (url.pathname.endsWith("/unblock")) {
       suspended = false;
       return reply(200, { status: "active" });
@@ -453,6 +492,15 @@ createServer(async (req, res) => {
         });
       if (!open)
         return reply(409, { error: "nothing to resolve on this account" });
+      if (
+        riskyReview &&
+        body.outcome === "legitimate" &&
+        body.confirm !== "acc_acme"
+      )
+        return reply(409, {
+          error:
+            "these reviews show young_domain: type the account ID to confirm they are legitimate",
+        });
       const openIds = newerReview ? [decisionId, "newer"] : [decisionId];
       if (JSON.stringify(body.decision_ids) !== JSON.stringify(openIds))
         return reply(409, {
@@ -661,6 +709,19 @@ createServer(async (req, res) => {
         read_resources: ["domains"],
         last_change_at: hours[8],
       },
+      legitimate_decisions:
+        detail.decision.label === "legitimate"
+          ? [
+              {
+                decision_id: decisionId,
+                occurred_at: hours[10],
+                action: "hold",
+                score: 75,
+                api_key_id: "key_prod_1",
+                primary_driver: "new_asn",
+              },
+            ]
+          : [],
       open: {
         reviews: detail.decision.review_status === "open" ? 1 : 0,
         pending_holds: detail.decision.hold_status === "pending" ? 1 : 0,
@@ -673,6 +734,15 @@ createServer(async (req, res) => {
             : 0,
         decision_ids:
           detail.decision.review_status === "open" ? [decisionId] : [],
+        warnings:
+          riskyReview && detail.decision.review_status === "open"
+            ? [
+                {
+                  signal: "young_domain",
+                  detail: "docs-share-portal.com registered 6 days ago",
+                },
+              ]
+            : [],
       },
       key_status: [
         {

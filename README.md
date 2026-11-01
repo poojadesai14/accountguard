@@ -290,6 +290,11 @@ Analyst UI (Next.js) ──server-side, analyst token──▶ analyst API ─�
   takeover (those keys are restored one at a time, on purpose). The request names the reviews the analyst saw; if
   a new one arrived since (an attacker's next send), nothing changes and the analyst reloads. Each change
   is its own audit row. Per-event review stays for one-off calls.
+- **Wrong calls can be taken back.** "Legitimate" over a young or lookalike domain, a recipient spike or
+  a freemail Reply-To needs the account ID typed (the API enforces it). If it was still wrong, **Correct to
+  takeover** relabels the chosen decisions, removes them from the baseline (the key's network, the domains,
+  the event count), suspends their keys and drops held emails; released emails stay sent, and the audit
+  log says who corrected what. Any active key can also be **suspended** directly from its key line.
 - **Production version: a case object.** A stored case would group the trigger, its rejections and the
   holds from the same window, so an analyst could resolve one incident on an account that has several.
   Restoring a key after a takeover would require the owner to rotate it, not an analyst click.

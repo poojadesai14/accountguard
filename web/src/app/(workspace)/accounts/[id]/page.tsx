@@ -6,7 +6,8 @@ import { ApiError, CardHeader, DetailList, PageHeader } from "@/components/ui";
 import { AccountCharts } from "@/components/charts";
 import { PeriodFilter } from "@/components/period-filter";
 import { KeyLine } from "@/components/key-line";
-import { ResolveCard } from "@/components/forms";
+import { CorrectionCard, ResolveCard } from "@/components/forms";
+import type { KeyStatus } from "@/lib/types";
 import { InvestigationWorkspace } from "@/components/investigation-workspace";
 
 export const metadata = { title: "Account investigation" };
@@ -41,15 +42,30 @@ export default async function AccountPage({
       </>
     );
   const p = profile.data!.profile;
-  const keys = profile.data!.key_status ?? [];
+  const statuses = profile.data!.key_status ?? [];
+  // Every key the account has sent with: its status row if it has one, otherwise
+  // active (never suspended). Suspending is available on each.
+  const keys: KeyStatus[] = [
+    ...statuses,
+    ...Object.keys(p.key_asns ?? {})
+      .filter((k) => !statuses.some((s) => s.api_key_id === k))
+      .sort()
+      .map((k) => ({
+        api_key_id: k,
+        account_id: id,
+        status: "active" as const,
+        reason: "",
+        decision_id: null,
+        updated_at: "",
+      })),
+  ];
   const open = profile.data!.open;
   const rows = [...(timeline.data ?? [])].reverse();
   return (
     <>
       {header}
-      {/* Key state is one line per key that has ever been suspended: red with an
-          audited restore while suspended, muted once restored. Keys that never
-          had a problem need no line. */}
+      {/* One line per key: red with an audited restore while suspended, muted
+          with an audited suspension while active. */}
       {keys.map((key) => (
         <KeyLine key={key.api_key_id} keyStatus={key} />
       ))}
@@ -69,6 +85,10 @@ export default async function AccountPage({
             .join(" · ")}
         />
       )}
+      <CorrectionCard
+        accountId={id}
+        decisions={profile.data!.legitimate_decisions ?? []}
+      />
       <div className="investigation-grid">
         <section className="card">
           <CardHeader
