@@ -10,6 +10,7 @@ import {
   INDICATOR_LABELS,
   explainDecision,
   heldEventLabel,
+  restoreIsLastStep,
   relatedSummary,
   relatedVerdict,
   scoreClassName,
@@ -23,6 +24,7 @@ import {
 } from "@/components/ui";
 import { ReviewForm } from "@/components/forms";
 import { RelatedAccounts } from "@/components/related-accounts";
+import { KeyLine } from "@/components/key-line";
 
 export const metadata = { title: "Decision review" };
 export default async function DecisionPage({
@@ -41,7 +43,14 @@ export default async function DecisionPage({
         <ApiError message={result.error} />
       </>
     );
-  const { decision: d, event, actions, thresholds, related } = result.data!;
+  const {
+    decision: d,
+    event,
+    actions,
+    thresholds,
+    related,
+    key,
+  } = result.data!;
   const explanation = explainDecision(d, thresholds);
   const accountHref = `/accounts/${encodeURIComponent(d.account_id)}`;
   // One status line instead of a separate status card; each fact once.
@@ -89,6 +98,18 @@ export default async function DecisionPage({
           </p>
         </div>
       </header>
+      {/* Any key that has been suspended keeps its line, so a restore made
+          here stays visible with its confirmation. */}
+      {key && (
+        <KeyLine
+          keyStatus={key}
+          hint={
+            restoreIsLastStep(d, key)
+              ? "Marked legitimate; restore access to finish."
+              : undefined
+          }
+        />
+      )}
       {!d.enforced && (
         <p className="mode-banner">
           Shadow mode: computed {ACTION_LABELS[d.action]}. The API returned

@@ -271,6 +271,17 @@ Analyst UI (Next.js) ──server-side, analyst token──▶ analyst API ─�
 - **Graduated, reversible actions.** Holds expire after 24 h and stay in the review queue. Analysts can release
   holds, mark events legitimate, and restore suspended keys. Every action needs a name and a reason and is
   audited.
+- **One incident, not a review per rejected send.** Once a key is suspended, every later send on it is
+  rejected (`key_suspended`) without opening a review: the suspension and the decision that caused it are
+  the case. Marking that decision legitimate does not restore the key (a wrong click would let an attacker
+  send again), so the decision page shows the key's state with an inline, audited "Restore access" as the
+  step left. The account leaves the queue once the key is restored and nothing else is open, judged by its
+  latest *scored* decision rather than a rejection.
+- **Production version of reviews: an account-level case.** Reviews here are per event, while analysts
+  reason per account. A case would group the triggering decision, its rejections and the holds from the
+  same window, and close them with one outcome: *legitimate* (teach the baseline, release the holds,
+  offer key restore) or *takeover* (drop the holds, keep the key suspended). Restoring a key after a
+  takeover would require the owner to rotate it, not an analyst click.
 - **Expired holds are dropped, not sent** (`hold.expire_action: drop`). A held email that nobody vouched for
   in 24 h is more likely phishing than urgent, and a phishing email delivered a day late still does harm.
   The cost is a legitimate email lost when the owner doesn't answer, so the owner is told it failed, and

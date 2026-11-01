@@ -5,7 +5,7 @@ import type { AccountSeries, ProfileResponse, TimelineRow } from "@/lib/types";
 import { ApiError, CardHeader, DetailList, PageHeader } from "@/components/ui";
 import { AccountCharts } from "@/components/charts";
 import { PeriodFilter } from "@/components/period-filter";
-import { UnblockForm } from "@/components/forms";
+import { KeyLine } from "@/components/key-line";
 import { InvestigationWorkspace } from "@/components/investigation-workspace";
 
 export const metadata = { title: "Account investigation" };
@@ -49,22 +49,7 @@ export default async function AccountPage({
           audited restore while suspended, muted once restored. Keys that never
           had a problem need no line. */}
       {keys.map((key) => (
-        <div className="key-line" key={key.api_key_id}>
-          <span
-            className={key.status === "suspended" ? "suspended-state" : "muted"}
-          >
-            <span className="mono">{key.api_key_id}</span> {key.status}
-          </span>
-          <span className="muted">
-            {humanize(key.reason)} · {dateTime(key.updated_at)}
-          </span>
-          {key.status === "suspended" && (
-            <details>
-              <summary>Restore access</summary>
-              <UnblockForm keyId={key.api_key_id} />
-            </details>
-          )}
-        </div>
+        <KeyLine key={key.api_key_id} keyStatus={key} />
       ))}
       <div className="investigation-grid">
         <section className="card">

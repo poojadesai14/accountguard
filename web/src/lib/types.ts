@@ -164,6 +164,7 @@ export type DecisionDetail = {
   actions: AuditAction[] | null;
   thresholds?: Thresholds;
   related?: RelatedIndicator[];
+  key?: KeyStatus | null;
 };
 export type ApiResult<T> =
   | { data: T; error?: never; status?: never }

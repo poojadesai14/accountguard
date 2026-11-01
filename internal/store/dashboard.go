@@ -72,8 +72,8 @@ func GetDashboard(ctx context.Context, db DBTX, f DashboardFilter) (*Dashboard, 
 	const query = `with ranked as (
  select d.*,
   count(*) filter (where review_status = 'open') over (partition by account_id) as open_reviews,
-  first_value(action) over latest as latest_action,
-  first_value(label) over latest as latest_label,
+  first_value(action) over latest_scored as latest_action,
+  first_value(label) over latest_scored as latest_label,
   -- Follow-on key_suspended rejections rank below every scored decision, even a
   -- resolved one: they are a consequence of a suspension, never the evidence for
   -- it, and they stay open after an analyst has confirmed the triggering block.
@@ -90,7 +90,9 @@ func GetDashboard(ctx context.Context, db DBTX, f DashboardFilter) (*Dashboard, 
    case when review_status = 'open' then score end desc nulls last,
    occurred_at desc, decided_at desc, decision_id desc) as key_position
  from decisions d
- window latest as (partition by account_id order by occurred_at desc, decided_at desc, decision_id desc)
+ -- "Is the account legitimate now?" looks at its latest scored decision: a later
+ -- key_suspended rejection only says the key was still suspended at the time.
+ window latest_scored as (partition by account_id order by (reason = 'key_suspended') asc nulls first, occurred_at desc, decided_at desc, decision_id desc)
  ), suspended as (
  select account_id, count(*)::int as suspended_keys from key_status where status = 'suspended' group by account_id
  ), entities as (

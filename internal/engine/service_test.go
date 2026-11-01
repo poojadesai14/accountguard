@@ -174,6 +174,11 @@ func TestServiceTakeoverHoldsThenBlocksAndDoesNotLearn(t *testing.T) {
 			if next.Action != "block" || next.Reason == nil || *next.Reason != ReasonKeySuspended {
 				t.Errorf("event after suspension = %s, reason %v; want block/key_suspended", next.Action, next.Reason)
 			}
+			// The suspension and its trigger are the case; a rejected send is not
+			// a review of its own.
+			if next.ReviewStatus != "none" || blocked.ReviewStatus != "open" {
+				t.Errorf("review status: trigger %s, rejection %s; want open, none", blocked.ReviewStatus, next.ReviewStatus)
+			}
 		})
 	}
 }
