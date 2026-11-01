@@ -315,7 +315,11 @@ func main() {
 	if err != nil {
 		fail("%v", err)
 	}
-	today := time.Now().UTC().Truncate(24 * time.Hour)
+	// The simulated "today" is yesterday (UTC), so every event, including a
+	// scenario placed late in the day, is in the past when it is posted. Real
+	// events never arrive from the future, and the analyst UI's time ranges end
+	// at now, so future-dated events would be invisible on the account page.
+	today := time.Now().UTC().Truncate(24*time.Hour).AddDate(0, 0, -1)
 	var youngPool []string
 	for d, reg := range cfg.Content.DomainAges {
 		if today.Sub(reg) < time.Duration(cfg.Content.YoungDays)*24*time.Hour && !strings.Contains(d, "acrne") && !strings.Contains(d, "betta") {
@@ -332,6 +336,9 @@ func main() {
 	for i := range accounts {
 		accounts[i] = newAccount(i, *run, *cleanShare, *takeoverShare, youngPool, today)
 		total += len(accounts[i].events)
+		if last := accounts[i].events[len(accounts[i].events)-1].ev.OccurredAt; last.After(time.Now()) {
+			fail("%s has an event at %s, in the future; scenarios must end before now", accounts[i].id, last.Format(time.RFC3339))
+		}
 	}
 	fmt.Printf("Posting %d events for %d accounts to %s ...\n", total, *n, *url)
 
