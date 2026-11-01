@@ -929,6 +929,14 @@ test("inspection drawer traps focus, closes with Escape, and records audited sus
     reason: "Confirmed account takeover with the owner.",
   });
   await close.click();
+  // The queue row leads with the verdict, the original hold underneath.
+  const row = page.getByRole("row").filter({
+    has: page.getByRole("button", { name: "Inspect acc_acme", exact: true }),
+  });
+  await expect(row.locator(".dashboard-decision")).toContainText(
+    "Confirmed takeover",
+  );
+  await expect(row.locator(".dashboard-decision")).toContainText("Was hold");
   await page.getByRole("link", { name: "Telemetry", exact: true }).click();
   await expect(
     page.getByRole("table", { name: "Analyst audit stream" }),
@@ -977,8 +985,10 @@ test("legitimate approval refreshes membership while preserving the original hol
   const approved = page.getByRole("row").filter({
     has: page.getByRole("button", { name: "Inspect acc_acme", exact: true }),
   });
-  await expect(approved).toContainText("HOLD");
-  await expect(approved).toContainText("legitimate");
+  // The verdict leads; the original hold and its score stay underneath.
+  await expect(approved).toContainText("Marked legitimate");
+  await expect(approved).toContainText("Was hold");
+  await expect(approved.locator(".badge-hold")).toHaveCount(0);
   await expect(approved.locator(".score-number")).toHaveText("75");
 });
 
