@@ -59,7 +59,7 @@ func TestConfirmTakeoverSuspendsKeyAndDropsHolds(t *testing.T) {
 					t.Fatalf("fixture decision = %s, want hold", holds[i].Action)
 				}
 			}
-			decision, err := f.svc.ApplyAction(ctx, holds[0].DecisionID, ActConfirmTakeover, "pooja", "phishing link")
+			decision, err := f.svc.ApplyAction(ctx, holds[0].DecisionID, ActConfirmTakeover, "", "pooja", "phishing link")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -74,7 +74,7 @@ func TestConfirmTakeoverSuspendsKeyAndDropsHolds(t *testing.T) {
 					t.Errorf("hold %s = %q, want dropped", hold.DecisionID, got)
 				}
 			}
-			if _, err := f.svc.ApplyAction(ctx, holds[0].DecisionID, ActConfirmTakeover, "pooja", "again"); !isConflict(err) {
+			if _, err := f.svc.ApplyAction(ctx, holds[0].DecisionID, ActConfirmTakeover, "", "pooja", "again"); !isConflict(err) {
 				t.Errorf("repeated confirmation error = %v, want conflict", err)
 			}
 			if err := f.svc.UnblockKey(ctx, f.account+"_key", "pooja", "owner rotated key"); err != nil {
@@ -111,7 +111,7 @@ func TestMarkLegitimateTeachesBaseline(t *testing.T) {
 			if migration.Action != "flag" {
 				t.Fatalf("migration = %s, want flag", migration.Action)
 			}
-			if _, err := f.svc.ApplyAction(context.Background(), migration.DecisionID, ActMarkLegitimate, "pooja", "infrastructure migration"); err != nil {
+			if _, err := f.svc.ApplyAction(context.Background(), migration.DecisionID, ActMarkLegitimate, "", "pooja", "infrastructure migration"); err != nil {
 				t.Fatal(err)
 			}
 			got := f.handle(f.send(at.Add(time.Minute), tt.asn, "stripe.com"))
@@ -154,7 +154,7 @@ func TestReleaseHoldAndOwnerResponses(t *testing.T) {
 				if tt.ownerResponse != "" {
 					return f.svc.OwnerRespond(ctx, hold.DecisionID, tt.ownerResponse)
 				}
-				return f.svc.ApplyAction(ctx, hold.DecisionID, tt.action, "pooja", "reviewed evidence")
+				return f.svc.ApplyAction(ctx, hold.DecisionID, tt.action, "", "pooja", "reviewed evidence")
 			}
 			decision, err := apply()
 			if err != nil {
@@ -203,7 +203,7 @@ func TestActionMissingResources(t *testing.T) {
 			if tt.resource == "key" {
 				err = f.svc.UnblockKey(ctx, "no_such_key", "pooja", "reviewed evidence")
 			} else {
-				_, err = f.svc.ApplyAction(ctx, "00000000-0000-0000-0000-000000000000", ActReleaseHold, "pooja", "reviewed evidence")
+				_, err = f.svc.ApplyAction(ctx, "00000000-0000-0000-0000-000000000000", ActReleaseHold, "", "pooja", "reviewed evidence")
 			}
 			if !errors.Is(err, ErrNotFound) {
 				t.Errorf("error = %v, want ErrNotFound", err)

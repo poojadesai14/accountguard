@@ -960,6 +960,7 @@ test("legitimate approval refreshes membership while preserving the original hol
   await drawer.getByRole("button", { name: "Record review" }).click();
   await expect(drawer.locator(".dashboard-toast")).toHaveCount(0);
   await outcome.selectOption("mark_legitimate");
+  await page.locator(".resolve-warning input").fill("acc_acme");
   await drawer.getByRole("button", { name: "Record review" }).click();
   await expect(drawer.locator(".dashboard-toast")).toContainText(
     "Action recorded",
@@ -1121,6 +1122,7 @@ test("marking legitimate says the suspended key is the step left, and offers it"
     keyLine.getByText("Restore access", { exact: true }),
   ).toBeVisible();
   await page.getByLabel("Review outcome").selectOption("mark_legitimate");
+  await page.locator(".resolve-warning input").fill("acc_acme");
   await page.getByLabel("Your name").fill("Pooja");
   await page
     .getByLabel("Reason", { exact: true })
@@ -1144,6 +1146,7 @@ test("the drawer's review message names the restore, and a restore confirms in p
     .click();
   const drawer = page.getByRole("dialog", { name: "acc_acme" });
   await drawer.getByLabel("Review outcome").selectOption("mark_legitimate");
+  await page.locator(".resolve-warning input").fill("acc_acme");
   await drawer.getByLabel("Your name").fill("Pooja");
   await drawer
     .getByLabel("Reason", { exact: true })
@@ -1178,6 +1181,7 @@ test("a reviewed account whose key is still suspended reads as a restore, not a 
     .click();
   const drawer = page.getByRole("dialog", { name: "acc_acme" });
   await drawer.getByLabel("Review outcome").selectOption("mark_legitimate");
+  await page.locator(".resolve-warning input").fill("acc_acme");
   await drawer.getByLabel("Your name").fill("Pooja");
   await drawer.getByLabel("Reason", { exact: true }).fill("Owner confirmed.");
   await drawer.getByRole("button", { name: "Record review" }).click();
@@ -1219,6 +1223,7 @@ test("an account's incident resolves in one audited step, keys only on request",
   const submit = card.getByRole("button", { name: "Resolve account" });
   await expect(submit).toBeDisabled();
   await card.getByLabel("Legitimate").check();
+  await page.locator(".resolve-warning input").fill("acc_acme");
   await expect(card).toContainText("releases 1 held email");
   const restore = card.getByLabel("Also restore 1 automatically suspended key");
   await expect(restore).not.toBeChecked();
@@ -1247,6 +1252,7 @@ test("the restore box brings back only the key the resolved reviews suspended", 
   const card = page.locator(".resolve-card", { hasText: "Resolve account" });
   await card.locator("summary").click();
   await card.getByLabel("Legitimate").check();
+  await page.locator(".resolve-warning input").fill("acc_acme");
   await card.getByLabel("Also restore 1 automatically suspended key").check();
   await card.getByLabel("Your name").fill("Pooja");
   await card.getByLabel("Reason", { exact: true }).fill("Key rotated.");
@@ -1362,4 +1368,28 @@ test("an active key can be suspended directly from its key line", async ({
   await keyLine.getByRole("button", { name: "Suspend key" }).click();
   await expect(keyLine.getByRole("status")).toContainText("Key suspended");
   await expect(keyLine).toContainText("key_prod_1 suspended");
+});
+
+test("marking one decision legitimate over takeover evidence needs the account typed", async ({
+  page,
+  request,
+}) => {
+  await request.post("http://127.0.0.1:3102/__risky-review");
+  await signIn(page, `/decisions/${id}`);
+  await page.getByLabel("Review outcome").selectOption("mark_legitimate");
+  const warning = page.locator(".resolve-warning");
+  await expect(warning).toContainText("young domain");
+  await page.getByLabel("Your name").fill("Pooja");
+  await page.getByLabel("Reason", { exact: true }).fill("Owner says fine.");
+  const submit = page.getByRole("button", { name: "Record review" });
+  await expect(submit).toBeDisabled();
+  await warning.getByLabel(/to confirm it is legitimate/).fill("acc_acme");
+  await submit.click();
+  await expect(page.locator(".key-line")).toContainText(
+    "Marked legitimate; restore access to finish.",
+  );
+
+  // Takeover needs no confirmation: the warning is only for "legitimate".
+  await page.goto(`/decisions/${id}`);
+  await expect(page.locator(".resolve-warning")).toHaveCount(0);
 });

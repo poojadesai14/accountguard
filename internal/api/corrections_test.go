@@ -144,3 +144,34 @@ func TestCorrectToTakeover(t *testing.T) {
 		t.Errorf("another account's decision was relabelled %s", l)
 	}
 }
+
+// Marking one decision legitimate over attacker-looking evidence needs the account
+// ID typed, like Resolve account (QA: sim_1101_0747_079); the owner's own answer
+// to a hold doesn't.
+func TestMarkLegitimateNeedsConfirmOverRiskyEvidence(t *testing.T) {
+	f := newAPIFixture(t)
+	ctx := context.Background()
+	risky := func(id string) {
+		t.Helper()
+		if _, err := f.server.Store.Pool.Exec(ctx, `update decisions set hits = '[{"name":"recipient_spike","category":"volume","points":15,"detail":"223 recipients vs normal 68/hour"}]' where decision_id = $1`, id); err != nil {
+			t.Fatal(err)
+		}
+	}
+	block := dashboardDecision(t, f, dashboardDecisionInput{account: "spiky", key: "key_s", action: "block", score: 90, at: testNow, review: "open"})
+	risky(block)
+	mark := func(confirm string) *httptest.ResponseRecorder {
+		return f.post("/v1/decisions/"+block+"/actions", map[string]any{"action": "mark_legitimate", "confirm": confirm, "actor": "reviewer", "reason": "owner says fine"})
+	}
+	requireStatus(t, mark(""), http.StatusConflict)
+	requireStatus(t, mark("someone_else"), http.StatusConflict)
+	requireStatus(t, mark("spiky"), http.StatusOK)
+
+	// Without risky signals, no confirmation is asked.
+	plain := dashboardDecision(t, f, dashboardDecisionInput{account: "plain", key: "key_p", action: "hold", score: 70, at: testNow, review: "open", hold: strp("pending")})
+	requireStatus(t, f.post("/v1/decisions/"+plain+"/actions", map[string]any{"action": "mark_legitimate", "actor": "r", "reason": "new laptop"}), http.StatusOK)
+
+	// The owner answering their own hold is never asked to type anything.
+	owned := dashboardDecision(t, f, dashboardDecisionInput{account: "owned", key: "key_o", action: "hold", score: 75, at: testNow, review: "open", hold: strp("pending")})
+	risky(owned)
+	requireStatus(t, f.post("/v1/holds/"+owned+"/owner-response", map[string]any{"response": "this_was_me"}), http.StatusOK)
+}

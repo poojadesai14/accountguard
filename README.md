@@ -291,7 +291,9 @@ Analyst UI (Next.js) ──server-side, analyst token──▶ analyst API ─�
   a new one arrived since (an attacker's next send), nothing changes and the analyst reloads. Each change
   is its own audit row. Per-event review stays for one-off calls.
 - **Wrong calls can be taken back.** "Legitimate" over a young or lookalike domain, a recipient spike or
-  a freemail Reply-To needs the account ID typed (the API enforces it). If it was still wrong, **Correct to
+  a freemail Reply-To needs the account ID typed, on one decision or a whole account (the API enforces
+  it; the owner's own answer to a hold doesn't). Marking one decision legitimate says what is still open
+  on the account, since it never closes the others or restores a key. If it was still wrong, **Correct to
   takeover** relabels the chosen decisions, removes them from the baseline (the key's network, the domains,
   the event count), suspends their keys and drops held emails; released emails stay sent, and the audit
   log says who corrected what. Any active key can also be **suspended** directly from its key line.

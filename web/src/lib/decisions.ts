@@ -294,3 +294,20 @@ export function restoreIsLastStep(
     key.decision_id === decision.decision_id
   );
 }
+
+// RISKY_SIGNALS mirror store.RiskySignals: attacker infrastructure and blast radius.
+// Calling such evidence legitimate needs the account ID typed (the API enforces it).
+export const RISKY_SIGNALS = [
+  "young_domain",
+  "lookalike_domain",
+  "recipient_spike",
+  "freemail_reply_to",
+];
+
+export function riskyHits<T extends { name: string }>(hits: T[]): T[] {
+  return hits.filter(
+    (h, i) =>
+      RISKY_SIGNALS.includes(h.name) &&
+      hits.findIndex((o) => o.name === h.name) === i,
+  );
+}

@@ -500,6 +500,7 @@ Duplicate `event_id` -> same body, `200`. Body limit 1 MB.
 | `GET /v1/decisions/{id}` | decision + event + analyst_actions for it + thresholds + `related`: other accounts sharing its link domains, non-freemail Reply-To domains or IP within ±7 days ({kind, value, accounts, events, stopped, confirmed, top[≤50]}; the UI shows five and expands to the rest) |
 | `POST /v1/decisions/{id}/actions` | body `{"action": "confirm_takeover\|mark_legitimate\|release_hold", "actor": "pooja", "reason": "..."}` |
 | `POST /v1/keys/{key_id}/unblock` | body `{"actor", "reason"}` |
+| `POST /v1/decisions/{id}/actions` `confirm` | `mark_legitimate` on a decision with a young or lookalike domain, a recipient spike or a freemail Reply-To also needs `confirm` equal to its account ID; 409 otherwise |
 | `POST /v1/keys/{key_id}/suspend` | body `{"actor", "reason"}`. Suspends any key on the analyst's authority and drops its pending holds; 409 if already suspended, 404 for an unknown key. Returns `{api_key_id, status, holds_dropped}` |
 | `POST /v1/accounts/{id}/correct` | body `{decision_ids, actor, reason}`. Relabels decisions marked legitimate as takeover in one transaction: the baseline unlearns each event (key network, domains, event count), their keys are suspended by the analyst and lose pending holds; one `correct_to_takeover` audit row each. 409 unless every ID is this account's and labelled legitimate. Returns `{corrected, holds_dropped, keys_suspended}` |
 

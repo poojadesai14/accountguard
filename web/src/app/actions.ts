@@ -17,6 +17,7 @@ import type {
   AccountResolution,
   Correction,
   DecisionDetail,
+  ProfileResponse,
 } from "@/lib/types";
 import { restoreIsLastStep } from "@/lib/decisions";
 
@@ -68,24 +69,43 @@ export async function reviewDecision(
   if (fields.error) return { error: fields.error };
   const result = await analystApi(`/v1/decisions/${id}/actions`, {
     action,
+    ...confirmField(form),
     actor: fields.actor,
     reason: fields.reason,
   });
   if (result.error) return { error: result.error };
   refreshDecision(id);
-  // Marking legitimate never restores a suspended key; say so, so the review
-  // doesn't look finished while the account is still blocked.
+  // Marking one decision legitimate never restores a key or closes the account's
+  // other reviews; say what's left, so the account doesn't look finished.
   if (action === "mark_legitimate") {
     const detail = await analystApi<DecisionDetail>(`/v1/decisions/${id}`);
     const key = detail.data?.key;
+    const account = detail.data?.decision.account_id;
+    const profile = account
+      ? await analystApi<ProfileResponse>(
+          `/v1/accounts/${encodeURIComponent(account)}/profile`,
+        )
+      : undefined;
+    const reviews = profile?.data?.open?.reviews ?? 0;
+    const left =
+      reviews > 0
+        ? ` ${reviews} other review${reviews === 1 ? " is" : "s are"} still open on this account: Resolve account closes them together.`
+        : "";
     if (detail.data && restoreIsLastStep(detail.data.decision, key))
       return {
-        success: `Marked legitimate. Key ${key!.api_key_id} is still suspended: restore access to finish.`,
+        success: `Marked legitimate. Key ${key!.api_key_id} is still suspended: restore access to finish.${left}`,
       };
+    if (left) return { success: `Marked legitimate.${left}` };
   }
   return {
     success: "Action recorded. The decision and audit history are up to date.",
   };
+}
+
+// confirmField sends the typed account ID only when the form asked for one.
+function confirmField(form: FormData) {
+  const confirm = String(form.get("confirm") ?? "").trim();
+  return confirm ? { confirm } : {};
 }
 
 export async function unblockKey(
@@ -204,7 +224,7 @@ export async function resolveAccount(
     `/v1/accounts/${encodeURIComponent(account)}/resolve`,
     {
       decision_ids: decisionIds,
-      confirm: String(form.get("confirm") ?? "").trim(),
+      ...confirmField(form),
       outcome,
       restore_keys: restoreKeys,
       actor: fields.actor,

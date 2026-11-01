@@ -65,7 +65,16 @@ const event: TimelineRow = {
 let detail: DecisionDetail;
 let suspended = true;
 let newerReview = false; // a review the page hasn't seen yet
-let riskyReview = false; // the open review carries a young domain
+// Mirrors store.RiskySignals: "legitimate" over these needs the account ID typed.
+const risky = () =>
+  detail.decision.hits.some((h) =>
+    [
+      "young_domain",
+      "lookalike_domain",
+      "recipient_spike",
+      "freemail_reply_to",
+    ].includes(h.name),
+  );
 let requests: { path: string; body?: Record<string, string> }[] = [];
 let empty = false;
 let unavailable = false;
@@ -137,7 +146,6 @@ function reset() {
   };
   suspended = true;
   newerReview = false;
-  riskyReview = false;
   requests = [];
   empty = false;
   unavailable = false;
@@ -390,7 +398,15 @@ createServer(async (req, res) => {
     return reply(200, {});
   }
   if (url.pathname === "/__risky-review" && req.method === "POST") {
-    riskyReview = true;
+    detail.decision.hits = [
+      ...detail.decision.hits,
+      {
+        name: "young_domain",
+        category: "content",
+        points: 20,
+        detail: "docs-share-portal.com registered 6 days ago",
+      },
+    ];
     return reply(200, {});
   }
   if (url.pathname === "/__newer-review" && req.method === "POST") {
@@ -493,7 +509,7 @@ createServer(async (req, res) => {
       if (!open)
         return reply(409, { error: "nothing to resolve on this account" });
       if (
-        riskyReview &&
+        risky() &&
         body.outcome === "legitimate" &&
         body.confirm !== "acc_acme"
       )
@@ -535,6 +551,15 @@ createServer(async (req, res) => {
       return reply(200, detail.decision);
     }
     if (url.pathname.endsWith("/actions")) {
+      if (
+        risky() &&
+        body.action === "mark_legitimate" &&
+        body.confirm !== "acc_acme"
+      )
+        return reply(409, {
+          error:
+            "the evidence shows young_domain: type the account ID to confirm this is legitimate",
+        });
       detail.decision.review_status = "resolved";
       if (body.action === "confirm_takeover") {
         suspended = true;
@@ -735,7 +760,7 @@ createServer(async (req, res) => {
         decision_ids:
           detail.decision.review_status === "open" ? [decisionId] : [],
         warnings:
-          riskyReview && detail.decision.review_status === "open"
+          risky() && detail.decision.review_status === "open"
             ? [
                 {
                   signal: "young_domain",
