@@ -213,7 +213,7 @@ export function ReviewForm({
       <Feedback state={state} />
       <button
         className="button button-primary"
-        disabled={pending || !confirmed}
+        disabled={pending || !chosen || !confirmed}
       >
         {pending ? "Recording…" : "Record review"}
         <ArrowRight size={15} />

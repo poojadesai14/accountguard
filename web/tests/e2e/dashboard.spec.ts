@@ -957,8 +957,9 @@ test("legitimate approval refreshes membership while preserving the original hol
   // unread submit must not record it.
   const outcome = drawer.getByLabel("Review outcome");
   await expect(outcome).toHaveValue("");
-  await drawer.getByRole("button", { name: "Record review" }).click();
-  await expect(drawer.locator(".dashboard-toast")).toHaveCount(0);
+  await expect(
+    drawer.getByRole("button", { name: "Record review" }),
+  ).toBeDisabled();
   await outcome.selectOption("mark_legitimate");
   await page.locator(".resolve-warning input").fill("acc_acme");
   await drawer.getByRole("button", { name: "Record review" }).click();
@@ -1376,6 +1377,10 @@ test("marking one decision legitimate over takeover evidence needs the account t
 }) => {
   await request.post("http://127.0.0.1:3102/__risky-review");
   await signIn(page, `/decisions/${id}`);
+  // Nothing to submit until an outcome is chosen.
+  await expect(
+    page.getByRole("button", { name: "Record review" }),
+  ).toBeDisabled();
   await page.getByLabel("Review outcome").selectOption("mark_legitimate");
   const warning = page.locator(".resolve-warning");
   await expect(warning).toContainText("young domain");
