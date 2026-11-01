@@ -1,18 +1,10 @@
 import { notFound } from "next/navigation";
-import { Network, ShieldCheck } from "lucide-react";
 import { analystApi } from "@/lib/api";
 import { dateTime, humanize, number, periodQuery } from "@/lib/format";
 import type { AccountSeries, ProfileResponse, TimelineRow } from "@/lib/types";
-import {
-  ApiError,
-  Badge,
-  CardHeader,
-  DetailList,
-  PageHeader,
-} from "@/components/ui";
+import { ApiError, CardHeader, DetailList, PageHeader } from "@/components/ui";
 import { AccountCharts } from "@/components/charts";
 import { PeriodFilter } from "@/components/period-filter";
-import { RefreshButton } from "@/components/navigation";
 import { UnblockForm } from "@/components/forms";
 import { InvestigationWorkspace } from "@/components/investigation-workspace";
 
@@ -36,14 +28,7 @@ export default async function AccountPage({
   ]);
   if (profile.status === 404) notFound();
   const header = (
-    <PageHeader
-      compact
-      back={{ href: "/accounts", label: "All accounts" }}
-      eyebrow="ACCOUNT INVESTIGATION"
-      title={id}
-      description="Inspect each event, understand its signals, and review the evidence."
-    >
-      <RefreshButton />
+    <PageHeader compact back={{ href: "/", label: "Queue" }} title={id}>
       <PeriodFilter period={period} />
     </PageHeader>
   );
@@ -60,22 +45,32 @@ export default async function AccountPage({
   return (
     <>
       {header}
-      <div className="account-summary">
-        <span>
-          <ShieldCheck size={15} />
-          {number(p.events_seen)} baseline events
-        </span>
-        <span>
-          <Network size={15} />
-          {Object.keys(p.key_asns).length} observed keys
-        </span>
-        <span>First seen {dateTime(p.first_seen_at)}</span>
-      </div>
+      {/* Key state is one line per key that has ever been suspended: red with an
+          audited restore while suspended, muted once restored. Keys that never
+          had a problem need no line. */}
+      {keys.map((key) => (
+        <div className="key-line" key={key.api_key_id}>
+          <span
+            className={key.status === "suspended" ? "suspended-state" : "muted"}
+          >
+            <span className="mono">{key.api_key_id}</span> {key.status}
+          </span>
+          <span className="muted">
+            {humanize(key.reason)} · {dateTime(key.updated_at)}
+          </span>
+          {key.status === "suspended" && (
+            <details>
+              <summary>Restore access</summary>
+              <UnblockForm keyId={key.api_key_id} />
+            </details>
+          )}
+        </div>
+      ))}
       <div className="investigation-grid">
         <section className="card">
           <CardHeader
-            title="Activity, in context"
-            description="Volume, networks, content, account changes and decisions on one time axis. The dashed line marks the first hold or block."
+            title="Activity"
+            description="One time axis. The dashed line marks the first hold or block."
           />
           {series.error ? (
             <ApiError message={series.error} />
@@ -85,58 +80,32 @@ export default async function AccountPage({
         </section>
         <aside className="account-aside">
           <section className="card">
-            <CardHeader title="Learned baseline" />
+            <CardHeader title="Baseline" />
             <div className="baseline-number">
               {number(p.hourly_ewma)}
               <span>recipients / active hour</span>
             </div>
             <DetailList
               items={[
+                ["Baseline events", number(p.events_seen)],
                 ["Active hours", number(p.active_hours)],
+                ["First seen", dateTime(p.first_seen_at)],
                 ["Known domains", number(Object.keys(p.known_domains).length)],
                 ["Sender domains", p.sender_domains.join(", ") || "—"],
-                [
-                  "Free-mail Reply-To used",
-                  p.used_freemail_reply_to ? "Yes" : "No",
-                ],
+                ...(p.used_freemail_reply_to
+                  ? ([["Free-mail Reply-To", "Yes"]] as [string, string][])
+                  : []),
                 ["Last account change", dateTime(p.last_change_at)],
               ]}
             />
-            <p className="aside-note">
-              The baseline learns from allowed events and activity confirmed as
-              legitimate.
-            </p>
-          </section>
-          <section className="card">
-            <CardHeader title="API key status" />
-            {keys.length ? (
-              <div className="key-list">
-                {keys.map((key) => (
-                  <div className="key-item" key={key.api_key_id}>
-                    <strong className="mono">{key.api_key_id}</strong>
-                    <Badge
-                      action={key.status === "suspended" ? "block" : "allow"}
-                    >
-                      {key.status}
-                    </Badge>
-                    <p className="muted">
-                      {humanize(key.reason)} · {dateTime(key.updated_at)}
-                    </p>
-                    {key.status === "suspended" && (
-                      <details>
-                        <summary>Restore access</summary>
-                        <UnblockForm keyId={key.api_key_id} />
-                      </details>
-                    )}
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p className="aside-note">
-                No explicit key status overrides. Observed keys are active by
-                default.
+            <details className="method-note">
+              <summary>How the baseline learns</summary>
+              <p>
+                Only allowed events, and activity an analyst or the owner
+                confirmed as legitimate, teach the baseline. Held and blocked
+                events never do.
               </p>
-            )}
+            </details>
           </section>
         </aside>
       </div>

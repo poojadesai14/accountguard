@@ -30,7 +30,7 @@ export function PageHeader({
   back,
   compact = false,
 }: {
-  eyebrow: string;
+  eyebrow?: string;
   title: string;
   description?: string;
   children?: React.ReactNode;
@@ -46,7 +46,7 @@ export function PageHeader({
             {back.label}
           </Link>
         )}
-        <p className="eyebrow">{eyebrow}</p>
+        {eyebrow && <p className="eyebrow">{eyebrow}</p>}
         <h1>{title}</h1>
         {description && <p className="page-description">{description}</p>}
       </div>

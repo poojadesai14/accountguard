@@ -878,22 +878,7 @@ td strong {
 .search-field input::placeholder {
   color: var(--subtle);
 }
-.account-summary {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  margin-bottom: 24px;
-  padding: 14px 0;
-  border-top: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  color: var(--muted);
-  font-size: 16px;
-}
-.account-summary span {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-}
+
 .investigation-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 320px;
@@ -955,44 +940,7 @@ td strong {
   color: var(--muted);
   line-height: 1.8;
 }
-.key-list {
-  padding: 0 22px 10px;
-}
-.key-item {
-  padding-bottom: 17px;
-  border-bottom: 1px solid var(--line);
-  margin-bottom: 16px;
-}
-.key-item:last-child {
-  border: 0;
-  margin-bottom: 0;
-}
-.key-item > .badge {
-  margin: 10px 0 7px;
-}
-.key-item > strong {
-  display: block;
-  overflow-wrap: anywhere;
-}
-.key-item > p {
-  font-size: 13px;
-}
-.key-item summary {
-  font-size: 16px;
-  color: #dddddd;
-  margin-top: 13px;
-  cursor: pointer;
-}
-.key-item .review-form {
-  padding: 15px 0 0;
-}
-.key-item input,
-.key-item textarea {
-  font-size: 16px;
-}
-.key-item .form-help {
-  font-size: 13px;
-}
+
 .account-charts {
   padding: 0 16px 20px;
 }
@@ -1117,90 +1065,7 @@ td strong {
 .score-block {
   color: var(--status-blocked-text);
 }
-.decision-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
-  gap: 24px;
-  margin-bottom: 24px;
-}
-.decision-main,
-.decision-aside {
-  display: flex;
-  flex-direction: column;
-  gap: 24px;
-}
-.mode-banner {
-  display: flex;
-  gap: 12px;
-  padding: 15px 18px;
-  margin-bottom: 24px;
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  background: var(--surface);
-  color: var(--muted);
-}
-.mode-banner svg {
-  flex-shrink: 0;
-}
-.mode-banner strong {
-  display: block;
-  font-size: 16px;
-  margin-bottom: 5px;
-}
-.mode-banner span {
-  font-size: 16px;
-  line-height: 1.7;
-}
-.score-overview {
-  display: flex;
-  gap: 24px;
-  align-items: center;
-  padding: 5px 22px 25px;
-}
-.score-orbit {
-  width: 105px;
-  height: 105px;
-  display: flex;
-  align-items: baseline;
-  justify-content: center;
-  padding-top: 28px;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--surface);
-  flex-shrink: 0;
-}
-.score-orbit strong {
-  color: #eeeeee;
-  font-size: 40px;
-  font-weight: 500;
-  letter-spacing: -1px;
-}
-.score-orbit > span {
-  color: var(--subtle);
-  font-size: 16px;
-  margin-left: 3px;
-}
-.orbit-block {
-  border-color: #ef444433;
-  background: #ef44440d;
-}
-.orbit-block strong {
-  color: #fca5a5;
-}
-.orbit-hold {
-  border-color: #f9731633;
-  background: #f973160d;
-}
-.orbit-hold strong {
-  color: #fdba74;
-}
-.score-overview h2 {
-  font-size: 18px;
-  margin: 10px 0;
-}
-.score-overview p {
-  font-size: 14px;
-}
+
 .hit-list {
   padding: 0 22px;
 }
@@ -2140,9 +2005,7 @@ td strong {
     gap: 8px;
     font-size: 13px;
   }
-  .decision-grid {
-    grid-template-columns: minmax(0, 1fr) 320px;
-  }
+
   .investigation-grid {
     grid-template-columns: minmax(0, 1fr) 300px;
   }
@@ -2164,21 +2027,7 @@ td strong {
   .metadata-columns .detail-list:last-child {
     padding-bottom: 16px;
   }
-  .score-overview {
-    gap: 18px;
-    padding: 5px 20px 22px;
-  }
-  .score-orbit {
-    width: 90px;
-    height: 90px;
-    padding-top: 21px;
-  }
-  .score-orbit strong {
-    font-size: 34px;
-  }
-  .score-overview h2 {
-    font-size: 18px;
-  }
+
   .context-right {
     display: none;
   }
@@ -2201,12 +2050,10 @@ td strong {
   .signals-card .empty-state {
     min-height: 140px;
   }
-  .investigation-grid,
-  .decision-grid {
+  .investigation-grid {
     grid-template-columns: minmax(0, 1fr);
   }
-  .account-aside,
-  .decision-aside {
+  .account-aside {
     display: grid;
     grid-template-columns: 1fr 1fr;
     align-items: start;
@@ -2216,11 +2063,6 @@ td strong {
   }
   .metadata-columns .detail-list:first-child {
     border-right: 1px solid var(--line);
-  }
-  .account-summary {
-    gap: 15px;
-    font-size: 14px;
-    flex-wrap: wrap;
   }
 
   .page-footer {
@@ -2406,12 +2248,8 @@ td strong {
     margin-right: auto;
     font-size: 14px;
   }
-  .account-summary {
-    gap: 12px;
-    font-size: 14px;
-  }
-  .account-aside,
-  .decision-aside {
+
+  .account-aside {
     grid-template-columns: 1fr;
     gap: 18px;
   }
@@ -2457,9 +2295,7 @@ td strong {
   .metadata-columns .detail-list:first-child {
     border: 0;
   }
-  .score-overview {
-    padding: 5px 20px 22px;
-  }
+
   .hit-list {
     padding: 0 20px;
   }
@@ -2480,23 +2316,11 @@ td strong {
     gap: 10px;
     font-size: 14px;
   }
-  .mode-banner {
-    padding: 13px;
-    gap: 9px;
-  }
-  .mode-banner span {
-    font-size: 14px;
-  }
+
   .review-form {
     padding: 0 20px 20px;
   }
-  .decision-grid {
-    gap: 20px;
-  }
-  .decision-main,
-  .decision-aside {
-    gap: 20px;
-  }
+
   .owner-card {
     padding: 25px 20px;
     margin: 0 0 25px;
@@ -3247,11 +3071,8 @@ td strong {
   font-weight: 600;
 }
 .decision-explanation {
-  margin: 0 22px 20px;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  font-size: 13px;
+  margin: 0 22px 14px;
+  font-size: 14px;
   line-height: 1.5;
   color: var(--ink);
 }
@@ -3484,4 +3305,145 @@ td strong {
 }
 .drawer-links .text-link {
   font-size: 13px;
+}
+
+/* Decision page: header carries the account, the call and one status line. */
+.decision-title {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.title-link {
+  color: inherit;
+}
+.title-link:hover,
+.title-link:focus-visible {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.decision-score {
+  font-family: var(--mono);
+  font-size: 20px;
+  font-weight: 600;
+}
+.decision-score small {
+  margin-left: 2px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 400;
+}
+.decision-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 8px;
+  color: var(--muted);
+  font-size: 13px;
+}
+.decision-meta .text-link {
+  font-size: 13px;
+}
+.mode-banner {
+  margin: 0 0 20px;
+  padding: 10px 14px;
+  border: 1px solid #eab30833;
+  border-radius: 6px;
+  background: #eab3080d;
+  color: var(--ink);
+  font-size: 13px;
+}
+/* Why and Decide first; Decide sticks beside the evidence on desktop and
+   follows the signals directly on mobile (DOM order). */
+.decision-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-areas:
+    "why decide"
+    "related decide"
+    "metadata decide";
+  align-items: start;
+  gap: 20px;
+  margin-bottom: 24px;
+}
+.decision-why {
+  grid-area: why;
+}
+.decision-decide {
+  grid-area: decide;
+  position: sticky;
+  top: 84px;
+}
+.decision-related {
+  grid-area: related;
+}
+.decision-metadata {
+  grid-area: metadata;
+}
+.decision-decide .audit-history {
+  margin: 0 22px 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
+}
+.decision-no-history {
+  margin: 0 22px 18px;
+  font-size: 12px;
+}
+.decision-metadata > summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 16px 22px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+}
+.decision-metadata > summary .muted {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 400;
+}
+.method-note {
+  margin: 4px 22px 18px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.method-note summary {
+  cursor: pointer;
+}
+.method-note p {
+  margin-top: 6px;
+  line-height: 1.6;
+}
+@media (max-width: 980px) {
+  .decision-grid {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "why"
+      "decide"
+      "related"
+      "metadata";
+  }
+  .decision-decide {
+    position: static;
+  }
+}
+
+/* Account page: a suspended key is one line under the title, restore inline. */
+.key-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  margin: -10px 0 18px;
+  font-size: 13px;
+}
+.key-line details > summary {
+  cursor: pointer;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.key-line details[open] {
+  flex-basis: 100%;
 }

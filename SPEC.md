@@ -490,6 +490,7 @@ Duplicate `event_id` -> same body, `200`. Body limit 1 MB.
 
 | Method + path | Returns |
 |---|---|
+| `GET /v1/config` | `mode` (shadow/enforce), `config_version`, `thresholds`, so every UI page can state the mode once |
 | `GET /v1/stats?from&to&bucket=1h\|1d` | `totals` {events, allow, flag, hold, block} (unscored events have no decision row; count them from the `ato_unscored_total` metric); `series` [{t, flag, hold, block}]; `top_signals` [{name, count}]; `review_queue` [{account_id, open_count, max_action, last_at}] |
 | `GET /v1/accounts?q&needs_review=true` | account list: id, events, last action, open reviews |
 | `GET /v1/accounts/{id}/timeline?from&to` | events joined with decisions, ordered by `occurred_at`; each row has event metadata (no bodies), action, score, hits |

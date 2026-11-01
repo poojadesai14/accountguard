@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Check, Fingerprint } from "lucide-react";
+import { Check } from "lucide-react";
 import { analystApi } from "@/lib/api";
-import { dateTime, humanize, number, shortId } from "@/lib/format";
+import { dateTime, humanize, number } from "@/lib/format";
 import type { DecisionDetail, RelatedIndicator, Thresholds } from "@/lib/types";
 import { UUID } from "@/lib/review";
 import {
@@ -19,10 +19,8 @@ import {
   Badge,
   CardHeader,
   DetailList,
-  EmptyState,
   PageHeader,
 } from "@/components/ui";
-import { RefreshButton } from "@/components/navigation";
 import { ReviewForm } from "@/components/forms";
 import { RelatedAccounts } from "@/components/related-accounts";
 
@@ -45,238 +43,208 @@ export default async function DecisionPage({
     );
   const { decision: d, event, actions, thresholds, related } = result.data!;
   const explanation = explainDecision(d, thresholds);
+  const accountHref = `/accounts/${encodeURIComponent(d.account_id)}`;
+  // One status line instead of a separate status card; each fact once.
+  const status = [
+    dateTime(d.occurred_at),
+    d.review_status === "open" ? "Open review" : humanize(d.review_status),
+    d.enforced ? "Enforced" : "Shadow, not enforced",
+    d.hold_status === "pending"
+      ? `Hold pending, expires ${dateTime(d.hold_expires_at)}`
+      : d.hold_status && `Hold ${d.hold_status}`,
+    d.label && `Labeled ${humanize(d.label)}`,
+  ].filter(Boolean) as string[];
+  const domains = (
+    [
+      ["Link domains", event.link_domains],
+      ["Reply-To domains", event.reply_to_domains],
+      ["Body email domains", event.body_email_domains],
+    ] as [string, string[]][]
+  ).filter(([, list]) => list.length);
   return (
     <>
-      <PageHeader
-        back={{
-          href: `/accounts/${encodeURIComponent(d.account_id)}`,
-          label: d.account_id,
-        }}
-        eyebrow="DECISION REVIEW"
-        title={`${ACTION_LABELS[d.action]} · ${d.account_id}`}
-        description={`${shortId(d.decision_id)} · ${dateTime(d.occurred_at)}`}
-      >
-        <RefreshButton />
-        <Badge action={d.action} />
-      </PageHeader>
-      {!d.enforced && (
-        <div className="mode-banner">
-          <Fingerprint size={18} />
-          <div>
-            <strong>Shadow mode</strong>
-            <span>
-              This is a computed {ACTION_LABELS[d.action]} decision. The API
-              returned ALLOW; this decision did not hold mail or suspend a key.
-            </span>
+      <header className="page-header decision-header">
+        <div>
+          <div className="decision-title">
+            <h1>
+              <Link href={accountHref} className="title-link">
+                {d.account_id}
+              </Link>
+            </h1>
+            <Badge action={d.action} />
+            <strong className={`decision-score ${scoreClassName(d.action)}`}>
+              {d.score}
+              <small>/100</small>
+            </strong>
           </div>
+          <p className="decision-meta">
+            {status.map((part) => (
+              <span key={part}>{part}</span>
+            ))}
+            {d.hold_status && (
+              <Link className="text-link" href={`/hold/${id}`}>
+                Owner view
+              </Link>
+            )}
+          </p>
         </div>
+      </header>
+      {!d.enforced && (
+        <p className="mode-banner">
+          Shadow mode: computed {ACTION_LABELS[d.action]}. The API returned
+          ALLOW, so no mail was held and no key was suspended.
+        </p>
       )}
       <div className="decision-grid">
-        <div className="decision-main">
-          <section className="card">
-            <CardHeader
-              title="Why this decision was made"
-              description="Signal points are added and capped at 100. The action comes from where the score lands and how many signal categories agree."
+        <section className="card decision-why">
+          <CardHeader title="Why" />
+          {thresholds && (
+            <ScoreScale
+              score={d.score}
+              action={d.action}
+              thresholds={thresholds}
             />
-            {thresholds && (
-              <ScoreScale
-                score={d.score}
-                action={d.action}
-                thresholds={thresholds}
-              />
-            )}
-            {explanation && (
-              <p className="decision-explanation">{explanation}</p>
-            )}
-            <div className="score-overview">
-              <div className={`score-orbit orbit-${d.action}`}>
-                <strong className={scoreClassName(d.action)}>{d.score}</strong>
-                <span>/ 100</span>
-              </div>
-              <div>
-                <Badge action={d.action} />
-                <h2>
-                  {d.hits.length} signal{d.hits.length !== 1 ? "s" : ""}{" "}
-                  contributed
-                </h2>
-                <p className="muted">
-                  {d.reason
-                    ? humanize(d.reason)
-                    : `${new Set(d.hits.map((hit) => hit.category)).size} signal categories · ${d.enforced ? "Enforced" : "Observed in shadow mode"}`}
-                </p>
-              </div>
-            </div>
-            {d.hits.length ? (
-              <div className="hit-list">
-                {d.hits.map((hit) => (
-                  <div className="hit-row" key={hit.name}>
-                    <span
-                      className={`category-marker category-${hit.category}`}
-                    />
-                    <div className="hit-evidence">
-                      <div className="hit-heading">
-                        <strong>{humanize(hit.name)}</strong>
-                        <span className="hit-category">{hit.category}</span>
-                      </div>
-                      <p>{hit.detail}</p>
+          )}
+          {explanation && <p className="decision-explanation">{explanation}</p>}
+          {d.hits.length ? (
+            <div className="hit-list">
+              {d.hits.map((hit) => (
+                <div className="hit-row" key={hit.name}>
+                  <span
+                    className={`category-marker category-${hit.category}`}
+                  />
+                  <div className="hit-evidence">
+                    <div className="hit-heading">
+                      <strong>{humanize(hit.name)}</strong>
+                      <span className="hit-category">{hit.category}</span>
                     </div>
-                    <span className="hit-points">
-                      +{hit.points}
-                      <small>pts</small>
-                    </span>
+                    <p>{hit.detail}</p>
                   </div>
-                ))}
-              </div>
-            ) : (
-              <p className="aside-note">
-                No scoring signals fired for this event.
-              </p>
-            )}
-          </section>
-          {related && <RelatedPanel related={related} />}
-          <section className="card">
-            <CardHeader
-              title="Event metadata"
-              description="The evidence retained for this event. No email bodies or full recipient addresses."
-            />
-            <div className="metadata-columns">
-              <DetailList
-                items={[
-                  [
-                    "Event ID",
-                    <span className="mono" key="event">
-                      {d.event_id}
-                    </span>,
-                  ],
-                  [
-                    "Account",
-                    <Link
-                      href={`/accounts/${encodeURIComponent(d.account_id)}`}
-                      key="account"
-                      className="text-link"
-                    >
-                      {d.account_id}
-                    </Link>,
-                  ],
-                  ["Event type", humanize(event.type)],
-                  ...(event.type === "account.change"
-                    ? ([
-                        [
-                          "Change",
-                          heldEventLabel(event.type, event.change_kind),
-                        ],
-                        ["Change target", event.change_target_id ?? "—"],
-                      ] as [string, string][])
-                    : event.type === "api.read"
-                      ? ([
-                          ["Read resource", event.read_resource ?? "—"],
-                          ["Read status", String(event.read_status ?? "—")],
-                        ] as [string, string][])
-                      : []),
-                  ["Source", event.source],
-                  [
-                    "API key",
-                    <span className="mono" key="api-key">
-                      {event.api_key_id ?? "—"}
-                    </span>,
-                  ],
-                  ["Occurred at", dateTime(event.occurred_at)],
-                ]}
-              />
-              <DetailList
-                items={[
-                  [
-                    "Source IP",
-                    <span className="mono" key="ip">
-                      {event.ip ?? "—"}
-                    </span>,
-                  ],
-                  [
-                    "ASN",
-                    event.asn ? `AS${event.asn} ${event.asn_org ?? ""}` : "—",
-                  ],
-                  ["Sender domain", event.sender_domain],
-                  ["Recipients", number(event.recipient_count)],
-                  ["Config version", d.config_version],
-                  ["Scoring latency", `${number(d.latency_us / 1000)} ms`],
-                ]}
-              />
-            </div>
-            <div className="domain-details">
-              {[
-                ["Link domains", event.link_domains],
-                ["Reply-To domains", event.reply_to_domains],
-                ["Body email domains", event.body_email_domains],
-              ].map(([title, domains]) => (
-                <div key={String(title)}>
-                  <span>{String(title)}</span>
-                  <p>
-                    {(domains as string[]).length
-                      ? (domains as string[]).join(", ")
-                      : "None"}
-                  </p>
+                  <span className="hit-points">
+                    +{hit.points}
+                    <small>pts</small>
+                  </span>
                 </div>
               ))}
             </div>
-          </section>
-          <section className="card">
-            <CardHeader
-              title="Action history"
-              description="Who made the call, when, and why."
-            />
-            {actions?.length ? (
-              <ol className="audit-history">
-                {actions.map((action) => (
-                  <li key={action.id}>
-                    <span className="audit-check">
-                      <Check size={14} />
-                    </span>
-                    <div>
-                      <strong>{humanize(action.action)}</strong>
-                      <p>{action.reason}</p>
-                      <small>
-                        {action.actor} · {dateTime(action.created_at)}
-                      </small>
-                    </div>
-                  </li>
-                ))}
-              </ol>
-            ) : (
-              <EmptyState compact title="No review actions yet.">
-                The first review will start this audit trail.
-              </EmptyState>
-            )}
-          </section>
-        </div>
-        <aside className="decision-aside">
-          <section className="card">
-            <CardHeader
-              title="Make the next call"
-              description="Every action needs a name and a reason."
-            />
-            <ReviewForm decision={d} />
-          </section>
-          <section className="card">
-            <CardHeader title="Review status" />
+          ) : (
+            <p className="aside-note">
+              No scoring signals fired for this event.
+            </p>
+          )}
+          <details className="method-note">
+            <summary>How scoring works</summary>
+            <p>
+              Signal points add up, capped at 100. The action comes from where
+              the score lands and how many signal categories agree: one category
+              alone can at most flag (content alone can hold), and a block needs
+              two.
+            </p>
+          </details>
+        </section>
+        <aside className="card decision-decide">
+          <CardHeader title="Decide" />
+          <ReviewForm decision={d} />
+          {actions?.length ? (
+            <ol className="audit-history">
+              {actions.map((action) => (
+                <li key={action.id}>
+                  <span className="audit-check">
+                    <Check size={14} />
+                  </span>
+                  <div>
+                    <strong>{humanize(action.action)}</strong>
+                    <p>{action.reason}</p>
+                    <small>
+                      {action.actor} · {dateTime(action.created_at)}
+                    </small>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="muted decision-no-history">No reviews yet.</p>
+          )}
+        </aside>
+        {related && (
+          <div className="decision-related">
+            <RelatedPanel related={related} />
+          </div>
+        )}
+        <details className="card decision-metadata">
+          <summary>
+            Event metadata
+            <span className="muted">
+              {[
+                event.source,
+                event.ip,
+                event.asn && `AS${event.asn}`,
+                event.type === "email.send" &&
+                  `${number(event.recipient_count)} recipients`,
+              ]
+                .filter(Boolean)
+                .join(" · ")}
+            </span>
+          </summary>
+          <div className="metadata-columns">
             <DetailList
               items={[
-                ["Status", humanize(d.review_status)],
-                ["Label", d.label ? humanize(d.label) : "Not labeled"],
-                ["Enforcement", d.enforced ? "Enforced" : "Shadow"],
-                ["Hold", d.hold_status ?? "No hold"],
-                ["Hold expires", dateTime(d.hold_expires_at)],
+                [
+                  "Event ID",
+                  <span className="mono" key="event">
+                    {d.event_id}
+                  </span>,
+                ],
+                ["Event type", humanize(event.type)],
+                ...(event.type === "account.change"
+                  ? ([
+                      ["Change", heldEventLabel(event.type, event.change_kind)],
+                      ["Change target", event.change_target_id ?? "—"],
+                    ] as [string, string][])
+                  : event.type === "api.read"
+                    ? ([
+                        ["Read resource", event.read_resource ?? "—"],
+                        ["Read status", String(event.read_status ?? "—")],
+                      ] as [string, string][])
+                    : []),
+                ["Source", event.source],
+                [
+                  "API key",
+                  <span className="mono" key="api-key">
+                    {event.api_key_id ?? "—"}
+                  </span>,
+                ],
               ]}
             />
-            {d.hold_status && (
-              <Link
-                className="button button-secondary owner-link"
-                href={`/hold/${id}`}
-              >
-                Open owner view
-              </Link>
-            )}
-          </section>
-        </aside>
+            <DetailList
+              items={[
+                [
+                  "Source IP",
+                  <span className="mono" key="ip">
+                    {event.ip ?? "—"}
+                  </span>,
+                ],
+                [
+                  "ASN",
+                  event.asn ? `AS${event.asn} ${event.asn_org ?? ""}` : "—",
+                ],
+                ["Sender domain", event.sender_domain ?? "—"],
+                ["Config version", d.config_version],
+                ["Scoring latency", `${number(d.latency_us / 1000)} ms`],
+              ]}
+            />
+          </div>
+          {domains.length > 0 && (
+            <div className="domain-details">
+              {domains.map(([title, list]) => (
+                <div key={title}>
+                  <span>{title}</span>
+                  <p>{list.join(", ")}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </details>
       </div>
     </>
   );
@@ -344,13 +312,18 @@ function RelatedPanel({ related }: { related: RelatedIndicator[] }) {
       className="card"
       aria-label="Same infrastructure on other accounts"
     >
-      <CardHeader
-        title="Same infrastructure on other accounts"
-        description="Link domains, non-freemail Reply-To domains and the source IP, within 7 days either side. Cloud ASNs are left out: thousands of legitimate senders share them."
-      />
+      <CardHeader title="Same infrastructure on other accounts" />
       <p className={`related-verdict related-${verdict.tone}`}>
         {verdict.text}
       </p>
+      <details className="method-note related-method">
+        <summary>What counts as shared</summary>
+        <p>
+          Link domains, non-freemail Reply-To domains and the source IP, within
+          7 days either side. Cloud ASNs are left out: thousands of legitimate
+          senders share them.
+        </p>
+      </details>
       {related.map((r) => (
         <div className="related-indicator" key={`${r.kind} ${r.value}`}>
           <div className="related-heading">

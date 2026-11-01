@@ -112,7 +112,6 @@ export function InvestigationWorkspace({ rows }: { rows: TimelineRow[] }) {
             <h2 id="event-stream-title">Event stream</h2>
             <p>{number(rows.length)} events · Newest first · UTC</p>
           </div>
-          <span className="count-pill">Snapshot</span>
         </div>
         <div className="stream-filters">
           <label className="stream-search">

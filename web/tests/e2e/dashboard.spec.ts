@@ -172,7 +172,7 @@ test("account search, shared-time charts, timeline and baseline", async ({
     page.getByRole("heading", { name: "acc_acme", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Learned baseline" }),
+    page.getByRole("heading", { name: "Baseline", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("img", { name: /Hourly recipients/ }),
@@ -330,7 +330,7 @@ test("event selection, filters, and copy controls keep the investigation panels 
   await selected.getByRole("link", { name: "Open full review" }).click();
   await expect(page).toHaveURL(`/decisions/${id}`);
   await expect(
-    page.getByRole("heading", { name: "Why this decision was made" }),
+    page.getByRole("heading", { name: "Why", exact: true }),
   ).toBeVisible();
 });
 
@@ -339,7 +339,9 @@ test("review requires a reason and records actor, action, evidence and audit his
   request,
 }) => {
   await signIn(page, `/decisions/${id}`);
-  await expect(page.locator(".score-overview .badge")).toHaveText("HOLD");
+  await expect(page.locator(".decision-title .badge")).toHaveText("HOLD");
+  // The header states the status once: no separate status card.
+  await expect(page.locator(".decision-meta")).toContainText("Open review");
   await expect(page.locator(".hit-row")).toHaveCount(3);
   await expect(page.locator(".hit-points").first()).toHaveText("+30pts");
   const related = page.getByRole("region", {
@@ -405,7 +407,13 @@ test("suspended key can be restored with an audited reason", async ({
     .getByLabel("Reason", { exact: true })
     .fill("Key rotated and account secured.");
   await page.getByRole("button", { name: "Restore key access" }).click();
-  await expect(page.getByText("active", { exact: true })).toBeVisible();
+  // The key's line stays as confirmation, now muted and active.
+  await expect(page.locator(".key-line").first()).toContainText(
+    "key_prod_1 active",
+  );
+  await expect(page.getByText("Restore access", { exact: true })).toHaveCount(
+    0,
+  );
 });
 
 test("owner hold view remains gated and releases legitimate activity", async ({
