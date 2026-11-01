@@ -983,3 +983,105 @@ func TestDashboardLegitimateAfterRestoreIgnoresRejections(t *testing.T) {
 		t.Error("restored account with a legitimate trigger is missing from the legitimate baselines")
 	}
 }
+
+// An account whose reviews are all closed and whose only suspended keys were
+// suspended by the engine for decisions since marked legitimate says restoring is
+// the step left, instead of posing the block as current (QA: "marked legitimate,
+// queue shows blocked"). Anything else keeps the plain row.
+func TestDashboardRestorePending(t *testing.T) {
+	f := newAPIFixture(t)
+	ctx := context.Background()
+	type key struct {
+		label, reason string // label of the decision that suspended it; reason on key_status
+	}
+	setup := func(account string, keys []key, extra func(string)) {
+		t.Helper()
+		for i, k := range keys {
+			name := fmt.Sprintf("key_%s_%d", account, i)
+			in := dashboardDecisionInput{account: account, key: name, action: "block", score: 90, at: testNow.Add(time.Duration(i) * time.Minute), review: "resolved"}
+			if k.label == "" {
+				in.review = "open"
+			} else {
+				in.label = strp(k.label)
+			}
+			id := dashboardDecision(t, f, in)
+			dashboardDecision(t, f, dashboardDecisionInput{account: account, key: name, action: "block", score: 40, at: testNow.Add(time.Hour + time.Duration(i)*time.Minute), review: "none", reason: strp("key_suspended")})
+			if _, err := f.server.Store.Pool.Exec(ctx, `insert into key_status(api_key_id,account_id,status,reason,decision_id) values($1,$2,'suspended',$3,$4)`, name, account, k.reason, id); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if extra != nil {
+			extra(account)
+		}
+	}
+	legit := key{"legitimate", "auto"}
+	cases := []struct {
+		account  string
+		keys     []key
+		extra    func(string)
+		want     bool
+		keysView *bool // the keys view's answer, when it differs: that row is the key's own
+	}{
+		{"pending", []key{legit}, nil, true, nil},
+		{"two_pending", []key{legit, legit}, nil, true, nil},
+		{"unreviewed", []key{{"", "auto"}}, nil, false, nil},
+		{"takeover", []key{{"takeover", "auto"}}, nil, false, nil},
+		{"by_owner", []key{{"legitimate", "owner"}}, nil, false, nil},
+		{"by_analyst", []key{{"legitimate", "analyst"}}, nil, false, nil},
+		// Another key suspended for a confirmed takeover: restoring this one finishes nothing.
+		{"mixed", []key{legit, {"takeover", "analyst"}}, nil, false, nil},
+		// A takeover earlier in this key's history, then restored and auto-suspended again.
+		{"takeover_history", []key{legit}, func(a string) {
+			dashboardDecision(t, f, dashboardDecisionInput{account: a, key: "key_" + a + "_0", action: "block", score: 95, at: testNow.Add(-time.Hour), review: "resolved", label: strp("takeover")})
+		}, false, nil},
+		// Another review still open on the account: that review is the row.
+		{"busy", []key{legit}, func(a string) {
+			dashboardDecision(t, f, dashboardDecisionInput{account: a, key: "key_" + a + "_0", action: "hold", score: 70, at: testNow.Add(2 * time.Hour), review: "open", hold: strp("pending")})
+		}, false, nil},
+		// A newer flag on another, active key is the account row: the row must not
+		// pair that key and flag with the suspended key's verdict.
+		{"other_key_flag", []key{legit}, func(a string) {
+			dashboardDecision(t, f, dashboardDecisionInput{account: a, key: "key_" + a + "_new", action: "flag", score: 40, at: testNow.Add(3 * time.Hour), review: "none"})
+		}, false, ptrTo(true)},
+		// A takeover confirmed on another key (since restored, so not suspended).
+		{"takeover_elsewhere", []key{legit}, func(a string) {
+			dashboardDecision(t, f, dashboardDecisionInput{account: a, key: "key_" + a + "_gone", action: "hold", score: 70, at: testNow.Add(-time.Hour), review: "resolved", label: strp("takeover")})
+		}, false, nil},
+	}
+	for _, c := range cases {
+		setup(c.account, c.keys, c.extra)
+	}
+	// A restored key is not pending, whatever its decision says.
+	restored := dashboardDecision(t, f, dashboardDecisionInput{account: "restored", key: "key_restored", action: "block", score: 90, at: testNow, review: "resolved", label: strp("legitimate")})
+	if _, err := f.server.Store.Pool.Exec(ctx, `insert into key_status(api_key_id,account_id,status,reason,decision_id) values('key_restored','restored','active','auto',$1)`, restored); err != nil {
+		t.Fatal(err)
+	}
+	for _, view := range []string{"accounts", "keys"} {
+		got := map[string]store.DashboardAccount{}
+		for _, item := range decodeResponse[store.Dashboard](t, f.get("/v1/dashboard?view="+view+"&limit=100")).Items {
+			if prev, seen := got[item.AccountID]; !seen || prev.RestorePending {
+				got[item.AccountID] = item
+			}
+		}
+		for _, c := range cases {
+			item, want := got[c.account], c.want
+			if view == "keys" && c.keysView != nil {
+				want = *c.keysView
+			}
+			if item.RestorePending != want {
+				t.Errorf("%s view: %s restore_pending = %v, want %v", view, c.account, item.RestorePending, want)
+				continue
+			}
+			// When pending, the row is the suspending block itself.
+			if want && (item.Action == nil || *item.Action != "block" || item.Score == nil || *item.Score != 90) {
+				t.Errorf("%s view: %s row = %v/%v, want the suspending block 90", view, c.account, item.Action, item.Score)
+			}
+		}
+	}
+	for _, item := range decodeResponse[store.Dashboard](t, f.get("/v1/dashboard?segment=baseline&limit=100")).Items {
+		if item.AccountID == "restored" && item.RestorePending {
+			t.Error("restored key reported as pending a restore")
+		}
+	}
+}
+func ptrTo[T any](v T) *T { return &v }

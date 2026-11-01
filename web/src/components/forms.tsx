@@ -302,8 +302,8 @@ export function ResolveAccountForm({
       {outcome === "legitimate" && open.restorable_keys > 0 && (
         <label className="restore-keys">
           <input type="checkbox" name="restore_keys" />
-          Also restore {plural(open.restorable_keys, "key")} these reviews
-          suspended
+          Also restore{" "}
+          {plural(open.restorable_keys, "automatically suspended key")}
         </label>
       )}
       {outcome === "legitimate" &&

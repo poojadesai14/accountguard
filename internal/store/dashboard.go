@@ -42,8 +42,12 @@ type DashboardAccount struct {
 	ChangeKind *string `json:"change_kind"`
 	// Set only while the row's key is suspended: who suspended it (auto, analyst
 	// or owner) and when.
-	KeySuspendedBy *string      `json:"key_suspended_by"`
-	KeySuspendedAt *time.Time   `json:"key_suspended_at"`
+	KeySuspendedBy *string    `json:"key_suspended_by"`
+	KeySuspendedAt *time.Time `json:"key_suspended_at"`
+	// The row's decision suspended its key and was since marked legitimate, nothing
+	// on the account is open, and every suspended key on it is in that state
+	// (suspendedForLegitimate): restoring is the step left.
+	RestorePending bool         `json:"restore_pending"`
 	OccurredAt     *time.Time   `json:"occurred_at"`
 	IP             *string      `json:"ip"`
 	ASN            *int         `json:"asn"`
@@ -65,6 +69,13 @@ type Dashboard struct {
 // GetDashboard uses one statement snapshot for global counters and filtered,
 // paginated account, held-event, or suspended-key rows. Historical decisions and
 // scores are never rewritten.
+// restorePending: the row shows the decision that suspended its key (so its badge,
+// key, driver and time all describe that decision), nothing on the account is open,
+// and every suspended key on it waits only for a restore (suspendedForLegitimate),
+// so "restore to finish" is true.
+const restorePending = `(d.decision_id = k.decision_id and coalesce(a.open_reviews,0) = 0
+  and coalesce(s.suspended_keys,0) > 0 and s.restore_pending_keys = s.suspended_keys)`
+
 func GetDashboard(ctx context.Context, db DBTX, f DashboardFilter) (*Dashboard, error) {
 	if f.View == "" {
 		f.View = "accounts"
@@ -94,7 +105,9 @@ func GetDashboard(ctx context.Context, db DBTX, f DashboardFilter) (*Dashboard, 
  -- key_suspended rejection only says the key was still suspended at the time.
  window latest_scored as (partition by account_id order by (reason = 'key_suspended') asc nulls first, occurred_at desc, decided_at desc, decision_id desc)
  ), suspended as (
- select account_id, count(*)::int as suspended_keys from key_status where status = 'suspended' group by account_id
+ select k.account_id, count(*)::int as suspended_keys,
+  count(*) filter (where ` + suspendedForLegitimate + `)::int as restore_pending_keys
+ from key_status k where k.status = 'suspended' group by k.account_id
  ), entities as (
  select 'accounts'::text as kind, account_id, null::uuid as decision_id, null::text as key_id from profiles
  union all
@@ -109,6 +122,7 @@ func GetDashboard(ctx context.Context, db DBTX, f DashboardFilter) (*Dashboard, 
   d.decision_id::text, d.event_id, coalesce(ent.key_id,d.api_key_id) as api_key_id, d.action, d.score, d.enforced, d.label, d.review_status, d.hold_status, d.hold_expires_at, d.occurred_at,
   case when k.status = 'suspended' then k.reason end as key_suspended_by,
   case when k.status = 'suspended' then k.updated_at end as key_suspended_at,
+  ` + restorePending + ` as restore_pending,
   host(e.ip) as ip, e.asn, e.asn_org, e.type as event_type, e.change_kind, coalesce(d.hits,'[]') as hits,
   coalesce(d.reason, (select h->>'name' from jsonb_array_elements(coalesce(d.hits,'[]')) h order by (h->>'points')::int desc, h->>'name' limit 1), 'No scored signals') as primary_driver,
   (coalesce(a.open_reviews,0) > 0 or coalesce(s.suspended_keys,0) > 0) as attention,

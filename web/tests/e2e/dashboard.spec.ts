@@ -1167,6 +1167,46 @@ test("the drawer's review message names the restore, and a restore confirms in p
   await expect(keyLine).toContainText("key_prod_1 active");
 });
 
+test("a reviewed account whose key is still suspended reads as a restore, not a block", async ({
+  page,
+}) => {
+  await signIn(page);
+  const row = page.locator("tr", { hasText: "acc_acme" }).first();
+  await expect(row.locator(".dashboard-decision .badge-hold")).toHaveCount(1);
+  await page
+    .getByRole("button", { name: "Inspect acc_acme", exact: true })
+    .click();
+  const drawer = page.getByRole("dialog", { name: "acc_acme" });
+  await drawer.getByLabel("Review outcome").selectOption("mark_legitimate");
+  await drawer.getByLabel("Your name").fill("Pooja");
+  await drawer.getByLabel("Reason", { exact: true }).fill("Owner confirmed.");
+  await drawer.getByRole("button", { name: "Record review" }).click();
+  await expect(drawer.locator(".dashboard-toast")).toContainText(
+    "still suspended",
+  );
+  await drawer.getByRole("button", { name: "Close inspection" }).click();
+  await page.reload();
+  const decision = row.locator(".dashboard-decision");
+  await expect(decision).toContainText("Marked legitimate");
+  await expect(decision).toContainText("Was hold · 75");
+  await expect(decision.locator(".badge-hold")).toHaveCount(0);
+  await expect(row.locator(".dashboard-current-state")).toContainText(
+    "Key still suspended",
+  );
+  await expect(row.locator(".dashboard-current-state")).toContainText(
+    "Restore access to finish",
+  );
+  // The keys view keeps when the key was suspended.
+  await page.goto("/?view=keys");
+  const keyRow = page.locator("tr", { hasText: "acc_acme" }).first();
+  await expect(keyRow.locator(".dashboard-decision")).toContainText(
+    "Marked legitimate",
+  );
+  await expect(keyRow.locator(".dashboard-current-state")).toContainText(
+    "Restore access to finish · suspended",
+  );
+});
+
 test("an account's incident resolves in one audited step, keys only on request", async ({
   page,
 }) => {
@@ -1180,7 +1220,7 @@ test("an account's incident resolves in one audited step, keys only on request",
   await expect(submit).toBeDisabled();
   await card.getByLabel("Legitimate").check();
   await expect(card).toContainText("releases 1 held email");
-  const restore = card.getByLabel("Also restore 1 key these reviews suspended");
+  const restore = card.getByLabel("Also restore 1 automatically suspended key");
   await expect(restore).not.toBeChecked();
   await card.getByLabel("Your name").fill("Pooja");
   await card.getByLabel("Reason", { exact: true }).fill("Owner confirmed.");
@@ -1205,7 +1245,7 @@ test("the restore box brings back only the key the resolved reviews suspended", 
   const card = page.locator(".resolve-card");
   await card.locator("summary").click();
   await card.getByLabel("Legitimate").check();
-  await card.getByLabel("Also restore 1 key these reviews suspended").check();
+  await card.getByLabel("Also restore 1 automatically suspended key").check();
   await card.getByLabel("Your name").fill("Pooja");
   await card.getByLabel("Reason", { exact: true }).fill("Key rotated.");
   await card.getByRole("button", { name: "Resolve account" }).click();
@@ -1227,7 +1267,7 @@ test("a resolution is refused when the account's reviews changed since it loaded
   await card.getByLabel("Takeover").check();
   await expect(card).toContainText("drops 1 held email");
   await expect(
-    card.getByLabel("Also restore 1 key these reviews suspended"),
+    card.getByLabel("Also restore 1 automatically suspended key"),
   ).toHaveCount(0);
   await card.getByLabel("Your name").fill("Pooja");
   await card

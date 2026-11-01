@@ -65,19 +65,22 @@ func TestResolveAccount(t *testing.T) {
 	hold := dashboardDecision(t, f, dashboardDecisionInput{account: "fp", key: "key_fp", action: "hold", score: 70, at: testNow, review: "open", hold: strp("pending")})
 	block := dashboardDecision(t, f, dashboardDecisionInput{account: "fp", key: "key_fp", action: "block", score: 90, at: testNow.Add(time.Minute), review: "open"})
 	suspend("key_fp", "fp", "auto", block)
-	// Two suspensions on the same account that a legitimate resolution must not touch:
-	// a key the owner reported stolen, and one whose suspending review was closed
-	// earlier without restoring it (the per-key restore is the step for that).
-	stolen := dashboardDecision(t, f, dashboardDecisionInput{account: "fp", key: "key_stolen", action: "hold", score: 75, at: testNow.Add(-time.Hour), review: "resolved", label: strp("takeover"), hold: strp("dropped")})
-	suspend("key_stolen", "fp", "owner", stolen)
+	// A key an analyst suspended by hand must never come back this way; a key whose
+	// suspending block was already marked legitimate (without a restore) may: the
+	// analyst judged that block, and it is the step left (QA: sim_1101_0747_069).
+	exec(`insert into key_status(api_key_id,account_id,status,reason) values('key_manual','fp','suspended','analyst')`)
 	closed := dashboardDecision(t, f, dashboardDecisionInput{account: "fp", key: "key_old", action: "block", score: 85, at: testNow.Add(-2 * time.Hour), review: "resolved", label: strp("legitimate")})
 	suspend("key_old", "fp", "auto", closed)
 
+	// Another account's key in the same state: resolving fp must not touch it.
+	other := dashboardDecision(t, f, dashboardDecisionInput{account: "other", key: "key_other", action: "block", score: 90, at: testNow, review: "resolved", label: strp("legitimate")})
+	suspend("key_other", "other", "auto", other)
+
 	// The profile tells the UI what a resolution would close, and which reviews it saw.
 	open := openCounts("fp")
-	if open.Reviews != 2 || open.PendingHolds != 1 || open.SuspendedKeys != 3 || open.RestorableKeys != 1 ||
+	if open.Reviews != 2 || open.PendingHolds != 1 || open.SuspendedKeys != 3 || open.RestorableKeys != 2 ||
 		!slices.Equal(open.DecisionIDs, []string{hold, block}) {
-		t.Fatalf("open counts = %+v, want 2 reviews [hold block], 1 held, 3 suspended, 1 restorable", open)
+		t.Fatalf("open counts = %+v, want 2 reviews [hold block], 1 held, 3 suspended, 2 restorable", open)
 	}
 
 	// Reviews the analyst didn't see: nothing changes.
@@ -89,8 +92,11 @@ func TestResolveAccount(t *testing.T) {
 	// Legitimate with restore: both reviews close, the hold is released, the baseline
 	// learns the stopped events' network, and only the key those reviews suspended returns.
 	got := resolve("fp", map[string]any{"decision_ids": open.DecisionIDs, "outcome": "legitimate", "restore_keys": true, "actor": "reviewer", "reason": "owner confirmed"})
-	if got.Resolved != 2 || got.HoldsReleased != 1 || !slices.Equal(got.KeysRestored, []string{"key_fp"}) {
-		t.Fatalf("legitimate = %+v, want 2 resolved, 1 hold released, key_fp restored", got)
+	if got.Resolved != 2 || got.HoldsReleased != 1 || !slices.Equal(got.KeysRestored, []string{"key_fp", "key_old"}) {
+		t.Fatalf("legitimate = %+v, want 2 resolved, 1 hold released, key_fp and key_old restored", got)
+	}
+	if !inQueue("fp") {
+		t.Error("account left the queue while a hand-suspended key is still suspended")
 	}
 	if d := decision(hold); d != "legitimate/resolved/released" {
 		t.Errorf("hold = %s, want legitimate/resolved/released", d)
@@ -101,10 +107,11 @@ func TestResolveAccount(t *testing.T) {
 	if s := keyStatus("key_fp"); s != "active" {
 		t.Errorf("key_fp = %s, want active", s)
 	}
-	for _, key := range []string{"key_stolen", "key_old"} {
-		if s := keyStatus(key); s != "suspended" {
-			t.Errorf("%s = %s, a legitimate resolution restored a key it didn't suspend", key, s)
-		}
+	if s := keyStatus("key_other"); s != "suspended" {
+		t.Errorf("key_other = %s, resolving one account restored another's key", s)
+	}
+	if s := keyStatus("key_manual"); s != "suspended" {
+		t.Errorf("key_manual = %s, a legitimate resolution restored a key an analyst suspended", s)
 	}
 	if n := scalar(`select coalesce(key_asns->'key_fp'->>'14061','0') from profiles where account_id = 'fp'`); n != "2" {
 		t.Errorf("baseline saw AS14061 on key_fp %s times, want 2 (one per resolved event)", n)
@@ -114,9 +121,6 @@ func TestResolveAccount(t *testing.T) {
 	}
 	if n := audits("unblock_key", "key_fp", "account resolution: owner confirmed"); n != "1" {
 		t.Errorf("unblock_key audit rows = %s, want 1", n)
-	}
-	if !inQueue("fp") {
-		t.Error("account left the queue while a stolen key is still suspended")
 	}
 
 	// Without restore the key stays suspended; with nothing else, a restored account leaves the queue.
@@ -168,6 +172,20 @@ func TestResolveAccount(t *testing.T) {
 	got = resolve("ato", map[string]any{"decision_ids": []string{later}, "outcome": "legitimate", "restore_keys": true, "actor": "reviewer", "reason": "x"})
 	if len(got.KeysRestored) != 0 || keyStatus("key_ato") != "suspended" {
 		t.Errorf("restored a key with a confirmed takeover: %+v", got)
+	}
+
+	// A confirmed takeover anywhere on the account blocks restoring through a
+	// resolution, even a key the engine suspended for a different, legitimate block.
+	stolen := dashboardDecision(t, f, dashboardDecisionInput{account: "mixed", key: "key_stolen", action: "hold", score: 75, at: testNow.Add(-time.Hour), review: "resolved", label: strp("takeover"), hold: strp("dropped")})
+	suspend("key_stolen", "mixed", "owner", stolen)
+	fine := dashboardDecision(t, f, dashboardDecisionInput{account: "mixed", key: "key_fine", action: "block", score: 90, at: testNow, review: "open"})
+	suspend("key_fine", "mixed", "auto", fine)
+	if c := openCounts("mixed"); c.RestorableKeys != 0 {
+		t.Errorf("restorable keys on an account with a takeover = %d, want 0", c.RestorableKeys)
+	}
+	got = resolve("mixed", map[string]any{"decision_ids": []string{fine}, "outcome": "legitimate", "restore_keys": true, "actor": "reviewer", "reason": "x"})
+	if len(got.KeysRestored) != 0 || keyStatus("key_fine") != "suspended" || keyStatus("key_stolen") != "suspended" {
+		t.Errorf("restored a key on an account with a confirmed takeover: %+v", got)
 	}
 
 	// Nothing left, bad combinations, and missing fields are refused.

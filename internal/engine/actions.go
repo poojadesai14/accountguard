@@ -196,7 +196,8 @@ type AccountResolution struct {
 // Legitimate labels the open decisions legitimate (teaching the baseline from each
 // stopped event) and releases their pending holds. Keys are restored only when
 // restoreKeys is set, and only those the engine suspended because of one of these
-// decisions (store.RestorableKeys): a wrong call there lets an attacker send again.
+// decisions or by one already marked legitimate (store.RestorableKeys): a wrong
+// call there lets an attacker send again.
 // Takeover labels them takeover, drops their pending holds and suspends the keys
 // they were sent with.
 func (s *Service) ResolveAccount(ctx context.Context, accountID string, seen []string, outcome string, restoreKeys bool, actor, reason string) (*AccountResolution, error) {
@@ -228,7 +229,7 @@ func (s *Service) ResolveAccount(ctx context.Context, accountID string, seen []s
 		// Locked before any label changes, so a takeover label written below can't hide a key.
 		var restorable []string
 		if restoreKeys {
-			if restorable, err = store.RestorableKeys(ctx, tx, ids); err != nil {
+			if restorable, err = store.RestorableKeys(ctx, tx, accountID, ids); err != nil {
 				return err
 			}
 		}
