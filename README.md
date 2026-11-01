@@ -247,6 +247,11 @@ Analyst UI (Next.js) ──server-side, analyst token──▶ analyst API ─�
 - **Graduated, reversible actions.** Holds expire after 24 h and stay in the review queue. Analysts can release
   holds, mark events legitimate, and restore suspended keys. Every action needs a name and a reason and is
   audited.
+- **Expired holds are dropped, not sent** (`hold.expire_action: drop`). A held email that nobody vouched for
+  in 24 h is more likely phishing than urgent, and a phishing email delivered a day late still does harm.
+  The cost is a legitimate email lost when the owner doesn't answer, so the owner is told it failed, and
+  the setting can be `release` instead. A better policy: drop only while the account has another open
+  review or a suspended key, otherwise release.
 - **Signals are a slice of `{Name, Category, Eval}`,** so adding one doesn't touch the engine. They run
   sequentially because each is a microsecond in-memory check; concurrency is across requests.
 
@@ -271,6 +276,17 @@ An attacker who does **all** of these scores near zero:
 - uses an aged or compromised domain → young domain 0
 - creates nothing and reads nothing → account changes 0
 - links through a domain the account already uses (shortener, Google Docs, Dropbox) → new domain 0
+
+Partial misses, also in the simulator (section 4), each with the signal that would close it:
+
+| Case | Today | Why | Next signal |
+|---|---|---|---|
+| Attacker on the owner's cloud with a young link or gmail Reply-To | flag only, mail delivered | network scores 0; a young link (20) and gmail Reply-To (15) add up to 35, below hold (60) | IP /24 or cloud region inside the ASN |
+| Takeover of an account with no history, sending a young link | allowed (score 20) | history signals stay quiet below 50 events, so only content can fire | `young_domain` at 35 (trade-off in section 4), account-age prior |
+| Link through a domain the account already uses | missed | `new_domain` checks the link host, not where it redirects | follow redirects and file-sharing links to the final host |
+
+These are the price of zero false holds and blocks in the simulation: each fix moves some legitimate
+changes from flag to hold.
 
 The simulator confirms these misses. Mitigations: finer network detail (IP /24, cloud region), looking
 through shorteners and file-sharing links, recipient behavior (whole list at once vs one-to-one
