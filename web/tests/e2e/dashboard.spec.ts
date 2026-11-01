@@ -1004,8 +1004,14 @@ test("automatic refresh never overlaps a pending dashboard request", async ({
     await route.continue();
   });
   try {
-    await page.clock.runFor(30_000);
-    await expect.poll(() => heldRequests).toBe(1);
+    // Keep advancing until the first refresh is in flight: on a slow runner the
+    // polling timer may not be registered yet when the first 30 s elapse.
+    await expect
+      .poll(async () => {
+        if (heldRequests === 0) await page.clock.runFor(30_000);
+        return heldRequests;
+      })
+      .toBe(1);
     await page.clock.runFor(90_000);
     expect(heldRequests).toBe(1);
   } finally {
