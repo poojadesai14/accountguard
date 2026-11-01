@@ -12,23 +12,18 @@ export default async function LoginPage({
   return (
     <main className="login-page">
       <div className="login-brand">
-        <img
-          src="/resend-wordmark-white.svg"
-          width="104"
-          height="26"
-          alt="Resend"
-        />
-        <span>ATO</span>
+        <span className="brand-name">ATO Console</span>
+        <span>take-home</span>
       </div>
       <section className="login-card">
         <span className="login-symbol">
           <ShieldCheck size={27} strokeWidth={1.4} />
         </span>
         <p className="eyebrow">ANALYST WORKSPACE</p>
-        <h1>Sign in to your workspace</h1>
+        <h1>Sign in</h1>
         <p className="login-description">
-          Investigate unusual activity, understand every signal, and make the
-          next call with context.
+          Analyst console for an account-takeover detection take-home built for
+          Resend. Not an official Resend product.
         </p>
         <LoginForm next={safeReturnPath(params.next)} />
         <div className="login-footer">
@@ -36,9 +31,6 @@ export default async function LoginPage({
           Private workspace · Authorized analysts only
         </div>
       </section>
-      <p className="login-caption">
-        Built around the evidence. Designed for the decision.
-      </p>
     </main>
   );
 }

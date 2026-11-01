@@ -31,6 +31,16 @@ export async function analystApi<T>(
       signal: AbortSignal.timeout(65_000),
     });
     if (!response.ok) {
+      // 400 and 409 come from our own API with a specific, safe explanation
+      // (e.g. "hold is not pending"); show it instead of a generic message.
+      if (response.status === 400 || response.status === 409) {
+        const detail = await apiErrorMessage(response);
+        if (detail)
+          return {
+            error: `${detail[0].toUpperCase()}${detail.slice(1)}.`,
+            status: response.status,
+          };
+      }
       const messages: Record<number, string> = {
         400: "The request could not be accepted. Check the selected values.",
         401: "The API rejected the dashboard's analyst token. Check the server configuration.",
@@ -51,5 +61,16 @@ export async function analystApi<T>(
         "We couldn't reach the API. It may be waking up after being idle. Please try again shortly.",
       status: 503,
     };
+  }
+}
+
+async function apiErrorMessage(response: Response) {
+  try {
+    const body = (await response.json()) as { error?: unknown };
+    return typeof body.error === "string" && body.error.length <= 300
+      ? body.error.split("\n")[0].replace(/\.$/, "")
+      : undefined;
+  } catch {
+    return undefined;
   }
 }

@@ -5,8 +5,8 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "Analyst Workspace · Resend ATO",
-    template: "%s · Resend ATO",
+    default: "ATO Console",
+    template: "%s · ATO Console",
   },
   description: "Account takeover investigations and analyst reviews.",
   robots: { index: false, follow: false },

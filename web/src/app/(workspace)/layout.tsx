@@ -21,15 +21,9 @@ export default async function WorkspaceLayout({
           <Link
             href="/"
             className="workspace-brand"
-            aria-label="Resend ATO overview"
+            aria-label="ATO Console overview"
           >
-            <img
-              src="/resend-wordmark-white.svg"
-              width="104"
-              height="26"
-              alt="Resend"
-            />
-            <span className="brand-product">ATO</span>
+            <span className="brand-name">ATO Console</span>
           </Link>
           <div className="workspace-path">
             <ShieldCheck size={15} />
@@ -44,7 +38,9 @@ export default async function WorkspaceLayout({
         </div>
         {children}
         <footer className="page-footer">
-          <span>Resend · Account protection</span>
+          <span>
+            ATO Console · Resend take-home demo, not an official Resend product
+          </span>
           <span>All timestamps in UTC · Email content is never displayed</span>
           <form action={logout} className="mobile-logout">
             <button type="submit" className="button button-secondary">

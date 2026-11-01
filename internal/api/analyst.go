@@ -177,7 +177,24 @@ func (s *Server) getDecision(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	actions, err := store.ActionsForDecision(ctx, s.Store.Pool, id)
-	respond(w, map[string]any{"decision": d, "event": ev, "actions": actions}, err)
+	respond(w, map[string]any{"decision": d, "event": ev, "actions": actions, "thresholds": s.thresholds()}, err)
+}
+
+// Thresholds lets the UI explain a decision with the same numbers the engine used.
+type Thresholds struct {
+	Flag                 int      `json:"flag"`
+	Hold                 int      `json:"hold"`
+	Block                int      `json:"block"`
+	BlockMinCategories   int      `json:"block_min_categories"`
+	SingleCategoryExempt []string `json:"single_category_exempt"`
+}
+
+func (s *Server) thresholds() Thresholds {
+	t := s.Config.Thresholds
+	return Thresholds{
+		Flag: t.Flag, Hold: t.Hold, Block: t.Block,
+		BlockMinCategories: t.BlockMinCategories, SingleCategoryExempt: t.SingleCategoryExempt,
+	}
 }
 
 type actionRequest struct {

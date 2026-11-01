@@ -142,10 +142,15 @@ export function ReviewForm({
           name="action"
           id="action"
           required
-          defaultValue={
-            !labeled ? (initialAction ?? "mark_legitimate") : "release_hold"
-          }
+          defaultValue={labeled ? "release_hold" : (initialAction ?? "")}
         >
+          {!labeled && (
+            // No default: "Mark legitimate" teaches the baseline, so it must
+            // never be the outcome of an unread submit.
+            <option value="" disabled>
+              Choose an outcome…
+            </option>
+          )}
           {!labeled && <option value="mark_legitimate">Mark legitimate</option>}
           {!labeled && decision.api_key_id && (
             <option value="confirm_takeover">Confirm takeover</option>

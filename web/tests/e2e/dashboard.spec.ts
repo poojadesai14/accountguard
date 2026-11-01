@@ -18,13 +18,7 @@ test("password gate, signed cookie, return path, logout, and token privacy", asy
 }) => {
   await page.goto("/accounts?q=acme");
   await expect(page).toHaveURL(/\/login\?next=/);
-  await expect
-    .poll(() =>
-      page
-        .getByRole("img", { name: "Resend", exact: true })
-        .evaluate((image) => (image as HTMLImageElement).naturalWidth),
-    )
-    .toBeGreaterThan(0);
+  await expect(page.getByText("Not an official Resend product")).toBeVisible();
   await page.getByLabel("Workspace password").fill("wrong-password");
   await page.getByRole("button", { name: "Open workspace" }).click();
   await expect(
@@ -63,7 +57,7 @@ test("dashboard metrics and telemetry charts use real API data and date filters"
     "1",
   ]);
   await page.getByRole("button", { name: "Telemetry", exact: true }).click();
-  for (const action of ["FLAG", "QUARANTINE", "BLOCK"])
+  for (const action of ["FLAG", "HOLD", "BLOCK"])
     await expect(
       page.getByRole("figure", { name: `${action} decisions over time` }),
     ).toBeVisible();
@@ -177,29 +171,33 @@ test("account search, shared-time charts, timeline and baseline", async ({
   await expect(
     page.getByRole("img", { name: /ASN observations/ }),
   ).toBeVisible();
+  // Events are listed once, in the stream, below the charts.
+  await expect(
+    page.getByRole("heading", { name: "Event stream" }),
+  ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Event timeline" }),
-  ).toBeVisible();
+  ).toHaveCount(0);
   await page.screenshot({
     path: "test-results/account-desktop.png",
     fullPage: true,
   });
 });
 
-test("a single quarantined incident has a visible, keyboard-readable chart", async ({
+test("a single held incident has a visible, keyboard-readable chart", async ({
   page,
   request,
 }) => {
   await request.post("http://127.0.0.1:3102/__single-bucket");
   await signIn(page, "/?tab=telemetry&period=all");
   const chart = page.getByRole("figure", {
-    name: "QUARANTINE decisions over time",
+    name: "HOLD decisions over time",
   });
   await expect(chart).toBeVisible();
   await chart.getByRole("application").focus();
   await page.keyboard.press("ArrowRight");
   await expect(chart.locator(".recharts-tooltip-wrapper")).toContainText(
-    "QUARANTINE",
+    "HOLD",
   );
   await expect(chart.locator(".recharts-tooltip-wrapper")).toContainText("1");
   await page.getByText("View chart data", { exact: true }).click();
@@ -222,7 +220,7 @@ test("event selection, filters, and copy controls keep the investigation panels 
     name: "Selected event metadata",
   });
   await expect(
-    selected.getByRole("heading", { name: "QUARANTINE", exact: true }),
+    selected.getByRole("heading", { name: "HOLD", exact: true }),
   ).toBeVisible();
   await expect(
     selected.getByRole("table", { name: "Selected event signals" }),
@@ -296,13 +294,13 @@ test("event selection, filters, and copy controls keep the investigation panels 
     }),
   ).toHaveCount(0);
   await expect(
-    selected.getByRole("heading", { name: "QUARANTINE", exact: true }),
+    selected.getByRole("heading", { name: "HOLD", exact: true }),
   ).toBeVisible();
   await workspace
     .getByRole("searchbox", { name: "Filter event stream" })
     .fill("new domain");
   await expect(
-    selected.getByRole("heading", { name: "QUARANTINE", exact: true }),
+    selected.getByRole("heading", { name: "HOLD", exact: true }),
   ).toBeVisible();
   await workspace
     .getByRole("searchbox", { name: "Filter event stream" })
@@ -328,7 +326,7 @@ test("review requires a reason and records actor, action, evidence and audit his
   request,
 }) => {
   await signIn(page, `/decisions/${id}`);
-  await expect(page.locator(".score-overview .badge")).toHaveText("QUARANTINE");
+  await expect(page.locator(".score-overview .badge")).toHaveText("HOLD");
   await expect(page.locator(".hit-row")).toHaveCount(3);
   await expect(page.locator(".hit-points").first()).toHaveText("+30pts");
   await page.getByLabel("Review outcome").selectOption("confirm_takeover");
@@ -503,8 +501,8 @@ test("dashboard filters and pagination are reflected in the URL", async ({
     fullPage: true,
   });
   const table = page.getByRole("table", { name: "Dashboard accounts" });
-  await page.getByRole("button", { name: "High ≥80", exact: true }).click();
-  await expect(page).toHaveURL(/severity=high/);
+  await page.getByRole("button", { name: "Block", exact: true }).click();
+  await expect(page).toHaveURL(/severity=block/);
   await expect(
     table.getByRole("button", { name: "Inspect acc_high", exact: true }),
   ).toBeVisible();
@@ -515,7 +513,7 @@ test("dashboard filters and pagination are reflected in the URL", async ({
     .getByRole("button", { name: "Legitimate baselines", exact: true })
     .click();
   await expect(
-    page.getByRole("group", { name: "Risk score filter" }),
+    page.getByRole("group", { name: "Filter by decision" }),
   ).toHaveCount(0);
   await expect(page).not.toHaveURL(/severity=/);
   await expect(page.getByRole("combobox", { name: "Sort by" })).toBeVisible();
@@ -539,7 +537,7 @@ test("dashboard filters and pagination are reflected in the URL", async ({
     table.getByRole("button", { name: "Inspect acc_learning", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("group", { name: "Risk score filter" }),
+    page.getByRole("group", { name: "Filter by decision" }),
   ).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "Sort by" })).toHaveValue(
     "score_desc",
@@ -547,7 +545,7 @@ test("dashboard filters and pagination are reflected in the URL", async ({
   await request.post("http://127.0.0.1:3102/__many-accounts");
   await page.goto("/");
   await expect(
-    page.getByRole("group", { name: "Risk score filter" }),
+    page.getByRole("group", { name: "Filter by decision" }),
   ).toBeVisible();
   await expect(page.locator(".dashboard-pagination")).toContainText(
     "Showing 1–50 of 58 accounts",
@@ -618,7 +616,7 @@ test("metric cards open matching drilldowns and retain selection through reload 
   await expect(table).toContainText("acc_good");
   await expect(table).not.toContainText("acc_learning");
   await expect(
-    page.getByRole("group", { name: "Risk score filter" }),
+    page.getByRole("group", { name: "Filter by decision" }),
   ).toHaveCount(0);
   await page.getByRole("button", { name: "Clear view", exact: true }).click();
   await expect(page).not.toHaveURL(/view=/);
@@ -752,8 +750,8 @@ test("highest score sorts across pages, preserves filters, and explains monitori
   await expect(
     table.locator("tbody tr").first().locator(".score-number"),
   ).toHaveText("99");
-  await page.getByRole("button", { name: "High ≥80", exact: true }).click();
-  await expect(page).toHaveURL(/severity=high/);
+  await page.getByRole("button", { name: "Flag", exact: true }).click();
+  await expect(page).toHaveURL(/severity=flag/);
   await expect(sort).toHaveValue("score_desc");
   await expect(table.locator("tbody tr")).toHaveCount(2);
   await page.reload();
@@ -769,7 +767,7 @@ test("highest score sorts across pages, preserves filters, and explains monitori
       return (
         url.pathname === "/v1/dashboard" &&
         url.searchParams.get("sort") === "score_desc" &&
-        url.searchParams.get("severity") === "high" &&
+        url.searchParams.get("severity") === "flag" &&
         url.searchParams.get("q") === "acc_"
       );
     }),
@@ -777,7 +775,9 @@ test("highest score sorts across pages, preserves filters, and explains monitori
 
   await sort.selectOption("priority");
   await expect(page).not.toHaveURL(/sort=/);
-  await expect(table.locator("tbody tr").first()).toContainText("acc_high");
+  // The Flag filter is still applied, so priority order starts with the
+  // highest-scoring flag.
+  await expect(table.locator("tbody tr").first()).toContainText("acc_bulk_054");
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
     await expect(sort).toBeVisible();
@@ -872,7 +872,7 @@ test("inspection drawer traps focus, closes with Escape, and records audited sus
   ).toContainText("Pooja");
 });
 
-test("legitimate approval refreshes membership while preserving the original quarantine score", async ({
+test("legitimate approval refreshes membership while preserving the original hold score", async ({
   page,
   request,
 }) => {
@@ -890,6 +890,13 @@ test("legitimate approval refreshes membership while preserving the original qua
   await drawer
     .getByLabel("Reason", { exact: true })
     .fill("Confirmed legitimate traffic with the owner.");
+  // No outcome is preselected: "Mark legitimate" teaches the baseline, so an
+  // unread submit must not record it.
+  const outcome = drawer.getByLabel("Review outcome");
+  await expect(outcome).toHaveValue("");
+  await drawer.getByRole("button", { name: "Record review" }).click();
+  await expect(drawer.locator(".dashboard-toast")).toHaveCount(0);
+  await outcome.selectOption("mark_legitimate");
   await drawer.getByRole("button", { name: "Record review" }).click();
   await expect(drawer.locator(".dashboard-toast")).toContainText(
     "Action recorded",
@@ -905,7 +912,7 @@ test("legitimate approval refreshes membership while preserving the original qua
   const approved = page.getByRole("row").filter({
     has: page.getByRole("button", { name: "Inspect acc_acme", exact: true }),
   });
-  await expect(approved).toContainText("QUARANTINE");
+  await expect(approved).toContainText("HOLD");
   await expect(approved).toContainText("legitimate");
   await expect(approved.locator(".score-number")).toHaveText("75");
 });

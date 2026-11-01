@@ -14,11 +14,11 @@
   --brand-accent: #ffffff;
   --status-allow: #22c55e;
   --status-flag: #eab308;
-  --status-hold: #eab308;
+  --status-hold: #f97316;
   --status-block: #e11d48;
-  --status-quarantine-bg: rgba(234, 179, 8, 0.08);
-  --status-quarantine-border: rgba(202, 138, 4, 0.25);
-  --status-quarantine-text: #facc15;
+  --status-hold-bg: rgba(249, 115, 22, 0.08);
+  --status-hold-border: rgba(249, 115, 22, 0.25);
+  --status-hold-text: #fb923c;
   --status-blocked-bg: rgba(225, 29, 72, 0.08);
   --status-blocked-border: rgba(225, 29, 72, 0.25);
   --status-blocked-text: #fb7185;
@@ -180,13 +180,14 @@ small {
   gap: 12px;
   padding: 2px 12px 28px;
 }
-.brand img,
-.login-brand img {
-  display: block;
-  object-fit: contain;
+.brand-name {
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  white-space: nowrap;
 }
-.brand-product,
-.login-brand > span {
+.login-brand > span:not(.brand-name) {
   display: inline-flex;
   color: var(--text-secondary);
   background: #1a1a1a;
@@ -289,40 +290,12 @@ small {
 .logout svg:last-child {
   margin-left: auto;
 }
-.analyst-avatar {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  padding: 18px 12px 2px;
-  border-top: 1px solid var(--line);
-  margin-top: 12px;
-  font-size: 16px;
-}
-.analyst-avatar > span:first-child {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  font-size: 13px;
-  color: #dddddd;
-}
-.analyst-avatar small {
-  display: block;
-  font-size: 13px;
-  color: var(--subtle);
-}
 .online-dot {
   display: inline-block;
   width: 5px;
   height: 5px;
   border-radius: 50%;
   background: var(--allow);
-}
-.analyst-avatar > .online-dot {
-  margin-left: auto;
 }
 
 .main-content {
@@ -912,9 +885,9 @@ td strong {
   background: #eab3080d;
 }
 .badge-hold {
-  color: var(--status-quarantine-text);
-  border-color: var(--status-quarantine-border);
-  background: var(--status-quarantine-bg);
+  color: var(--status-hold-text);
+  border-color: var(--status-hold-border);
+  background: var(--status-hold-bg);
 }
 .badge-block {
   color: var(--status-blocked-text);
@@ -1280,13 +1253,16 @@ td strong {
 .score-number.elevated {
   color: #fdba74;
 }
-.risk-low {
+.score-allow {
   color: var(--status-allow-text);
 }
-.risk-medium {
-  color: var(--status-quarantine-text);
+.score-flag {
+  color: #fde047;
 }
-.risk-high {
+.score-hold {
+  color: var(--status-hold-text);
+}
+.score-block {
   color: var(--status-blocked-text);
 }
 .decision-grid {
@@ -2532,14 +2508,6 @@ td strong {
     padding: 0;
     gap: 7px;
   }
-  .brand img {
-    width: 86px;
-    height: 22px;
-  }
-  .brand-product {
-    font-size: 12px;
-    padding: 3px 4px;
-  }
   .workspace,
   .nav-label,
   .sidebar-footer {
@@ -2868,14 +2836,11 @@ td strong {
     justify-content: center;
     margin-bottom: 30px;
   }
-  .sidebar .brand img,
-  .sidebar .brand-product,
+  .sidebar .brand-name,
   .sidebar .workspace,
   .sidebar .nav-label,
   .sidebar .privacy-note,
   .sidebar .nav-text,
-  .sidebar .analyst-avatar > div,
-  .sidebar .analyst-avatar .online-dot,
   .sidebar .logout svg:last-child {
     display: none;
   }
@@ -2889,10 +2854,6 @@ td strong {
   .sidebar .nav-item svg {
     width: 20px;
     height: 20px;
-  }
-  .sidebar .analyst-avatar {
-    justify-content: center;
-    padding: 18px 0 0;
   }
   .main-content {
     margin-left: 72px;
@@ -3059,7 +3020,7 @@ td strong {
   color: var(--status-blocked-text);
 }
 .dashboard-metrics .stat-hold .stat-number {
-  color: var(--status-quarantine-text);
+  color: var(--status-hold-text);
 }
 .dashboard-metrics .stat-allow .stat-number {
   color: var(--status-allow-text);
@@ -3317,7 +3278,7 @@ td strong {
   color: var(--status-allow-text);
 }
 .held-state {
-  color: var(--status-quarantine-text);
+  color: var(--status-hold-text);
 }
 .row-actions {
   display: flex;
@@ -3768,5 +3729,127 @@ td strong {
   }
   .drawer-header-actions .button {
     display: none;
+  }
+}
+
+/* Decision page: score against the engine's action lines */
+.score-scale {
+  margin: 24px 22px 18px;
+}
+.score-scale-track {
+  position: relative;
+  display: flex;
+  height: 8px;
+  border-radius: 4px;
+  overflow: visible;
+}
+.score-scale-band {
+  height: 100%;
+  opacity: 0.35;
+}
+.score-scale-band:first-child {
+  border-radius: 4px 0 0 4px;
+}
+.score-scale-band:last-child {
+  border-radius: 0 4px 4px 0;
+}
+.band-allow {
+  background: var(--allow);
+}
+.band-flag {
+  background: var(--flag);
+}
+.band-hold {
+  background: var(--hold);
+}
+.band-block {
+  background: var(--block);
+}
+.score-scale-marker {
+  position: absolute;
+  top: -5px;
+  width: 3px;
+  height: 18px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background: var(--ink);
+}
+.score-scale-marker > span {
+  position: absolute;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+}
+.marker-allow > span {
+  color: var(--status-allow-text);
+}
+.marker-flag > span {
+  color: #fde047;
+}
+.marker-hold > span {
+  color: var(--status-hold-text);
+}
+.marker-block > span {
+  color: var(--status-blocked-text);
+}
+.score-scale-labels {
+  position: relative;
+  height: 16px;
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--subtle);
+}
+.score-scale-labels > span {
+  position: absolute;
+  white-space: nowrap;
+  transform: translateX(-1px);
+}
+.score-scale-labels b {
+  color: var(--muted);
+  font-weight: 600;
+}
+.decision-explanation {
+  margin: 0 22px 20px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--ink);
+}
+
+/* Telemetry: decision totals for the selected range */
+.telemetry-totals {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0 0 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--line);
+}
+.telemetry-totals > div {
+  padding: 12px 16px;
+  background: var(--surface);
+}
+.telemetry-totals dt {
+  font-size: 11px;
+  color: var(--subtle);
+}
+.telemetry-totals dd {
+  margin: 4px 0 0;
+  font-family: var(--mono);
+  font-size: 24px;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+@media (max-width: 720px) {
+  .telemetry-totals {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }

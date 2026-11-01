@@ -20,6 +20,7 @@ import {
 import { Badge, EmptyState } from "./ui";
 import {
   ACTION_LABELS,
+  accountHours,
   decisionSeries,
   type DecisionBucket,
 } from "@/lib/decisions";
@@ -32,14 +33,14 @@ const COLORS = {
   hold: "var(--hold)",
   block: "var(--block)",
 };
-const tick = { fontSize: 15, fill: "var(--chart-text)" };
+const tick = { fontSize: 11, fill: "var(--chart-text)" };
 const grid = "var(--chart-grid)";
 const tooltipStyle = {
   border: "1px solid var(--line)",
   backgroundColor: "var(--surface)",
   color: "var(--ink)",
   borderRadius: 6,
-  fontSize: 15,
+  fontSize: 12,
   boxShadow: "0 6px 24px #00000066",
 };
 const hourLabel = (value: number) =>
@@ -65,8 +66,7 @@ export function DecisionChart({
   if (!data.length)
     return (
       <EmptyState title="No elevated activity in this period">
-        Flagged, quarantined, and blocked decisions will appear here as events
-        arrive.
+        Flagged, held, and blocked decisions will appear here as events arrive.
       </EmptyState>
     );
   const actions = ["flag", "hold", "block"] as const;
@@ -213,18 +213,8 @@ export function AccountCharts({ series }: { series: AccountSeries }) {
         Choose a wider time range to explore this account’s activity.
       </EmptyState>
     );
-  const data = series.points.map((point) => ({
-    ...point,
-    time: new Date(point.t).getTime(),
-    content: point.content_hits.length,
-    changes: point.account_changes,
-    ...Object.fromEntries(
-      Object.entries(point.actions).map(([action, count]) => [
-        `action_${action}`,
-        count,
-      ]),
-    ),
-  }));
+  const { hours: data, incident } = accountHours(series.points);
+  const allowed = data.reduce((total, hour) => total + hour.allow, 0);
   const first = data[0].time;
   const last = Math.max(data[data.length - 1].time, first + 3_600_000);
   const domain: [number, number] = [first, last];
@@ -255,6 +245,25 @@ export function AccountCharts({ series }: { series: AccountSeries }) {
     margin: { top: 8, right: 18, bottom: 4, left: 8 },
     syncId: `account-${series.account_id}`,
   };
+  // The same dashed line on every lane: where several signals light up at once.
+  const incidentLine = (label?: boolean) =>
+    incident === undefined ? null : (
+      <ReferenceLine
+        x={incident}
+        stroke={COLORS.block}
+        strokeDasharray="4 3"
+        label={
+          label
+            ? {
+                value: "first hold / block",
+                position: "insideTopLeft",
+                fill: "var(--status-blocked-text)",
+                fontSize: 11,
+              }
+            : undefined
+        }
+      />
+    );
   return (
     <div className="account-charts">
       <div className="chart-lane-label">
@@ -298,10 +307,11 @@ export function AccountCharts({ series }: { series: AccountSeries }) {
               stroke={COLORS.flag}
               strokeDasharray="4 4"
             />
+            {incidentLine(true)}
             <Area
               dataKey="recipients"
               name="Recipients"
-              type="monotone"
+              type="linear"
               stroke="var(--chart-line)"
               strokeWidth={2}
               fill="var(--chart-line)"
@@ -353,10 +363,11 @@ export function AccountCharts({ series }: { series: AccountSeries }) {
               domain={[0, asns.length + 1]}
               ticks={asns.map((_, index) => index + 1)}
               tickFormatter={(value) => String(asns[value - 1] ?? "")}
-              tick={{ ...tick, fontSize: 13 }}
+              tick={tick}
               axisLine={false}
               tickLine={false}
             />
+            {incidentLine()}
             <Tooltip
               contentStyle={tooltipStyle}
               cursor={{ strokeDasharray: "3 3" }}
@@ -411,6 +422,7 @@ export function AccountCharts({ series }: { series: AccountSeries }) {
               tickLine={false}
               allowDecimals={false}
             />
+            {incidentLine()}
             <Bar
               dataKey="content"
               name="Content signals"
@@ -436,7 +448,10 @@ export function AccountCharts({ series }: { series: AccountSeries }) {
       </div>
       <div className="chart-lane-label">
         <span>Decision activity</span>
-        <small>Shared time axis · UTC</small>
+        <small>
+          Flag, hold and block per hour · {number(allowed)} allowed events not
+          shown · UTC
+        </small>
       </div>
       <div
         className="decision-strip"
@@ -462,12 +477,13 @@ export function AccountCharts({ series }: { series: AccountSeries }) {
               tickLine={false}
               allowDecimals={false}
             />
-            {Object.entries(COLORS).map(([action, color]) => (
+            {incidentLine()}
+            {(["flag", "hold", "block"] as const).map((action) => (
               <Bar
                 key={action}
-                dataKey={`action_${action}`}
-                name={ACTION_LABELS[action as keyof typeof ACTION_LABELS]}
-                fill={color}
+                dataKey={action}
+                name={ACTION_LABELS[action]}
+                fill={COLORS[action]}
                 stackId="actions"
                 maxBarSize={16}
                 isAnimationActive={false}
@@ -477,7 +493,7 @@ export function AccountCharts({ series }: { series: AccountSeries }) {
               contentStyle={tooltipStyle}
               labelFormatter={(value) => hourLabel(Number(value)) + " UTC"}
             />
-            <Legend iconSize={10} wrapperStyle={{ fontSize: 14 }} />
+            <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>

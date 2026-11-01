@@ -1,16 +1,13 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowUpRight, Network, ShieldCheck } from "lucide-react";
+import { Network, ShieldCheck } from "lucide-react";
 import { analystApi } from "@/lib/api";
 import { dateTime, humanize, number, periodQuery } from "@/lib/format";
-import { riskClassName } from "@/lib/decisions";
 import type { AccountSeries, ProfileResponse, TimelineRow } from "@/lib/types";
 import {
   ApiError,
   Badge,
   CardHeader,
   DetailList,
-  EmptyState,
   PageHeader,
 } from "@/components/ui";
 import { AccountCharts } from "@/components/charts";
@@ -63,11 +60,6 @@ export default async function AccountPage({
   return (
     <>
       {header}
-      {timeline.error ? (
-        <ApiError message={timeline.error} />
-      ) : (
-        <InvestigationWorkspace rows={rows} />
-      )}
       <div className="account-summary">
         <span>
           <ShieldCheck size={15} />
@@ -83,7 +75,7 @@ export default async function AccountPage({
         <section className="card">
           <CardHeader
             title="Activity, in context"
-            description="Volume, networks, content, and account changes."
+            description="Volume, networks, content, account changes and decisions on one time axis. The dashed line marks the first hold or block."
           />
           {series.error ? (
             <ApiError message={series.error} />
@@ -148,102 +140,11 @@ export default async function AccountPage({
           </section>
         </aside>
       </div>
-      <section className="card timeline-card">
-        <CardHeader
-          title="Event timeline"
-          description="Most recent 1,000 events in the selected period. Newest first."
-        >
-          <span className="count-pill">{number(rows.length)} events</span>
-        </CardHeader>
-        {timeline.error ? (
-          <ApiError message={timeline.error} />
-        ) : rows.length ? (
-          <div className="table-scroll">
-            <table>
-              <thead>
-                <tr>
-                  <th>Time</th>
-                  <th>Event</th>
-                  <th>Network</th>
-                  <th>Signals</th>
-                  <th>Score</th>
-                  <th>Decision</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => (
-                  <tr key={row.event_id}>
-                    <td className="timeline-time">
-                      {dateTime(row.occurred_at)}
-                    </td>
-                    <td>
-                      <strong>{humanize(row.type)}</strong>
-                      <small>
-                        {row.type === "email.send"
-                          ? `${number(row.recipient_count)} recipients · ${row.sender_domain ?? "unknown sender"}`
-                          : (row.change_kind ??
-                            row.read_resource ??
-                            row.source)}
-                      </small>
-                    </td>
-                    <td>
-                      <span className="mono">
-                        {row.asn ? `AS${row.asn}` : "—"}
-                      </span>
-                      <small className={row.asn_org ? undefined : "mono"}>
-                        {row.asn_org ?? row.ip}
-                      </small>
-                    </td>
-                    <td>
-                      <div className="signal-tags">
-                        {row.hits?.length ? (
-                          row.hits.map((hit) => (
-                            <span key={hit.name} title={hit.detail}>
-                              {humanize(hit.name)}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="muted">—</span>
-                        )}
-                      </div>
-                    </td>
-                    <td>
-                      <span
-                        className={`score-number ${riskClassName(row.score)}`}
-                      >
-                        {row.score ?? "—"}
-                      </span>
-                    </td>
-                    <td>
-                      <Badge action={row.action} />
-                      {row.enforced === false && <small>Shadow mode</small>}
-                      {row.hold_status && (
-                        <small>{humanize(row.hold_status)}</small>
-                      )}
-                    </td>
-                    <td>
-                      {row.decision_id && (
-                        <Link
-                          className="table-arrow"
-                          aria-label={`Open decision for ${row.event_id}`}
-                          href={`/decisions/${row.decision_id}`}
-                        >
-                          <ArrowUpRight size={17} />
-                        </Link>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : (
-          <EmptyState title="No events in this time range.">
-            Choose a wider period to see earlier activity.
-          </EmptyState>
-        )}
-      </section>
+      {timeline.error ? (
+        <ApiError message={timeline.error} />
+      ) : (
+        <InvestigationWorkspace rows={rows} />
+      )}
     </>
   );
 }
