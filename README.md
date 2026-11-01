@@ -191,6 +191,10 @@ changes, or one of nine takeovers (40% takeovers, far above real life, to get en
 | Recall at ≥ flag / ≥ hold (attacker events) | 84% / 70% | 22% / 0% |
 | Legitimate accounts flagged (email still sent) | 400 per 1,000 (46 of 115) | 0 |
 
+The same simulator against the hosted service (Render free tier and Supabase; 100 accounts, 29,317 events,
+13 minutes) gives the same picture: precision 100% at ≥ hold and ≥ block, 0 false holds or blocks, recall
+76% at ≥ hold for accounts with history, and server scoring p50 19 ms, p95 22 ms.
+
 Per takeover type (accounts with history):
 
 | Takeover | Outcome |
@@ -241,6 +245,9 @@ Analyst UI (Next.js) ──server-side, analyst token──▶ analyst API ─�
   database should sit in the same region as the service.
 - **Fail open.** If scoring or the database fails, or misses the 200 ms deadline, the answer is `allow` with
   `unscored: true`, and the error is logged. A detector outage must not stop every customer's email.
+  On the hosted free tier this happened to 2 of the first ~600 simulator events under parallel load (p99 is
+  27 ms, but rare spikes pass 200 ms); the simulator now resends those, and `ato_unscored_total` is the
+  metric to alert on.
 - **Shadow mode** (`ATO_MODE=shadow`): compute and store real decisions, always answer allow, never hold or
   suspend. Used to roll out new rules safely. The hosted demo runs in enforce mode because its traffic is
   all synthetic, so holds and key suspensions show up; a real rollout would start in shadow.
