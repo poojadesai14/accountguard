@@ -16,7 +16,7 @@ test("password gate, signed cookie, return path, logout, and token privacy", asy
   page,
   context,
 }) => {
-  await page.goto("/accounts?q=acme");
+  await page.goto("/?q=acme");
   await expect(page).toHaveURL(/\/login\?next=/);
   await expect(page.getByText("Not an official Resend product")).toBeVisible();
   await page.getByLabel("Workspace password").fill("wrong-password");
@@ -26,7 +26,7 @@ test("password gate, signed cookie, return path, logout, and token privacy", asy
   ).toBeVisible();
   await page.getByLabel("Workspace password").fill("dashboard-test-password");
   await page.getByRole("button", { name: "Open workspace" }).click();
-  await expect(page).toHaveURL(/\/accounts\?q=acme/);
+  await expect(page).toHaveURL(/\/\?q=acme/);
   await expect(page.getByText("acc_acme", { exact: true })).toBeVisible();
   const cookie = (await context.cookies()).find(
     (item) => item.name === "ato_session",
@@ -48,15 +48,15 @@ test("dashboard metrics and telemetry charts use real API data and date filters"
 }) => {
   await signIn(page);
   await expect(
-    page.getByRole("heading", { name: "Account reviews" }),
+    page.getByRole("heading", { name: "Review queue" }),
   ).toBeVisible();
-  await expect(page.locator(".dashboard-metrics .stat-number")).toHaveText([
+  await expect(page.locator(".view-counts .view-count")).toHaveText([
     "3",
     "1",
     "2",
     "1",
   ]);
-  await page.getByRole("button", { name: "Telemetry", exact: true }).click();
+  await page.getByRole("link", { name: "Telemetry", exact: true }).click();
   for (const action of ["FLAG", "HOLD", "BLOCK"])
     await expect(
       page.getByRole("figure", { name: `${action} decisions over time` }),
@@ -96,7 +96,7 @@ test("telemetry chart totals follow each selected range", async ({
 }) => {
   await request.post("http://127.0.0.1:3102/__telemetry-history");
   await signIn(page);
-  await page.getByRole("button", { name: "Telemetry", exact: true }).click();
+  await page.getByRole("link", { name: "Telemetry", exact: true }).click();
   for (const { range, totals } of [
     { range: "7 days", totals: ["324", "5", "3"] },
     { range: "24 hours", totals: ["65", "2", "1"] },
@@ -117,7 +117,7 @@ test("failed telemetry range changes hide old totals and recover without losing 
 }) => {
   await request.post("http://127.0.0.1:3102/__telemetry-history");
   await signIn(page);
-  await page.getByRole("button", { name: "Telemetry", exact: true }).click();
+  await page.getByRole("link", { name: "Telemetry", exact: true }).click();
   const totals = page.locator(".decision-trends .trend-heading strong");
   await expect(totals).toHaveText(["324", "5", "3"]);
   await request.post("http://127.0.0.1:3102/__unavailable");
@@ -138,13 +138,13 @@ test("failed telemetry range changes hide old totals and recover without losing 
     }),
   ).toBeVisible();
   await request.post("http://127.0.0.1:3102/__recover");
-  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await page.getByRole("button", { name: /Refresh$/ }).click();
   await expect(totals).toHaveText(["65", "2", "1"]);
   await expect(
     page.getByRole("button", { name: "24 hours", exact: true }),
   ).toHaveClass("selected");
   await request.post("http://127.0.0.1:3102/__unavailable");
-  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await page.getByRole("button", { name: /Refresh$/ }).click();
   await expect(
     page.locator(".dashboard > .api-error[role=alert]"),
   ).toContainText("Showing the last successful snapshot");
@@ -154,16 +154,25 @@ test("failed telemetry range changes hide old totals and recover without losing 
 test("account search, shared-time charts, timeline and baseline", async ({
   page,
 }) => {
-  await signIn(page, "/accounts");
-  await page.getByRole("searchbox", { name: "Search accounts" }).fill("acme");
-  await page.getByRole("button", { name: "Search", exact: true }).click();
+  // /accounts is gone: old links land on the queue search with their query.
+  await signIn(page, "/accounts?q=acme");
+  await expect(page).toHaveURL(/\/\?q=acme$/);
+  await expect(
+    page.getByRole("searchbox", { name: "Search dashboard" }),
+  ).toHaveValue("acme");
   await expect(page.getByText("acc_beta", { exact: true })).toHaveCount(0);
-  await page.getByText("acc_acme", { exact: true }).click();
+  await page
+    .getByRole("button", { name: "Inspect acc_acme", exact: true })
+    .click();
+  await page
+    .getByRole("dialog", { name: "acc_acme" })
+    .getByRole("link", { name: "Open account" })
+    .click();
   await expect(
     page.getByRole("heading", { name: "acc_acme", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Learned baseline" }),
+    page.getByRole("heading", { name: "Baseline", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("img", { name: /Hourly recipients/ }),
@@ -288,8 +297,9 @@ test("event selection, filters, and copy controls keep the investigation panels 
     selected.getByRole("link", { name: "Open full review" }),
   ).toHaveCount(0);
   await workspace
-    .getByRole("combobox", { name: "Filter event outcomes" })
-    .selectOption("hold");
+    .getByRole("group", { name: "Filter event outcomes" })
+    .getByRole("button", { name: "Hold", exact: true })
+    .click();
   await expect(
     workspace.getByRole("button", {
       name: "Inspect evt_normal_001",
@@ -320,7 +330,7 @@ test("event selection, filters, and copy controls keep the investigation panels 
   await selected.getByRole("link", { name: "Open full review" }).click();
   await expect(page).toHaveURL(`/decisions/${id}`);
   await expect(
-    page.getByRole("heading", { name: "Why this decision was made" }),
+    page.getByRole("heading", { name: "Why", exact: true }),
   ).toBeVisible();
 });
 
@@ -329,7 +339,9 @@ test("review requires a reason and records actor, action, evidence and audit his
   request,
 }) => {
   await signIn(page, `/decisions/${id}`);
-  await expect(page.locator(".score-overview .badge")).toHaveText("HOLD");
+  await expect(page.locator(".decision-title .badge")).toHaveText("HOLD");
+  // The header states the status once: no separate status card.
+  await expect(page.locator(".decision-meta")).toContainText("Open review");
   await expect(page.locator(".hit-row")).toHaveCount(3);
   await expect(page.locator(".hit-points").first()).toHaveText("+30pts");
   const related = page.getByRole("region", {
@@ -339,13 +351,23 @@ test("review requires a reason and records actor, action, evidence and audit his
     /2 accounts already confirmed as taken over/,
   );
   await expect(related.locator(".related-heading")).toContainText(
-    "7 other accounts · 5 held or blocked · 2 confirmed takeovers",
+    "9 other accounts · 5 held or blocked · 2 confirmed takeovers",
   );
   await expect(related.getByRole("link", { name: "acc_beta" })).toHaveAttribute(
     "href",
     "/accounts/acc_beta",
   );
-  await expect(related.getByText("+5 more accounts")).toBeVisible();
+  // Five listed first; the rest open in place, then the unlisted remainder is counted.
+  const accounts = related.locator(".related-accounts a");
+  await expect(accounts).toHaveCount(5);
+  const more = related.getByRole("button", { name: "Show 2 more accounts" });
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  await more.click();
+  await expect(accounts).toHaveCount(7);
+  await expect(related.getByRole("link", { name: "acc_theta" })).toBeVisible();
+  await expect(related.getByText("+2 more accounts not listed")).toBeVisible();
+  await related.getByRole("button", { name: "Show fewer" }).click();
+  await expect(accounts).toHaveCount(5);
   await page.getByLabel("Review outcome").selectOption("confirm_takeover");
   await page.getByLabel("Your name").fill("Pooja");
   await page.getByRole("button", { name: "Record review" }).click();
@@ -385,7 +407,13 @@ test("suspended key can be restored with an audited reason", async ({
     .getByLabel("Reason", { exact: true })
     .fill("Key rotated and account secured.");
   await page.getByRole("button", { name: "Restore key access" }).click();
-  await expect(page.getByText("active", { exact: true })).toBeVisible();
+  // The key's line stays as confirmation, now muted and active.
+  await expect(page.locator(".key-line").first()).toContainText(
+    "key_prod_1 active",
+  );
+  await expect(page.getByText("Restore access", { exact: true })).toHaveCount(
+    0,
+  );
 });
 
 test("owner hold view remains gated and releases legitimate activity", async ({
@@ -448,10 +476,6 @@ test("empty results and backend failures have explicit states", async ({
   await expect(
     page.getByText("Your review queue is clear.", { exact: true }),
   ).toBeVisible();
-  await page.goto("/accounts");
-  await expect(
-    page.getByText("No accounts yet.", { exact: true }),
-  ).toBeVisible();
   await request.post("http://127.0.0.1:3102/__unavailable");
   await page.goto("/");
   await expect(
@@ -465,7 +489,7 @@ test("mobile layout supports navigation without document overflow", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await signIn(page);
   await expect(
-    page.getByRole("heading", { name: "Account reviews" }),
+    page.getByRole("heading", { name: "Review queue" }),
   ).toBeVisible();
   await page.screenshot({
     path: "test-results/overview-mobile.png",
@@ -486,12 +510,12 @@ test("mobile layout supports navigation without document overflow", async ({
   expect(dimensions.scroll, JSON.stringify(dimensions)).toBeLessThanOrEqual(
     dimensions.width,
   );
-  await page.getByRole("link", { name: "Accounts", exact: true }).click();
+  await page.getByRole("link", { name: "Telemetry", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Accounts", level: 1 }),
+    page.getByRole("heading", { name: "Telemetry", level: 1 }),
   ).toBeVisible();
   await page.screenshot({
-    path: "test-results/accounts-mobile.png",
+    path: "test-results/telemetry-mobile.png",
     fullPage: true,
   });
   await page.goto(`/decisions/${id}`);
@@ -527,8 +551,9 @@ test("dashboard filters and pagination are reflected in the URL", async ({
     table.getByRole("button", { name: "Inspect acc_acme", exact: true }),
   ).toHaveCount(0);
   await page
-    .getByRole("button", { name: "Legitimate baselines", exact: true })
+    .getByRole("button", { name: "View healthy accounts", exact: true })
     .click();
+  await page.getByRole("button", { name: "Clear view", exact: true }).click();
   await expect(
     page.getByRole("group", { name: "Filter by decision" }),
   ).toHaveCount(0);
@@ -541,7 +566,9 @@ test("dashboard filters and pagination are reflected in the URL", async ({
   await page
     .getByRole("searchbox", { name: "Search dashboard" })
     .fill("key_good");
-  await page.getByRole("button", { name: "Search", exact: true }).click();
+  await page
+    .getByRole("searchbox", { name: "Search dashboard" })
+    .press("Enter");
   await expect(page).toHaveURL(/q=key_good/);
   await expect(
     table.getByRole("button", { name: "Inspect acc_learning", exact: true }),
@@ -590,7 +617,7 @@ test("metric cards open matching drilldowns and retain selection through reload 
     exact: true,
   });
   const keys = page.getByRole("button", {
-    name: "View suspended api keys",
+    name: "View suspended API keys",
     exact: true,
   });
   const healthy = page.getByRole("button", {
@@ -739,7 +766,7 @@ test("failed filter changes never show cached rows under a different bucket", as
   ).toBeVisible();
   await request.post("http://127.0.0.1:3102/__unavailable");
   await page
-    .getByRole("button", { name: "View suspended api keys", exact: true })
+    .getByRole("button", { name: "View suspended API keys", exact: true })
     .click();
   await expect(page.locator(".dashboard > .api-error")).toContainText(
     "Results for this view are unavailable",
@@ -751,7 +778,7 @@ test("failed filter changes never show cached rows under a different bucket", as
     page.locator(".dashboard-table-controls .count-pill"),
   ).toHaveText("Unavailable");
   await request.post("http://127.0.0.1:3102/__recover");
-  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await page.getByRole("button", { name: /Refresh$/ }).click();
   await expect(
     page.getByRole("table", { name: "Dashboard accounts" }),
   ).toBeVisible();
@@ -774,9 +801,10 @@ test("newest-first sorts across pages, preserves filters, and explains monitorin
   const severe = sort.getByRole("button", { name: "Most severe", exact: true });
   const newest = sort.getByRole("button", { name: "Newest", exact: true });
   await expect(severe).toHaveAttribute("aria-pressed", "true");
-  await expect(
-    page.getByText("Monitoring only", { exact: true }),
-  ).toHaveAttribute("title", /not enforced automatically/);
+  // The engine mode is stated once, globally, in the top bar.
+  await expect(page.locator(".workspace-topbar .mode-chip")).toHaveText(
+    "Shadow · not enforced",
+  );
   await expect(
     page.getByText(/Database reachable|Database unverified/),
   ).toHaveCount(0);
@@ -826,9 +854,7 @@ test("newest-first sorts across pages, preserves filters, and explains monitorin
       ),
     ).toBe(true);
     if (width === 1440)
-      await expect(
-        table.locator(".dashboard-row-action .button").first(),
-      ).toBeInViewport();
+      await expect(table.locator(".account-inspect").first()).toBeInViewport();
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -857,12 +883,14 @@ test("inspection drawer traps focus, closes with Escape, and records audited sus
   await expect(page).toHaveURL(/inspect=acc_acme/);
   const evidence = await drawer.locator(".hit-list").boundingBox();
   const review = await drawer.locator(".review-form").boundingBox();
-  const metadata = await drawer
-    .locator(".drawer-disclosure")
-    .first()
-    .boundingBox();
+  // The light drawer reads top to bottom: evidence, the review form, then
+  // links to the full decision and the account.
+  const links = await drawer.locator(".drawer-links").boundingBox();
   expect(evidence!.y).toBeLessThan(review!.y);
-  expect(review!.y).toBeLessThan(metadata!.y);
+  expect(review!.y).toBeLessThan(links!.y);
+  await expect(
+    drawer.getByRole("link", { name: "Open full decision" }),
+  ).toHaveAttribute("href", `/decisions/${id}`);
   await drawer.screenshot({ path: "test-results/dashboard-drawer.png" });
   const close = drawer.getByRole("button", { name: "Close inspection" });
   await close.focus();
@@ -873,11 +901,7 @@ test("inspection drawer traps focus, closes with Escape, and records audited sus
   await page.keyboard.press("Escape");
   await expect(drawer).toHaveCount(0);
   await expect(trigger).toBeFocused();
-  await page
-    .getByRole("row")
-    .filter({ has: trigger })
-    .getByRole("button", { name: "Review", exact: true })
-    .click();
+  await trigger.click();
   await drawer.getByLabel("Review outcome").selectOption("confirm_takeover");
   await expect(
     drawer.getByText("Affected key:", { exact: false }),
@@ -905,7 +929,7 @@ test("inspection drawer traps focus, closes with Escape, and records audited sus
     reason: "Confirmed account takeover with the owner.",
   });
   await close.click();
-  await page.getByRole("button", { name: "Telemetry", exact: true }).click();
+  await page.getByRole("link", { name: "Telemetry", exact: true }).click();
   await expect(
     page.getByRole("table", { name: "Analyst audit stream" }),
   ).toContainText("Pooja");
@@ -923,7 +947,7 @@ test("legitimate approval refreshes membership while preserving the original hol
   const row = page.getByRole("row").filter({
     has: page.getByRole("button", { name: "Inspect acc_acme", exact: true }),
   });
-  await row.getByRole("button", { name: "Review", exact: true }).click();
+  await row.getByRole("button", { name: /^Inspect / }).click();
   const drawer = page.getByRole("dialog", { name: "acc_acme", exact: true });
   await drawer.getByLabel("Your name").fill("Pooja");
   await drawer
@@ -946,7 +970,7 @@ test("legitimate approval refreshes membership while preserving the original hol
   ).toBeVisible();
   await drawer.getByRole("button", { name: "Close inspection" }).click();
   await page
-    .getByRole("button", { name: "Legitimate baselines", exact: true })
+    .getByRole("button", { name: "View healthy accounts", exact: true })
     .click();
   const approved = page.getByRole("row").filter({
     has: page.getByRole("button", { name: "Inspect acc_acme", exact: true }),
@@ -1004,9 +1028,7 @@ test("polling pauses for review drafts and hidden pages, and keeps the last snap
     document.dispatchEvent(new Event("visibilitychange"));
   });
   await expect.poll(count).toBeGreaterThan(hiddenCount);
-  await expect(
-    page.getByRole("button", { name: "Refresh", exact: true }),
-  ).toBeEnabled();
+  await expect(page.getByRole("button", { name: /Refresh$/ })).toBeEnabled();
   await request.post("http://127.0.0.1:3102/__unavailable");
   await page.clock.runFor(31_000);
   await expect(
@@ -1016,7 +1038,7 @@ test("polling pauses for review drafts and hidden pages, and keeps the last snap
     page.getByRole("button", { name: "Inspect acc_acme", exact: true }),
   ).toBeVisible();
   await request.post("http://127.0.0.1:3102/__recover");
-  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await page.getByRole("button", { name: /Refresh$/ }).click();
   await expect(page.locator(".dashboard > .api-error[role=alert]")).toHaveCount(
     0,
   );
@@ -1056,9 +1078,7 @@ test("automatic refresh never overlaps a pending dashboard request", async ({
   } finally {
     release();
   }
-  await expect(
-    page.getByRole("button", { name: "Refresh", exact: true }),
-  ).toBeEnabled();
+  await expect(page.getByRole("button", { name: /Refresh$/ })).toBeEnabled();
 });
 
 test("an unavailable inspection has a clear error and can be closed", async ({

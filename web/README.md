@@ -32,31 +32,36 @@ Open `http://localhost:3000` and sign in with `UI_PASSWORD`.
 
 ## Views
 
-- `/`: compact global counts and a review queue showing the account, recorded
-  decision and score, signal evidence, current state, and one Review action.
-  Search, sorting, and pagination use the URL. The inspection drawer puts evidence
-  before audited review controls; baseline details, stored metadata, and audit
-  history expand on demand. Legitimate baselines and telemetry have separate tabs.
-- `/accounts`: look up an account by ID. Triage lives in the dashboard queue,
-  which is the one definition of "needs review" (an open review or a suspended
-  key).
+Three screens, one job each: the queue says what needs attention now, the
+account page shows what changed and when, the decision page explains a call and
+records the next one. Every page shows the engine mode once, in the top bar
+(`GET /v1/config`), and the footer keeps the "not an official Resend product"
+note.
+
+- `/`: the review queue. One slim row of counts opens each view (to review, on
+  hold, keys suspended, healthy), then the decision filter, search (Enter) and
+  the sort. Rows open a light drawer: the call, up to three signals, the hold
+  or key state, the audited review form, and links to the full decision and
+  the account. Search, sorting, and pagination use the URL. Telemetry is a
+  sidebar item (`/?tab=telemetry`).
+- `/accounts` redirects to the queue search, keeping its query.
 - `/accounts/[id]`: charts first, on one shared time axis: hourly recipients with
   the current baseline and spike threshold, ASN observations (first-seen in red),
   content and account-change markers, and flag/hold/block decisions (allowed
   events are counted, not drawn). A dashed line marks the first hold or block on
   every lane, which is where a takeover lights several signals up at once.
-  Below: the learned baseline, key status and restoration, then the event stream
-  (opens on the latest flag, hold or block) beside one card for the selected
-  event: its decision, signal evidence and a link to the full review, with
-  copyable raw metadata collapsed underneath.
-- `/decisions/[id]`: the score on the engine's own 0–100 scale (flag, hold and
-  block lines from `GET /v1/decisions/{id}` `thresholds`), a plain-language
-  reason for the action (including the one-category cap and the two-category
-  rule for block), each signal's evidence, the same infrastructure on other
-  accounts (link domains, non-freemail Reply-To domains and source IP within 7
-  days, with how many of those accounts were held, blocked or confirmed as
-  takeovers), safe event metadata, reason-required analyst actions, and audit
-  history.
+  A key that was ever suspended is one line under the title (restore inline).
+  Beside the charts: the baseline. Below: the event stream (opens on the latest
+  flag, hold or block) beside one card for the selected event: its decision,
+  signal evidence and a link to the full review, with copyable raw metadata
+  collapsed underneath.
+- `/decisions/[id]`: the account, the call and one status line in the header;
+  then why (the score on the engine's 0–100 scale, a plain-language reason and
+  each signal's evidence), the review form with its audit history, the same
+  infrastructure on other accounts (link domains, non-freemail Reply-To domains
+  and source IP within 7 days, with how many of those accounts were held,
+  blocked or confirmed as takeovers), and the event metadata, collapsed. On
+  desktop the form stays beside the evidence; on mobile it follows the signals.
 - `/hold/[id]`: owner response demo, behind the same analyst password gate. It
   shows the link and Reply-To domains, which are what an owner can recognize.
 

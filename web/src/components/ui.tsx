@@ -30,7 +30,7 @@ export function PageHeader({
   back,
   compact = false,
 }: {
-  eyebrow: string;
+  eyebrow?: string;
   title: string;
   description?: string;
   children?: React.ReactNode;
@@ -46,7 +46,7 @@ export function PageHeader({
             {back.label}
           </Link>
         )}
-        <p className="eyebrow">{eyebrow}</p>
+        {eyebrow && <p className="eyebrow">{eyebrow}</p>}
         <h1>{title}</h1>
         {description && <p className="page-description">{description}</p>}
       </div>
@@ -135,5 +135,16 @@ export function DetailList({ items }: { items: [string, React.ReactNode][] }) {
         </div>
       ))}
     </dl>
+  );
+}
+
+// ModeChip states the engine mode once, globally. The visible text carries the
+// meaning (no tooltip needed), so it reads the same with a keyboard or on touch.
+export function ModeChip({ mode }: { mode: "shadow" | "enforce" }) {
+  return (
+    <span className={`mode-chip mode-${mode}`}>
+      <span className="mode-dot" aria-hidden="true" />
+      {mode === "shadow" ? "Shadow · not enforced" : "Enforcing"}
+    </span>
   );
 }

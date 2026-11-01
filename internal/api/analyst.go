@@ -21,6 +21,7 @@ var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[
 
 func (s *Server) analystRoutes(mux *http.ServeMux) {
 	auth := func(h http.HandlerFunc) http.Handler { return bearer(s.AnalystToken, h) }
+	mux.Handle("GET /v1/config", auth(s.getConfig))
 	mux.Handle("GET /v1/dashboard", auth(s.getDashboard))
 	mux.Handle("GET /v1/analyst-actions", auth(s.listAnalystActions))
 	mux.Handle("GET /v1/stats", auth(s.getStats))
@@ -33,6 +34,14 @@ func (s *Server) analystRoutes(mux *http.ServeMux) {
 	mux.Handle("POST /v1/keys/{key_id}/unblock", auth(s.postUnblock))
 	// Demo: the owner's hold link uses the analyst token. Production: a signed one-time link.
 	mux.Handle("POST /v1/holds/{id}/owner-response", auth(s.postOwnerResponse))
+}
+
+// getConfig is what every UI page needs about the engine: the mode (so shadow
+// decisions are never presented as enforced) and the thresholds behind each action.
+func (s *Server) getConfig(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{
+		"mode": s.Config.Mode, "config_version": s.Config.Version, "thresholds": s.thresholds(),
+	})
 }
 
 func (s *Server) getStats(w http.ResponseWriter, r *http.Request) {

@@ -490,12 +490,13 @@ Duplicate `event_id` -> same body, `200`. Body limit 1 MB.
 
 | Method + path | Returns |
 |---|---|
+| `GET /v1/config` | `mode` (shadow/enforce), `config_version`, `thresholds`, so every UI page can state the mode once |
 | `GET /v1/stats?from&to&bucket=1h\|1d` | `totals` {events, allow, flag, hold, block} (unscored events have no decision row; count them from the `ato_unscored_total` metric); `series` [{t, flag, hold, block}]; `top_signals` [{name, count}]; `review_queue` [{account_id, open_count, max_action, last_at}] |
 | `GET /v1/accounts?q&needs_review=true` | account list: id, events, last action, open reviews |
 | `GET /v1/accounts/{id}/timeline?from&to` | events joined with decisions, ordered by `occurred_at`; each row has event metadata (no bodies), action, score, hits |
 | `GET /v1/accounts/{id}/series?from&to` | `baseline_hourly` and `spike_threshold` (current values; baseline history isn't stored), plus `points` per hour: `recipients`, `asns` [{asn, org, first_seen}], `content_hits` [names], `account_changes`, `actions` {action: count} |
 | `GET /v1/accounts/{id}/profile` | current profile, `key_status` for its keys |
-| `GET /v1/decisions/{id}` | decision + event + analyst_actions for it + thresholds + `related`: other accounts sharing its link domains, non-freemail Reply-To domains or IP within ±7 days ({kind, value, accounts, events, stopped, confirmed, top[≤5]}) |
+| `GET /v1/decisions/{id}` | decision + event + analyst_actions for it + thresholds + `related`: other accounts sharing its link domains, non-freemail Reply-To domains or IP within ±7 days ({kind, value, accounts, events, stopped, confirmed, top[≤50]}; the UI shows five and expands to the rest) |
 | `POST /v1/decisions/{id}/actions` | body `{"action": "confirm_takeover\|mark_legitimate\|release_hold", "actor": "pooja", "reason": "..."}` |
 | `POST /v1/keys/{key_id}/unblock` | body `{"actor", "reason"}` |
 

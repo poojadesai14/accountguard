@@ -1,70 +1,58 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
 import {
-  ArrowUpRight,
+  Activity,
   LayoutDashboard,
   LogOut,
   RefreshCw,
   ShieldCheck,
-  Users,
 } from "lucide-react";
 import { logout } from "@/app/actions";
+import { ModeChip } from "./ui";
 
-export function Navigation() {
+export function Navigation({ mode }: { mode?: "shadow" | "enforce" }) {
   const pathname = usePathname();
+  const telemetry = useSearchParams().get("tab") === "telemetry";
+  // Account, decision and owner pages are reached from the queue, so they keep
+  // the Queue item active.
+  const queue = !telemetry && pathname !== "/login";
   return (
     <aside className="sidebar">
-      <Link href="/" className="brand" aria-label="ATO Console overview">
+      <Link href="/" className="brand" aria-label="ATO Console">
         <ShieldCheck size={28} className="brand-mark" aria-hidden="true" />
         <span className="brand-name">ATO Console</span>
       </Link>
-      <div className="workspace">
-        <span className="workspace-icon">
-          <ShieldCheck size={18} />
-        </span>
-        <div>
-          Account protection<small>Analyst workspace</small>
-        </div>
-      </div>
-      <span className="nav-label">WORKSPACE</span>
       <nav aria-label="Main navigation">
         <Link
           href="/"
-          aria-label="Overview"
-          title="Overview"
-          aria-current={pathname === "/" ? "page" : undefined}
-          className={pathname === "/" ? "nav-item active" : "nav-item"}
+          aria-label="Queue"
+          title="Queue"
+          aria-current={queue ? "page" : undefined}
+          className={queue ? "nav-item active" : "nav-item"}
         >
           <LayoutDashboard size={17} />
-          <span className="nav-text">Overview</span>
+          <span className="nav-text">Queue</span>
         </Link>
         <Link
-          href="/accounts"
-          aria-label="Accounts"
-          title="Accounts"
-          aria-current={pathname.startsWith("/accounts") ? "page" : undefined}
-          className={
-            pathname.startsWith("/accounts") ||
-            pathname.startsWith("/decisions") ||
-            pathname.startsWith("/hold")
-              ? "nav-item active"
-              : "nav-item"
-          }
+          href="/?tab=telemetry"
+          aria-label="Telemetry"
+          title="Telemetry"
+          aria-current={telemetry ? "page" : undefined}
+          className={telemetry ? "nav-item active" : "nav-item"}
         >
-          <Users size={17} />
-          <span className="nav-text">Accounts</span>
+          <Activity size={17} />
+          <span className="nav-text">Telemetry</span>
         </Link>
       </nav>
+      {mode && (
+        <span className="sidebar-mode">
+          <ModeChip mode={mode} />
+        </span>
+      )}
       <div className="sidebar-footer">
-        <div className="privacy-note">
-          <ShieldCheck size={17} />
-          <div>
-            Metadata only<small>Email content stays private.</small>
-          </div>
-        </div>
         <form action={logout}>
           <button
             className="nav-item logout"
@@ -74,7 +62,6 @@ export function Navigation() {
           >
             <LogOut size={16} />
             <span className="nav-text">Sign out</span>
-            <ArrowUpRight size={13} />
           </button>
         </form>
       </div>

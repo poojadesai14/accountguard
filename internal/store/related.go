@@ -24,8 +24,12 @@ type RelatedIndicator struct {
 	Events    int              `json:"events"`
 	Stopped   int              `json:"stopped"` // accounts where one of these events was held or blocked
 	Confirmed int              `json:"confirmed"`
-	Top       []RelatedAccount `json:"top"` // most severe first, at most 5
+	Top       []RelatedAccount `json:"top"` // most severe first, at most RelatedTop
 }
+
+// RelatedTop caps how many accounts are listed per indicator. The UI shows five and
+// expands to the rest; counts always cover every account, listed or not.
+const RelatedTop = 50
 
 // RelatedIndicators finds other accounts that used the event's link domains, non-freemail
 // Reply-To domains or IP within window either side of it. ASNs are left out on purpose:
@@ -80,11 +84,11 @@ select coalesce(jsonb_agg(i order by i.stopped desc, i.accounts desc, i.kind, i.
     count(*) filter (where confirmed)::int as confirmed,
     jsonb_agg(jsonb_build_object('account_id', account_id, 'events', events, 'worst_action', worst_action,
       'confirmed', confirmed, 'decision_id', decision_id, 'last_at', last_at) order by position)
-      filter (where position <= 5) as top
+      filter (where position <= $7) as top
   from ranked group by kind, value
 ) i`
 	var raw []byte
-	if err := db.QueryRow(ctx, query, ev.LinkDomains, replyTo, ev.IP, accountID, ev.OccurredAt, window).Scan(&raw); err != nil {
+	if err := db.QueryRow(ctx, query, ev.LinkDomains, replyTo, ev.IP, accountID, ev.OccurredAt, window, RelatedTop).Scan(&raw); err != nil {
 		return nil, err
 	}
 	var out []RelatedIndicator

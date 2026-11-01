@@ -66,10 +66,8 @@ export default async function HoldPage({
   return (
     <>
       <PageHeader
-        back={{ href: `/decisions/${id}`, label: "Decision detail" }}
-        eyebrow="OWNER HOLD VIEW"
+        back={{ href: `/decisions/${id}`, label: "Back to decision" }}
         title="Does this activity look familiar?"
-        description="A quick confirmation helps protect the account."
       />
       <section className="card owner-card">
         <span className="hold-symbol">
@@ -82,10 +80,6 @@ export default async function HoldPage({
               ? "We paused a data read for review."
               : "We paused a message for review."}
         </h2>
-        <p>
-          Check the event details and let us know whether you recognize this
-          activity.
-        </p>
         <DetailList
           items={[
             ...details,

@@ -99,8 +99,8 @@ function reset() {
       {
         kind: "link_domain",
         value: "invoice-portal.net",
-        accounts: 7,
-        events: 31,
+        accounts: 9,
+        events: 37,
         stopped: 5,
         confirmed: 2,
         top: [
@@ -120,6 +120,15 @@ function reset() {
             decision_id: null,
             last_at: hours[8],
           },
+          // Seven listed of nine: five show first, two expand, two are unlisted.
+          ...["delta", "epsilon", "zeta", "eta", "theta"].map((name, i) => ({
+            account_id: `acc_${name}`,
+            events: 3,
+            worst_action: (i < 3 ? "hold" : "flag") as "hold" | "flag",
+            confirmed: false,
+            decision_id: null,
+            last_at: hours[7],
+          })),
         ],
       },
     ],
@@ -356,6 +365,18 @@ createServer(async (req, res) => {
     res.end(JSON.stringify(value));
   };
   if (url.pathname === "/healthz") return reply(200, { ok: true });
+  if (url.pathname === "/v1/config")
+    return reply(200, {
+      mode: "shadow",
+      config_version: "test",
+      thresholds: {
+        flag: 30,
+        hold: 60,
+        block: 80,
+        block_min_categories: 2,
+        single_category_exempt: ["content"],
+      },
+    });
   if (url.pathname === "/__reset" && req.method === "POST") {
     reset();
     return reply(200, {});
