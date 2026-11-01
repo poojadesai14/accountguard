@@ -37,7 +37,9 @@ Open `http://localhost:3000` and sign in with `UI_PASSWORD`.
   Search, sorting, and pagination use the URL. The inspection drawer puts evidence
   before audited review controls; baseline details, stored metadata, and audit
   history expand on demand. Legitimate baselines and telemetry have separate tabs.
-- `/accounts`: account search and review filter.
+- `/accounts`: look up an account by ID. Triage lives in the dashboard queue,
+  which is the one definition of "needs review" (an open review or a suspended
+  key).
 - `/accounts/[id]`: charts first, on one shared time axis: hourly recipients with
   the current baseline and spike threshold, ASN observations (first-seen in red),
   content and account-change markers, and flag/hold/block decisions (allowed

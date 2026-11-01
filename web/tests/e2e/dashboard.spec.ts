@@ -1085,19 +1085,3 @@ test("a page past the end of the list does not claim the queue is empty", async 
   ).toBeVisible();
   await expect(page.getByText("Your review queue is clear.")).toHaveCount(0);
 });
-
-test("the Needs review filter applies as soon as it is ticked", async ({
-  page,
-}) => {
-  await signIn(page, "/accounts?q=acc_");
-  const rows = page.locator("table tbody tr");
-  await expect(rows).toHaveCount(3);
-  await page.getByLabel("Needs review").check();
-  // No Search click: the filter submits itself and keeps the search text.
-  await expect(page).toHaveURL(/needs_review=true/);
-  await expect(page).toHaveURL(/q=acc_/);
-  await expect(rows).toHaveCount(2);
-  await expect(page.getByText("acc_northstar")).toHaveCount(0);
-  await page.getByLabel("Needs review").uncheck();
-  await expect(rows).toHaveCount(3);
-});
