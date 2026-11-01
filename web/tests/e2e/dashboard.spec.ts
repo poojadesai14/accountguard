@@ -533,7 +533,7 @@ test("dashboard filters and pagination are reflected in the URL", async ({
     page.getByRole("group", { name: "Filter by decision" }),
   ).toHaveCount(0);
   await expect(page).not.toHaveURL(/severity=/);
-  await expect(page.getByRole("combobox", { name: "Sort by" })).toBeVisible();
+  await expect(page.getByRole("group", { name: "Sort by" })).toBeVisible();
   await expect(
     table.getByRole("button", { name: "Inspect acc_good", exact: true }),
   ).toBeVisible();
@@ -556,9 +556,11 @@ test("dashboard filters and pagination are reflected in the URL", async ({
   await expect(
     page.getByRole("group", { name: "Filter by decision" }),
   ).toHaveCount(0);
-  await expect(page.getByRole("combobox", { name: "Sort by" })).toHaveValue(
-    "recent",
-  );
+  await expect(
+    page
+      .getByRole("group", { name: "Sort by" })
+      .getByRole("button", { name: "Newest", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await request.post("http://127.0.0.1:3102/__many-accounts");
   await page.goto("/");
   await expect(
@@ -768,8 +770,10 @@ test("newest-first sorts across pages, preserves filters, and explains monitorin
   await request.post("http://127.0.0.1:3102/__many-accounts");
   await signIn(page, "/?q=acc_&page=2");
   const table = page.getByRole("table", { name: "Dashboard accounts" });
-  const sort = page.getByRole("combobox", { name: "Sort by" });
-  await expect(sort).toHaveValue("priority");
+  const sort = page.getByRole("group", { name: "Sort by" });
+  const severe = sort.getByRole("button", { name: "Most severe", exact: true });
+  const newest = sort.getByRole("button", { name: "Newest", exact: true });
+  await expect(severe).toHaveAttribute("aria-pressed", "true");
   await expect(
     page.getByText("Monitoring only", { exact: true }),
   ).toHaveAttribute("title", /not enforced automatically/);
@@ -777,7 +781,7 @@ test("newest-first sorts across pages, preserves filters, and explains monitorin
     page.getByText(/Database reachable|Database unverified/),
   ).toHaveCount(0);
 
-  await sort.selectOption("recent");
+  await newest.click();
   await expect(page).toHaveURL(/sort=recent/);
   await expect(page).not.toHaveURL(/page=2/);
   await expect(page).toHaveURL(/q=acc_/);
@@ -787,10 +791,10 @@ test("newest-first sorts across pages, preserves filters, and explains monitorin
   ).toHaveText("99");
   await page.getByRole("button", { name: "Flag", exact: true }).click();
   await expect(page).toHaveURL(/severity=flag/);
-  await expect(sort).toHaveValue("recent");
+  await expect(newest).toHaveAttribute("aria-pressed", "true");
   await expect(table.locator("tbody tr")).toHaveCount(2);
   await page.reload();
-  await expect(sort).toHaveValue("recent");
+  await expect(newest).toHaveAttribute("aria-pressed", "true");
   await expect(table.locator("tbody tr").first()).toContainText("acc_bulk_054");
 
   const calls: { path: string }[] = await (
@@ -808,7 +812,7 @@ test("newest-first sorts across pages, preserves filters, and explains monitorin
     }),
   ).toBe(true);
 
-  await sort.selectOption("priority");
+  await severe.click();
   await expect(page).not.toHaveURL(/sort=/);
   // The Flag filter is still applied, so severity order starts with the
   // highest-scoring flag.

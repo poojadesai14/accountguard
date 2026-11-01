@@ -3120,16 +3120,6 @@ td strong {
   color: var(--muted);
   font-size: 11px;
 }
-.dashboard-sort select {
-  min-height: 44px;
-  padding: 8px 12px;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: var(--card);
-  color: var(--ink);
-  font-size: 12px;
-  font-family: var(--mono);
-}
 .dashboard-table-card td:first-child {
   min-width: 0;
 }

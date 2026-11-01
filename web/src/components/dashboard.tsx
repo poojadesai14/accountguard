@@ -500,22 +500,35 @@ export function Dashboard({
                     Clear view
                   </button>
                 )}
-                <label className="dashboard-sort">
-                  <span>Sort by</span>
-                  <select
-                    value={query.sort}
-                    disabled={busy}
-                    onChange={(event) =>
-                      navigate({
-                        sort: event.target.value as DashboardQuery["sort"],
-                        page: "1",
-                      })
-                    }
+                {/* Buttons, not a <select>: the open menu of a native select
+                    is drawn by the OS and can't follow the theme. */}
+                <div className="dashboard-sort">
+                  <span id="dashboard-sort-label">Sort by</span>
+                  <div
+                    className="severity-pills"
+                    role="group"
+                    aria-labelledby="dashboard-sort-label"
                   >
-                    <option value="priority">Most severe first</option>
-                    <option value="recent">Newest first</option>
-                  </select>
-                </label>
+                    {(
+                      [
+                        { value: "priority", label: "Most severe" },
+                        { value: "recent", label: "Newest" },
+                      ] as const
+                    ).map((item) => (
+                      <button
+                        type="button"
+                        key={item.value}
+                        aria-pressed={query.sort === item.value}
+                        disabled={busy}
+                        onClick={() =>
+                          navigate({ sort: item.value, page: "1" })
+                        }
+                      >
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             </CardHeader>
             {tableSnapshot?.items.length ? (
