@@ -111,8 +111,10 @@ prefix to these variables. Do not upload `.env.local` to GitHub. This is a
 server-rendered app; do not use static export.
 
 Render's free API can sleep while idle. The UI allows time for a cold start and
-displays a retry message if the connection still fails. Keep the API in shadow
-mode until the detection results and upstream enforcement integration are ready.
+displays a retry message if the connection still fails. The hosted demo runs the
+API in enforce mode because all of its traffic is synthetic; a real rollout would
+stay in shadow mode until the detection results and upstream enforcement
+integration are ready.
 
 ## Dashboard data and actions
 
