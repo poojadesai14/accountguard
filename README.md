@@ -7,7 +7,7 @@ apart from a legitimate change, and stops the damage **without locking out the r
 
 | | |
 |---|---|
-| Analyst UI | `TODO: Vercel URL` (password shared in Slack) |
+| Analyst UI | https://resend-ato.vercel.app (password shared in Slack) |
 | API | `https://resend-ato-api.onrender.com` (`GET /healthz`; free tier, the first request may take ~1 min to wake) |
 | Video | `TODO: Loom link` |
 | Build spec | [SPEC.md](SPEC.md): event format, schema, every rule and endpoint |
@@ -134,7 +134,7 @@ model is simple points, chosen because every number can be explained:
 | Score | Action |
 |---|---|
 | 0–29 | **allow** |
-| 30–59 | **flag** for an analyst; email still sent |
+| 30–59 | **flag**: logged on the account timeline; email still sent, no review |
 | 60–79 | **hold**: not sent; owner asked out-of-band |
 | 80+ **and** ≥ 2 signal categories | **block**: suspend the key |
 
@@ -268,45 +268,11 @@ Analyst UI (Next.js) ──server-side, analyst token──▶ analyst API ─�
   all synthetic, so holds and key suspensions show up; a real rollout would start in shadow.
 - **Atomic and idempotent.** One transaction per event; a repeated `event_id` returns the original decision.
   The account's profile row is locked, so concurrent events on one account can't lose baseline updates.
-- **Graduated, reversible actions.** Holds expire after 24 h and stay in the review queue. Analysts can release
-  holds, mark events legitimate, and restore suspended keys. Every action needs a name and a reason and is
-  audited.
+- **Graduated, reversible actions.** Holds expire after 24 h; a suspended key stays suspended until
+  someone restores it. Every analyst action needs a name and a reason and is audited.
 - **One incident, not a review per rejected send.** Once a key is suspended, every later send on it is
   rejected (`key_suspended`) without opening a review: the suspension and the decision that caused it are
-  the case. Marking that decision legitimate does not restore the key (a wrong click would let an attacker
-  send again), so the decision page shows the key's state with an inline, audited "Restore access" as the
-  step left. The account leaves the queue once the key is restored and nothing else is open, judged by its
-  latest *scored* decision rather than a rejection. Until then its queue row reads "Marked legitimate · Was
-  block 90 / Key still suspended · Restore access to finish", not a red Block: only when the row is that
-  block, nothing on the account is open, every suspended key is in that state and the account has no
-  confirmed takeover, so the row never hides a takeover or a newer decision.
-- **Resolve the incident, not each event.** Analysts reason per account, so the decision page, the drawer
-  and the account page all lead with **Resolve this incident**; reviewing a single email is folded away
-  for the rare mixed incident where some stopped emails were the owner's. The account page has one
-  audited **Resolve account** action (`POST /v1/accounts/{id}/resolve`) that closes every open review with
-  one outcome in one transaction: *legitimate* labels them, teaches the baseline from each stopped event
-  and releases pending holds; *takeover* labels them, drops pending holds and suspends the keys they used.
-  Restoring keys is a separate, unticked box, because a wrong call there lets an attacker send again, and
-  it only covers keys the engine suspended because of those reviews or of a block already marked
-  legitimate: never one an analyst or the owner suspended, and nothing on an account with a confirmed
-  takeover (those keys are restored one at a time, on purpose). The request names the reviews the analyst saw; if
-  a new one arrived since (an attacker's next send), nothing changes and the analyst reloads. Each change
-  is its own audit row. Per-event review stays for one-off calls.
-- **Wrong calls can be taken back.** "Legitimate" over a young or lookalike domain, a recipient spike or
-  a freemail Reply-To needs the account ID typed, on one decision or a whole account (the API enforces
-  it; the owner's own answer to a hold doesn't). Marking one decision legitimate says what is still open
-  on the account, since it never closes the others or restores a key. If it was still wrong, **Correct to
-  takeover** relabels the chosen decisions, removes them from the baseline (the key's network, the domains,
-  the event count), suspends their keys and drops held emails; released emails stay sent, and the audit
-  log says who corrected what. Any active key can also be **suspended** directly from its key line.
-  After a confirmed takeover, restoring a key is recovery, not cleanup: the key line says "confirmed
-  takeover", and restoring needs the account ID typed (enforced by the API) once the owner has rotated it.
-  A key stopped for risky signals (young or lookalike domain, recipient spike, freemail Reply-To) says so on
-  its line ("stopped for young domain"), and restoring it shows that evidence and needs the ID typed, even
-  after its emails were marked legitimate: restore stays in one path, the danger is stated in it.
-- **Production version: a case object.** A stored case would group the trigger, its rejections and the
-  holds from the same window, so an analyst could resolve one incident on an account that has several.
-  Restoring a key after a takeover would require the owner to rotate it, not an analyst click.
+  the case. The queue ranks those rejections below the decision that caused them.
 - **Expired holds are dropped, not sent** (`hold.expire_action: drop`). A held email that nobody vouched for
   in 24 h is more likely phishing than urgent, and a phishing email delivered a day late still does harm.
   The cost is a legitimate email lost when the owner doesn't answer, so the owner is told it failed, and
@@ -314,6 +280,52 @@ Analyst UI (Next.js) ──server-side, analyst token──▶ analyst API ─�
   review or a suspended key, otherwise release.
 - **Signals are a slice of `{Name, Category, Eval}`,** so adding one doesn't touch the engine. They run
   sequentially because each is a microsecond in-memory check; concurrency is across requests.
+
+### The analyst's path
+
+The engine contains the damage in milliseconds; a person makes the final call, **per account, not per
+email**. An analyst asks "is this account taken over?", so that is the one question the UI asks.
+
+| Page | Its one job |
+|---|---|
+| Queue (`/`) | What needs attention: accounts to review, held emails (with time left), suspended keys. A row opens the account. |
+| Decision (`/decisions/{id}`) | Evidence for one email: the score, each signal's evidence, the same infrastructure on other accounts. It states the incident the email belongs to and its deadline, and links to the account to decide. |
+| Account (`/accounts/{id}`) | **The only place to decide.** Timeline charts, the baseline, the keys, and the incident. |
+
+On the account page:
+- **Resolve account** (`POST /v1/accounts/{id}/resolve`) closes every open review with one outcome, in one
+  transaction. *Takeover* labels them, drops held emails and keeps the keys suspended (on the analyst's
+  authority). *Legitimate* labels them, teaches the baseline from each stopped email and releases the held
+  ones. Before submitting, the form lists what it will and won't change and names the button after it
+  ("Resolve 3 reviews as takeover"). It leads with the one time limit: "Decide by 14:05: the held email is
+  dropped automatically then". The request names the reviews the analyst saw; if a new one arrived (the
+  attacker's next send), nothing changes and the analyst reloads.
+- **Restoring a key is a separate step**, because a wrong restore lets an attacker send again. Resolve has an
+  unticked box for keys the engine suspended for these reviews; otherwise the success message names the
+  key left and links to its restore.
+- **Friction only where a mistake is expensive.** Calling *legitimate* over attacker-looking evidence (young or
+  lookalike domain, recipient spike, freemail Reply-To), restoring a key stopped for that evidence, or
+  restoring one after a confirmed takeover needs the account ID typed. The API enforces it, not just the UI.
+- **Wrong calls can be taken back.** *Correct to takeover* relabels a wrong *legitimate*, removes those emails
+  from the baseline (network, domains, event count), suspends the keys and drops held emails. Released
+  emails stay sent; the audit log says who corrected what.
+
+### What I'd build next
+
+- **A stored case object.** Today the incident is "everything open on the account". A case table would group
+  the trigger, its rejections and the holds from the same window, give each its own history, and let an
+  analyst resolve one of several incidents on an account.
+- **Mixed incidents.** When some stopped emails were the owner's, the analyst resolves the account as a
+  takeover and the owner resends. Per-email exceptions inside a case would fix that; the API already has
+  per-decision actions (`POST /v1/decisions/{id}/actions`) and the owner's per-hold answer
+  (`/v1/holds/{id}/owner-response`), so it's a UI and case-model change.
+- **Urgent single release** of one held email, for the same reason.
+- **Revoke keys created during the incident.** A key created after the first stopped email is attacker
+  persistence; resolving as takeover should suspend it too.
+- **Restore after takeover needs the owner to rotate the key,** not an analyst click.
+- **A rolling per-account score.** Each email is scored on its own, so an attacker's first, quiet emails go
+  out and an account crosses the line only when one email does. Scoring a window of sends would catch slow
+  attacks earlier.
 
 **Observability:** one structured JSON log line per decision (event, account, key, action, score, signal names,
 config version, latency), and every decision is stored with its signals for audit and stats. Aggregated stats

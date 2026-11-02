@@ -33,16 +33,15 @@ Open `http://localhost:3000` and sign in with `UI_PASSWORD`.
 ## Views
 
 Three screens, one job each: the queue says what needs attention now, the
-account page shows what changed and when, the decision page explains a call and
-records the next one. Every page shows the engine mode once, in the top bar
+decision page explains why one email was stopped, and the account page is the
+one place to decide. Every page shows the engine mode once, in the top bar
 (`GET /v1/config`), and the footer keeps the "not an official Resend product"
 note.
 
 - `/`: the review queue. One slim row of counts opens each view (to review, on
   hold, keys suspended, healthy), then the decision filter, search (Enter) and
-  the sort. Rows open a light drawer: the call, up to three signals, the hold
-  or key state, the audited review form, and links to the full decision and
-  the account. Search, sorting, and pagination use the URL. Telemetry is a
+  the sort. A row opens the account page. Search, sorting, and pagination use
+  the URL, so Back returns to the same filtered queue. Telemetry is a
   sidebar item (`/?tab=telemetry`).
 - `/accounts` redirects to the queue search, keeping its query.
 - `/accounts/[id]`: charts first, on one shared time axis: hourly recipients with
@@ -60,11 +59,12 @@ note.
   collapsed underneath.
 - `/decisions/[id]`: the account, the call and one status line in the header;
   then why (the score on the engine's 0–100 scale, a plain-language reason and
-  each signal's evidence), the review form with its audit history, the same
+  each signal's evidence), the incident this email belongs to (open reviews,
+  held emails, suspended keys, the deadline) with a link to decide it on the
+  account page, the audit history, the same
   infrastructure on other accounts (link domains, non-freemail Reply-To domains
   and source IP within 7 days, with how many of those accounts were held,
-  blocked or confirmed as takeovers), and the event metadata, collapsed. On
-  desktop the form stays beside the evidence; on mobile it follows the signals.
+  blocked or confirmed as takeovers), and the event metadata, collapsed.
 - `/hold/[id]`: owner response demo, behind the same analyst password gate. It
   shows the link and Reply-To domains, which are what an owner can recognize.
 
@@ -132,7 +132,7 @@ main journeys end to end, checking both the page and the API:
 | Takeover in one step               | Resolve account → Takeover: no reviews or holds left, key suspended by the analyst, row reads Confirmed takeover, audit row |
 | False positive over risky evidence | typed account ID required, restore box, key active, account in Healthy as Marked legitimate                                 |
 | Wrong call corrected               | legitimate + restore teaches the baseline; Correct to takeover relabels, unlearns the network and domain, re-suspends       |
-| One decision at a time             | Record review says what's left; "Resolve the rest" opens Resolve account; the account reaches Healthy                       |
+| From a decision                    | the deadline shows; "Decide on the account page" → resolve; the Restore link opens the key; the account reaches Healthy     |
 | Suspend and restore by hand        | an active key is suspended (account queued) and restored (account Healthy)                                                  |
 
 Young domains are pinned in `config.yaml`, so the attack scores as intended until
@@ -189,7 +189,7 @@ echoes `view`; totals and pagination count that view's accounts, events, or keys
 Stable key and decision IDs break ties within an account. Global metrics remain
 independent of the selected view and filters.
 
-Clicking a metric clears search, severity, pagination, and the inspection while
+Clicking a metric clears search, severity, and pagination while
 retaining the chosen sort. The selected card is keyboard accessible and marked
 as pressed; view selection persists in the URL through reloads and browser
 history. Clear view returns to the tab's full account list. Zero-count cards
