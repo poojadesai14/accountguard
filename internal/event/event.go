@@ -91,36 +91,34 @@ func (l *StringList) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func reqField(ok bool, field string) error {
-	if ok {
-		return nil
-	}
-	return fmt.Errorf("%s is required", field)
-}
-
-func oneOfField(v string, allowed []string, field string) error {
-	if slices.Contains(allowed, v) {
-		return nil
-	}
-	return fmt.Errorf("%s must be one of %v", field, allowed)
-}
-
 // Validate checks required fields. The error message is safe to return to the caller.
 func (e *Event) Validate() error {
-	errs := []error{
-		reqField(e.EventID != "", "event_id"),
-		oneOfField(e.Type, types, "type"),
-		reqField(!e.OccurredAt.IsZero(), "occurred_at"),
-		reqField(e.AccountID != "", "account_id"),
-		oneOfField(e.Source, sources, "source"),
+	var errs []error
+
+	if e.EventID == "" {
+		errs = append(errs, errors.New("event_id is required"))
 	}
-	if e.Source == "api" || e.Source == "smtp" {
-		errs = append(errs, reqField(e.APIKeyID != "", "api_key_id"))
+	if !slices.Contains(types, e.Type) {
+		errs = append(errs, fmt.Errorf("type must be one of %v", types))
+	}
+	if e.OccurredAt.IsZero() {
+		errs = append(errs, errors.New("occurred_at is required"))
+	}
+	if e.AccountID == "" {
+		errs = append(errs, errors.New("account_id is required"))
+	}
+	if !slices.Contains(sources, e.Source) {
+		errs = append(errs, fmt.Errorf("source must be one of %v", sources))
+	}
+	if (e.Source == "api" || e.Source == "smtp") && e.APIKeyID == "" {
+		errs = append(errs, errors.New("api_key_id is required"))
 	}
 	if net.ParseIP(e.Network.IP) == nil {
 		errs = append(errs, errors.New("network.ip must be a valid IP address"))
 	}
-	errs = append(errs, reqField(e.Network.ASN > 0, "network.asn"))
+	if e.Network.ASN <= 0 {
+		errs = append(errs, errors.New("network.asn is required"))
+	}
 
 	switch e.Type {
 	case TypeEmailSend:
@@ -128,22 +126,28 @@ func (e *Event) Validate() error {
 			errs = append(errs, errors.New("email is required for email.send"))
 			break
 		}
-		errs = append(errs,
-			reqField(e.Email.From != "", "email.from"),
-			reqField(len(e.Email.To)+len(e.Email.CC)+len(e.Email.BCC) > 0, "at least one recipient"),
-		)
+		if e.Email.From == "" {
+			errs = append(errs, errors.New("email.from is required"))
+		}
+		if len(e.Email.To)+len(e.Email.CC)+len(e.Email.BCC) == 0 {
+			errs = append(errs, errors.New("at least one recipient is required"))
+		}
 	case TypeAccountChange:
 		if e.Change == nil {
 			errs = append(errs, errors.New("change is required for account.change"))
 			break
 		}
-		errs = append(errs, oneOfField(e.Change.Kind, changeKinds, "change.kind"))
+		if !slices.Contains(changeKinds, e.Change.Kind) {
+			errs = append(errs, fmt.Errorf("change.kind must be one of %v", changeKinds))
+		}
 	case TypeAPIRead:
 		if e.Read == nil {
 			errs = append(errs, errors.New("read is required for api.read"))
 			break
 		}
-		errs = append(errs, oneOfField(e.Read.Resource, readResources, "read.resource"))
+		if !slices.Contains(readResources, e.Read.Resource) {
+			errs = append(errs, fmt.Errorf("read.resource must be one of %v", readResources))
+		}
 		if e.Read.Status < 100 || e.Read.Status > 599 {
 			errs = append(errs, errors.New("read.status must be an HTTP status code"))
 		}
