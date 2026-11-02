@@ -2,17 +2,16 @@
 
 import Link from "next/link";
 import { useActionState, useEffect, useId, useRef, useState } from "react";
-import { ArrowRight, Check, ChevronDown, LockKeyhole } from "lucide-react";
+import { ArrowRight, Check, LockKeyhole } from "lucide-react";
 import {
   correctToTakeover,
   login,
   ownerResponse,
   resolveAccount,
-  reviewDecision,
   suspendKey,
   unblockKey,
 } from "@/app/actions";
-import { holdCountdown, riskyHits } from "@/lib/decisions";
+import { holdCountdown } from "@/lib/decisions";
 import { dateTime, humanize } from "@/lib/format";
 import type { FormState, NextStep } from "@/lib/review";
 import type { Decision, OpenCounts, ReviewedDecision } from "@/lib/types";
@@ -141,143 +140,6 @@ function ReviewIdentity() {
   );
 }
 
-export function ReviewForm({
-  decision,
-  initialAction,
-  onDirtyChange,
-  onPendingChange,
-  onSuccess,
-}: {
-  decision: Decision;
-  initialAction?: "confirm_takeover" | "mark_legitimate";
-  onDirtyChange?: (dirty: boolean) => void;
-  onPendingChange?: (pending: boolean) => void;
-  onSuccess?: (message: string, next?: NextStep[]) => void;
-}) {
-  const [state, action, pending] = useActionState(reviewDecision, {});
-  const handled = useRef<FormState | undefined>(undefined);
-  useEffect(() => {
-    onPendingChange?.(pending);
-  }, [pending, onPendingChange]);
-  useEffect(() => {
-    if (state.success && handled.current !== state) {
-      handled.current = state;
-      onDirtyChange?.(false);
-      onSuccess?.(state.success, state.next);
-    }
-  }, [state, onSuccess, onDirtyChange]);
-  useEffect(
-    () => () => {
-      onDirtyChange?.(false);
-      onPendingChange?.(false);
-    },
-    [onDirtyChange, onPendingChange],
-  );
-  const labeled = Boolean(decision.label);
-  const canRelease = decision.hold_status === "pending";
-  const [chosen, setChosen] = useState(
-    labeled ? "release_hold" : (initialAction ?? ""),
-  );
-  const [confirm, setConfirm] = useState("");
-  // Over attacker-looking evidence, "legitimate" needs the account ID typed.
-  const warnings =
-    chosen === "mark_legitimate" ? riskyHits(decision.hits ?? []) : [];
-  const confirmed =
-    warnings.length === 0 || confirm.trim() === decision.account_id;
-  if (labeled && !canRelease)
-    return (
-      <div className="resolved-notice">
-        <Check size={18} />
-        <div>
-          Review complete
-          <p>
-            This event is labeled {decision.label}. The full history is recorded
-            below.
-          </p>
-          {/* The review that just labelled it: what's left, with links. */}
-          <Feedback state={state} />
-        </div>
-      </div>
-    );
-  return (
-    <form
-      action={action}
-      className="review-form"
-      onChange={() => onDirtyChange?.(true)}
-    >
-      <input type="hidden" name="decision_id" value={decision.decision_id} />
-      <label htmlFor="action">Review outcome</label>
-      <div className="review-select">
-        <select
-          name="action"
-          id="action"
-          required
-          value={chosen}
-          onChange={(event) => setChosen(event.target.value)}
-        >
-          {!labeled && (
-            // No default: "Mark legitimate" teaches the baseline, so it must
-            // never be the outcome of an unread submit.
-            <option value="" disabled>
-              Choose an outcome…
-            </option>
-          )}
-          {!labeled && <option value="mark_legitimate">Mark legitimate</option>}
-          {!labeled && decision.api_key_id && (
-            <option value="confirm_takeover">Confirm takeover</option>
-          )}
-          {canRelease && (
-            <option value="release_hold">Release hold without labeling</option>
-          )}
-        </select>
-        <ChevronDown size={16} aria-hidden="true" />
-      </div>
-      {warnings.length > 0 && (
-        <div className="resolve-warning" role="note">
-          <strong>This looks like a takeover:</strong>
-          <ul>
-            {warnings.map((w) => (
-              <li key={w.name}>
-                {humanize(w.name)}: {w.detail}
-              </li>
-            ))}
-          </ul>
-          <label>
-            Type <span className="mono">{decision.account_id}</span> to confirm
-            it is legitimate
-            <input
-              name="confirm"
-              autoComplete="off"
-              spellCheck={false}
-              value={confirm}
-              onChange={(event) => setConfirm(event.target.value)}
-            />
-          </label>
-        </div>
-      )}
-      <ReviewIdentity />
-      <p className="form-help">
-        Affected key:{" "}
-        <span className="mono">{decision.api_key_id ?? "No API key"}</span>
-      </p>
-      <p className="form-help">
-        Confirming a takeover suspends the key and drops its pending holds.
-        Marking legitimate teaches the baseline
-        {canRelease ? " and releases this pending hold" : ""}; it does not
-        unblock the key, and the account's other reviews stay open.
-      </p>
-      <Feedback state={state} />
-      <button
-        className="button button-primary"
-        disabled={pending || !chosen || !confirmed}
-      >
-        {pending ? "Recording…" : "Record review"}
-        <ArrowRight size={15} />
-      </button>
-    </form>
-  );
-}
-
 export function UnblockForm({
   keyId,
   accountId,
@@ -372,44 +234,36 @@ export function SuspendKeyForm({ keyId }: { keyId: string }) {
   );
 }
 
-// DecidePanel is where a decision is acted on. An analyst judges an incident,
-// not an email: while the account has open reviews, the only action is resolving
-// all of them (one audited action that labels each decision underneath), led by
-// the deadline that matters. With nothing open, the email's own state shows.
-export function DecidePanel({
+// IncidentPanel is the decision page's link to the decision: an analyst decides
+// the account's incident on the account page, not one email at a time.
+export function IncidentPanel({
   decision,
   open,
-  initialAction,
-  onDirtyChange,
-  onPendingChange,
-  onSuccess,
 }: {
   decision: Decision;
   open?: OpenCounts;
-  initialAction?: "confirm_takeover" | "mark_legitimate";
-  onDirtyChange?: (dirty: boolean) => void;
-  onPendingChange?: (pending: boolean) => void;
-  onSuccess?: (message: string, next?: NextStep[]) => void;
 }) {
-  // Once shown, the incident panel stays until the page changes, so resolving
-  // the last review keeps its confirmation instead of swapping the panel out.
-  const [incident] = useState(Boolean(open && open.reviews > 0));
-  if (!open || (!incident && open.reviews === 0))
+  const href = `/accounts/${encodeURIComponent(decision.account_id)}`;
+  if (!open?.reviews)
     return (
-      <ReviewForm
-        key={decision.decision_id}
-        decision={decision}
-        initialAction={initialAction}
-        onDirtyChange={onDirtyChange}
-        onPendingChange={onPendingChange}
-        onSuccess={onSuccess}
-      />
+      <div className="resolved-notice">
+        <Check size={18} />
+        <div>
+          {decision.label ? `Reviewed: ${decision.label}` : "Nothing to decide"}
+          <p>
+            Nothing is open on this account.{" "}
+            <Link className="text-link" href={href}>
+              Open account
+            </Link>
+          </p>
+        </div>
+      </div>
     );
   const plural = (n: number, word: string) =>
     `${n} ${word}${n === 1 ? "" : "s"}`;
   return (
     <div className="incident-decide">
-      <h4>Resolve this incident</h4>
+      <h4>Part of an open incident</h4>
       <Deadline open={open} />
       <p className="form-help">
         {[
@@ -421,20 +275,10 @@ export function DecidePanel({
           .join(" · ")}{" "}
         on this account, decided together.
       </p>
-      <ResolveAccountForm
-        accountId={decision.account_id}
-        open={open}
-        initialOutcome={
-          initialAction === "confirm_takeover"
-            ? "takeover"
-            : initialAction === "mark_legitimate"
-              ? "legitimate"
-              : ""
-        }
-        onSuccess={onSuccess}
-        onDirtyChange={onDirtyChange}
-        onPendingChange={onPendingChange}
-      />
+      <Link className="button button-primary" href={`${href}?resolve=1`}>
+        Decide on the account page
+        <ArrowRight size={15} />
+      </Link>
     </div>
   );
 }

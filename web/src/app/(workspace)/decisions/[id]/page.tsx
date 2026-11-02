@@ -15,7 +15,6 @@ import {
   INDICATOR_LABELS,
   explainDecision,
   heldEventLabel,
-  restoreIsLastStep,
   relatedSummary,
   relatedVerdict,
   scoreClassName,
@@ -27,9 +26,8 @@ import {
   DetailList,
   PageHeader,
 } from "@/components/ui";
-import { DecidePanel } from "@/components/forms";
+import { IncidentPanel } from "@/components/forms";
 import { RelatedAccounts } from "@/components/related-accounts";
-import { KeyLine } from "@/components/key-line";
 
 export const metadata = { title: "Decision review" };
 export default async function DecisionPage({
@@ -107,18 +105,6 @@ export default async function DecisionPage({
           </p>
         </div>
       </header>
-      {/* Any key that has been suspended keeps its line, so a restore made
-          here stays visible with its confirmation. */}
-      {key && (
-        <KeyLine
-          keyStatus={key}
-          hint={
-            restoreIsLastStep(d, key)
-              ? "Marked legitimate; restore access to finish."
-              : undefined
-          }
-        />
-      )}
       {!d.enforced && (
         <p className="mode-banner">
           Shadow mode: computed {ACTION_LABELS[d.action]}. The API returned
@@ -174,7 +160,7 @@ export default async function DecisionPage({
         </section>
         <aside className="card decision-decide">
           <CardHeader title="Decide" />
-          <DecidePanel decision={d} open={profile.data?.open} />
+          <IncidentPanel decision={d} open={profile.data?.open} />
           {actions?.length ? (
             <ol className="audit-history">
               {actions.map((action) => (

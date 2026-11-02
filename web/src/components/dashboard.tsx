@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   Activity,
-  Check,
   ChevronLeft,
   ChevronRight,
   Flag,
@@ -29,9 +28,6 @@ import { dateTime, humanize, number, periodQuery, PERIODS } from "@/lib/format";
 import type { DashboardAccount, DashboardData } from "@/lib/types";
 import { Badge, CardHeader, EmptyState } from "./ui";
 import { DecisionChart } from "./charts";
-import { DashboardDrawer } from "./dashboard-drawer";
-import { NextSteps } from "./forms";
-import type { NextStep } from "@/lib/review";
 
 export function Dashboard({
   query,
@@ -44,16 +40,9 @@ export function Dashboard({
   const [data, setData] = useState(initial);
   const [search, setSearch] = useState(query.q);
   const [refreshing, setRefreshing] = useState(false);
-  const [dirty, setDirty] = useState(false);
-  const [pending, setPending] = useState(false);
-  const [toast, setToast] = useState("");
-  // Links to the step left; a toast with one stays until dismissed.
-  const [toastNext, setToastNext] = useState<NextStep[]>([]);
   const [navigationPending, startNavigation] = useTransition();
   const currentQuery = useRef(query);
   currentQuery.current = query;
-  const draft = useRef(false);
-  const submitting = useRef(false);
   const navigating = useRef(false);
   navigating.current = navigationPending;
   const inFlight = useRef(false);
@@ -67,22 +56,11 @@ export function Dashboard({
         : { ...previous, error: initial.error, database_ok: false },
     );
   }, [initial, query]);
-  const onDirty = useCallback((value: boolean) => {
-    draft.current = value;
-    setDirty(value);
-  }, []);
-  const onPending = useCallback((value: boolean) => {
-    submitting.current = value;
-    setPending(value);
-  }, []);
   const refresh = useCallback(async (force = false) => {
     if (
       inFlight.current ||
       navigating.current ||
-      (!force &&
-        (draft.current ||
-          submitting.current ||
-          document.visibilityState !== "visible"))
+      (!force && document.visibilityState !== "visible")
     )
       return;
     inFlight.current = true;
@@ -138,29 +116,12 @@ export function Dashboard({
       document.removeEventListener("visibilitychange", visible);
     };
   }, [refresh]);
-  useEffect(() => {
-    if (!toast || toastNext.length) return;
-    const timer = setTimeout(() => setToast(""), 7000);
-    return () => clearTimeout(timer);
-  }, [toast, toastNext]);
   function navigate(patch: Partial<DashboardQuery>) {
-    if (submitting.current) return;
-    if (draft.current && !window.confirm("Discard the unsaved review?")) return;
     version.current++;
-    onDirty(false);
     startNavigation(() =>
       router.push(dashboardURL(currentQuery.current, patch), { scroll: false }),
     );
   }
-  const onSuccess = useCallback(
-    (message: string, next?: NextStep[]) => {
-      onDirty(false);
-      setToast(message);
-      setToastNext(next ?? []);
-      void refresh(true);
-    },
-    [onDirty, refresh],
-  );
   const snapshot = data.snapshot;
   const tableSnapshot =
     data.scope === dashboardScope(query) ? snapshot : undefined;
@@ -171,17 +132,11 @@ export function Dashboard({
       ? data.audit
       : undefined;
   const hasTableFilters = Boolean(query.q || query.severity !== "all");
-  const busy = refreshing || navigationPending || pending;
-  function inspect(
-    item: DashboardAccount,
-    review: DashboardQuery["review"] = "",
-  ) {
-    navigate({
-      inspect: item.account_id,
-      decision: item.decision_id ?? "",
-      review,
-    });
-  }
+  const busy = refreshing || navigationPending;
+  // Deciding happens on the account's own page: the incident, its evidence
+  // and its keys, with the browser's Back returning to this filtered queue.
+  const accountHref = (item: DashboardAccount) =>
+    `/accounts/${encodeURIComponent(item.account_id)}`;
   const period = periodQuery(query.period);
   const range = new URLSearchParams(period.query);
   const metrics = snapshot?.metrics;
@@ -262,15 +217,13 @@ export function Dashboard({
         <button
           type="button"
           className="refresh-text"
-          disabled={busy || dirty}
+          disabled={busy}
           onClick={() => void refresh()}
           title="Updates automatically every 30 seconds while visible"
         >
-          {dirty || pending
-            ? "Updates paused while reviewing"
-            : snapshot
-              ? `Updated ${new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" }).format(new Date(snapshot.generated_at))} UTC`
-              : "Waiting for an update"}
+          {snapshot
+            ? `Updated ${new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", timeZone: "UTC" }).format(new Date(snapshot.generated_at))} UTC`
+            : "Waiting for an update"}
           <RefreshCw
             size={13}
             className={refreshing ? "spin" : ""}
@@ -320,9 +273,6 @@ export function Dashboard({
                   severity: "all",
                   page: "1",
                   before_id: "",
-                  inspect: "",
-                  decision: "",
-                  review: "",
                 })
               }
             >
@@ -511,8 +461,8 @@ export function Dashboard({
                             )
                           : null;
                       return (
-                        // The whole row opens the drawer for the mouse; the
-                        // first-cell button is the keyboard and screen-reader target.
+                        // The whole row opens the account for the mouse; the
+                        // first-cell link is the keyboard and screen-reader target.
                         <tr
                           key={
                             query.view === "holds"
@@ -527,33 +477,33 @@ export function Dashboard({
                               (event.target as HTMLElement).closest("button, a")
                             )
                               return;
-                            inspect(item);
+                            startNavigation(() =>
+                              router.push(accountHref(item)),
+                            );
                           }}
                         >
                           <td className="dashboard-account">
                             {query.view === "keys" ? (
                               <>
-                                <button
-                                  type="button"
+                                <Link
                                   className="account-inspect mono"
                                   // Starts with the visible key so screen readers and voice control match it.
-                                  aria-label={`${item.api_key_id} on ${item.account_id}: inspect`}
-                                  onClick={() => inspect(item)}
+                                  aria-label={`${item.api_key_id} on ${item.account_id}: open account`}
+                                  href={accountHref(item)}
                                 >
                                   {item.api_key_id}
-                                </button>
+                                </Link>
                                 <small>Account {item.account_id}</small>
                               </>
                             ) : (
                               <>
-                                <button
-                                  type="button"
+                                <Link
                                   className="account-inspect"
-                                  aria-label={`Inspect ${item.account_id}`}
-                                  onClick={() => inspect(item)}
+                                  aria-label={`Open ${item.account_id}`}
+                                  href={accountHref(item)}
                                 >
                                   {item.account_id}
-                                </button>
+                                </Link>
                                 <small
                                   className="mono"
                                   title={item.api_key_id ?? undefined}
@@ -984,38 +934,6 @@ export function Dashboard({
             </div>
           </section>
         </>
-      )}
-      {query.inspect && (
-        <DashboardDrawer
-          key={query.inspect + query.decision + query.review}
-          account={query.inspect}
-          inspection={data.inspection}
-          initialAction={query.review || undefined}
-          onClose={() => navigate({ inspect: "", decision: "", review: "" })}
-          onDirty={onDirty}
-          onPending={onPending}
-          onSuccess={onSuccess}
-          toast={toast}
-          toastNext={toastNext}
-          dismissToast={() => setToast("")}
-        />
-      )}
-      {toast && !query.inspect && (
-        <div className="dashboard-toast" role="status">
-          <Check size={18} />
-          <span>
-            {toast}
-            <NextSteps next={toastNext} />
-          </span>
-          <button
-            type="button"
-            className="text-button"
-            aria-label="Dismiss notification"
-            onClick={() => setToast("")}
-          >
-            Dismiss
-          </button>
-        </div>
       )}
     </div>
   );

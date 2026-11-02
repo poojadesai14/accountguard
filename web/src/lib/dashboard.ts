@@ -1,5 +1,4 @@
 import { PERIODS, type Period } from "./format";
-import { UUID } from "./review";
 import type { DashboardSnapshot } from "./types";
 export type DashboardQuery = {
   tab: "attention" | "baseline" | "telemetry";
@@ -10,9 +9,6 @@ export type DashboardQuery = {
   page: string;
   period: Period;
   before_id: string;
-  inspect: string;
-  decision: string;
-  review: "" | "confirm_takeover" | "mark_legitimate";
 };
 export function dashboardQuery(raw: Record<string, unknown>): DashboardQuery {
   const tab =
@@ -46,15 +42,6 @@ export function dashboardQuery(raw: Record<string, unknown>): DashboardQuery {
       ? (raw.period as Period)
       : "7d",
     before_id: integer(raw.before_id, Number.MAX_SAFE_INTEGER),
-    inspect: typeof raw.inspect === "string" ? raw.inspect.slice(0, 500) : "",
-    decision:
-      typeof raw.decision === "string" && UUID.test(raw.decision)
-        ? raw.decision
-        : "",
-    review:
-      raw.review === "confirm_takeover" || raw.review === "mark_legitimate"
-        ? raw.review
-        : "",
   };
 }
 export function dashboardURL(

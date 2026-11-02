@@ -12,19 +12,12 @@ import {
   SESSION_COOKIE,
   SESSION_SECONDS,
 } from "@/lib/session";
-import {
-  reviewFields,
-  UUID,
-  type FormState,
-  type NextStep,
-} from "@/lib/review";
+import { reviewFields, UUID, type FormState } from "@/lib/review";
 import type {
   AccountResolution,
   Correction,
-  DecisionDetail,
   ProfileResponse,
 } from "@/lib/types";
-import { restoreIsLastStep } from "@/lib/decisions";
 
 export async function login(
   _previous: FormState,
@@ -56,94 +49,6 @@ function refreshDecision(id: string) {
   revalidatePath("/", "layout");
   revalidatePath(`/decisions/${id}`);
   revalidatePath(`/hold/${id}`);
-}
-
-export async function reviewDecision(
-  _previous: FormState,
-  form: FormData,
-): Promise<FormState> {
-  await requireSession();
-  const id = String(form.get("decision_id") ?? "");
-  const action = String(form.get("action") ?? "");
-  if (
-    !UUID.test(id) ||
-    !["confirm_takeover", "mark_legitimate", "release_hold"].includes(action)
-  )
-    return { error: "Choose a valid review action." };
-  const fields = reviewFields(form);
-  if (fields.error) return { error: fields.error };
-  const result = await analystApi(`/v1/decisions/${id}/actions`, {
-    action,
-    ...confirmField(form),
-    actor: fields.actor,
-    reason: fields.reason,
-  });
-  if (result.error) return { error: result.error };
-  refreshDecision(id);
-  // One decision's verdict never closes the account's other reviews, and marking
-  // legitimate never restores a key: say what's left and link straight to it.
-  if (action === "mark_legitimate" || action === "confirm_takeover")
-    return afterReview(id, action);
-  return {
-    success: "Action recorded. The decision and audit history are up to date.",
-  };
-}
-
-async function afterReview(
-  id: string,
-  action: "mark_legitimate" | "confirm_takeover",
-): Promise<FormState> {
-  const detail = await analystApi<DecisionDetail>(`/v1/decisions/${id}`);
-  const account = detail.data?.decision.account_id;
-  if (!detail.data || !account) return { success: "Action recorded." };
-  const page = `/accounts/${encodeURIComponent(account)}`;
-  const profile = await analystApi<ProfileResponse>(
-    `/v1/accounts/${encodeURIComponent(account)}/profile`,
-  );
-  const reviews = profile.data?.open?.reviews ?? 0;
-  const suspended = (profile.data?.key_status ?? [])
-    .filter((k) => k.status === "suspended")
-    .map((k) => k.api_key_id);
-  const plural = (n: number, word: string) =>
-    `${n} ${word}${n === 1 ? "" : "s"}`;
-  const next: NextStep[] = [];
-  const parts: string[] = [];
-  let lead: string;
-  if (action === "confirm_takeover") {
-    const key = detail.data.decision.api_key_id;
-    lead = `Takeover confirmed${key ? `: key ${key} suspended and its held emails dropped` : ""}.`;
-  } else {
-    const key = detail.data.key;
-    const restore = restoreIsLastStep(detail.data.decision, key)
-      ? key!.api_key_id
-      : null;
-    lead = restore
-      ? `Marked legitimate. Key ${restore} is still suspended: restore access to finish.`
-      : "Marked legitimate.";
-    if (restore)
-      next.push({
-        label: `Restore ${restore}`,
-        href: `${page}?restore=${encodeURIComponent(restore)}`,
-      });
-    const others = suspended.filter((k) => k !== restore);
-    if (others.length) {
-      parts.push(
-        `${others.join(", ")} ${others.length === 1 ? "stays" : "stay"} suspended until restored on purpose.`,
-      );
-      next.push({ label: "Open account", href: page });
-    }
-    if (!restore && !others.length && reviews === 0)
-      return {
-        success: `${lead} Nothing else is open on this account, so it moves to Healthy.`,
-      };
-  }
-  if (reviews > 0) {
-    parts.unshift(
-      `${plural(reviews, "other review")} ${reviews === 1 ? "is" : "are"} still open on this account.`,
-    );
-    next.unshift({ label: "Resolve the rest", href: `${page}?resolve=1` });
-  }
-  return { success: [lead, ...parts].join(" "), next };
 }
 
 // confirmField sends the typed account ID only when the form asked for one.

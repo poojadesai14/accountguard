@@ -284,11 +284,6 @@ export type AuditPage = {
   items: GlobalAuditAction[];
   next_before_id: number | null;
 };
-export type DashboardInspection = {
-  profile?: ProfileResponse;
-  detail?: DecisionDetail;
-  error?: string;
-};
 export type DashboardData = {
   scope: string;
   telemetry_period: Period;
@@ -297,7 +292,6 @@ export type DashboardData = {
   database_ok: boolean;
   stats?: Stats;
   audit?: AuditPage;
-  inspection?: DashboardInspection;
   error?: string;
   telemetry_error?: string;
 };

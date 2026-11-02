@@ -1,5 +1,3 @@
-/* Monochrome workspace with restrained semantic status accents. Near-black rather
-   than pure black, and every text grey meets WCAG AA (4.5:1) on every surface. */
 :root {
   color-scheme: dark;
   --bg-primary: #09090b;
@@ -89,8 +87,6 @@ button:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }
-/* A disabled primary must not look like the one thing to press: grey, flat and
-   without the hover highlight. */
 .button-primary:disabled,
 .button-primary:disabled:hover {
   background: var(--card);
@@ -400,8 +396,6 @@ small {
   color: var(--subtle);
   font-size: 12px;
 }
-/* The one global statement of the engine mode (top bar on desktop, sidebar row
-   on mobile). Enforcing gets the hold colour because it means mail is stopped. */
 .mode-chip {
   display: inline-flex;
   align-items: center;
@@ -1638,8 +1632,6 @@ td strong {
   background: transparent;
   font-size: 16px;
 }
-/* Five outcome buttons in a narrow panel: smaller than the dashboard pills,
-   still at least 32px tall, and wrapping when the panel is too narrow. */
 .severity-pills.stream-outcomes {
   gap: 6px;
 }
@@ -1757,8 +1749,6 @@ td strong {
   min-width: 0;
   min-height: 0;
 }
-/* One card: decision, signals, then raw metadata on demand. Scrolls inside the
-   fixed-height workspace. */
 .stream-decision {
   padding: 16px;
   overflow: auto;
@@ -2105,8 +2095,6 @@ td strong {
     padding: 0;
     gap: 7px;
   }
-  /* Mobile: one row with the brand, nav, mode and sign out; the desktop top bar
-     would repeat the brand, so it is hidden. */
   .sidebar-footer {
     margin: 0;
   }
@@ -2702,47 +2690,6 @@ td strong {
   overflow-wrap: anywhere;
   line-height: 1.8;
 }
-.inspection-drawer {
-  position: fixed;
-  inset: 0 0 0 auto;
-  margin: 0 0 0 auto;
-  width: min(672px, 100vw);
-  height: 100dvh;
-  max-width: 100vw;
-  max-height: none;
-  border: 0;
-  border-left: 1px solid var(--line);
-  background: var(--card);
-  color: var(--ink);
-  padding: 0;
-  overflow: auto;
-  box-shadow: -24px 0 80px #0008;
-}
-.inspection-drawer::backdrop {
-  background: #000000cc;
-  backdrop-filter: blur(4px);
-}
-.drawer-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 22px 24px;
-  border-bottom: 1px solid var(--line);
-  background: #0a0a0acc;
-  backdrop-filter: blur(12px);
-  position: sticky;
-  top: 0;
-  z-index: 3;
-}
-.drawer-header h2 {
-  font-size: 14px;
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-.drawer-header .eyebrow {
-  font-size: 12px;
-}
 .icon-button {
   display: grid;
   place-items: center;
@@ -2756,106 +2703,6 @@ td strong {
 }
 .icon-button:hover {
   color: var(--ink);
-}
-.drawer-body {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  padding: 24px;
-  font-size: 12px;
-}
-
-.drawer-body .hit-heading strong,
-.drawer-body .hit-evidence p,
-.drawer-body .review-form label,
-.drawer-body .review-form input,
-.drawer-body .review-form select,
-.drawer-body .review-form textarea,
-.drawer-body .review-form .button {
-  font-size: 12px;
-}
-.drawer-body .hit-heading strong,
-.drawer-body .hit-evidence p {
-  font-family: var(--mono);
-}
-
-.drawer-links .button {
-  font-size: 12px;
-}
-
-.drawer-body .review-form label {
-  font-size: 11px;
-  font-family: var(--mono);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.3px;
-}
-.drawer-body .form-help {
-  font-size: 11px;
-}
-.drawer-body .hit-row {
-  padding: 10px 0;
-}
-.drawer-body .hit-category,
-.drawer-body .hit-points small {
-  font-size: 10px;
-}
-.drawer-body .hit-points {
-  font-size: 14px;
-  border: 0;
-  background: none;
-}
-
-.drawer-body .review-form,
-.drawer-body .hit-list {
-  padding: 0;
-}
-
-.drawer-score {
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 16px;
-}
-.drawer-score > strong {
-  font-size: 24px;
-  font-family: var(--mono);
-  font-weight: 700;
-}
-.drawer-score small {
-  color: var(--muted);
-  font-size: 12px;
-  font-weight: 400;
-}
-
-.drawer-body .form-help .mono {
-  font-size: 11px;
-  overflow-wrap: anywhere;
-}
-.drawer-body .review-form > .button {
-  margin-top: 12px;
-}
-.dashboard-toast {
-  position: fixed;
-  bottom: 24px;
-  right: 24px;
-  z-index: 100;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 20px;
-  max-width: min(560px, calc(100vw - 32px));
-  color: var(--ink);
-  background: var(--card);
-  border: 1px solid #222222;
-  border-radius: 8px;
-  box-shadow: 0 12px 40px #0008;
-  font-size: 12px;
-}
-.dashboard-toast svg {
-  color: #86efac;
-  flex-shrink: 0;
 }
 @media (max-width: 1100px) {
   .dashboard-header {
@@ -2945,10 +2792,7 @@ td strong {
   .search-field input,
   .review-form input,
   .review-form select,
-  .review-form textarea,
-  .drawer-body .review-form input,
-  .drawer-body .review-form select,
-  .drawer-body .review-form textarea {
+  .review-form textarea {
     font-size: 16px;
   }
   .review-form input:not([type="hidden"]),
@@ -2964,39 +2808,6 @@ td strong {
   }
   .dashboard-pagination > span:first-child {
     flex-basis: 100%;
-  }
-  .drawer-header {
-    padding: 16px;
-  }
-  .drawer-body {
-    padding: 16px;
-  }
-  .drawer-header h2 {
-    font-size: 14px;
-  }
-
-  .dashboard-toast {
-    bottom: 16px;
-    right: 16px;
-    font-size: 12px;
-  }
-}
-.drawer-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-shrink: 0;
-}
-.drawer-header-actions .button {
-  font-size: 12px;
-  min-height: 40px;
-}
-.drawer-body > section {
-  scroll-margin-top: 115px;
-}
-@media (max-width: 480px) {
-  .drawer-header-actions .button {
-    display: none;
   }
 }
 
@@ -3184,7 +2995,6 @@ td strong {
 .related-accounts small {
   color: var(--muted);
 }
-/* Looks like a link so it reads as clickable, unlike the old "+N more" text. */
 .related-more {
   padding: 0;
   border: 0;
@@ -3216,8 +3026,6 @@ td strong {
 .refresh-text:focus-visible {
   color: var(--ink);
 }
-/* The four views as one slim row of counts, not four large cards. Only the
-   number carries the view's colour. */
 .view-counts {
   display: flex;
   flex-wrap: wrap;
@@ -3269,55 +3077,6 @@ td strong {
   cursor: pointer;
 }
 
-/* Light drawer: flat sections separated by spacing and hairlines, no nested cards. */
-.drawer-summary {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px 14px;
-}
-.drawer-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 12px;
-  flex-basis: 100%;
-  color: var(--muted);
-  font-size: 12px;
-}
-.drawer-state {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px 16px;
-  font-size: 12px;
-}
-.drawer-body .hit-list {
-  border-top: 1px solid var(--line-soft);
-}
-.drawer-more {
-  font-size: 12px;
-  margin-top: 6px;
-}
-.drawer-review {
-  padding-top: 16px;
-  border-top: 1px solid var(--line);
-}
-.drawer-review h3 {
-  margin-bottom: 12px;
-  font-size: 14px;
-  font-weight: 600;
-}
-.drawer-links {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 20px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line-soft);
-}
-.drawer-links .text-link {
-  font-size: 13px;
-}
-
-/* Decision page: header carries the account, the call and one status line. */
 .decision-title {
   display: flex;
   flex-wrap: wrap;
@@ -3439,7 +3198,6 @@ td strong {
   }
 }
 
-/* Account page: a suspended key is one line under the title, restore inline. */
 .key-line {
   display: flex;
   flex-wrap: wrap;
@@ -3584,7 +3342,7 @@ td strong {
   margin: 0 0 4px;
   font-size: 15px;
 }
-/* The decision page's card has no inner padding of its own; the drawer does. */
+/* The decision page's card has no inner padding of its own. */
 .decision-decide .incident-decide {
   padding: 0 22px 22px;
 }
@@ -3658,8 +3416,6 @@ td strong {
   color: var(--block);
 }
 
-/* A field's label with its required marker beside it, outside the label so
-   the accessible name stays the field's own. */
 .field-label {
   display: flex;
   gap: 4px;

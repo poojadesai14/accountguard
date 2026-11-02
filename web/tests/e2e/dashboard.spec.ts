@@ -11,6 +11,14 @@ async function signIn(page: Page, path = "/") {
   await expect(page).not.toHaveURL(/\/login/);
 }
 
+// Opens acc_acme from the queue: the row leads to the account page, where the
+// incident is decided. Returns its Resolve card.
+async function openAccount(page: Page) {
+  await page.getByRole("link", { name: "Open acc_acme", exact: true }).click();
+  await expect(page).toHaveURL(/\/accounts\/acc_acme$/);
+  return page.locator(".resolve-card", { hasText: "Resolve account" });
+}
+
 test.beforeEach(async ({ request }) => {
   await request.post("http://127.0.0.1:3102/__reset");
 });
@@ -164,13 +172,7 @@ test("account search, shared-time charts, timeline and baseline", async ({
     page.getByRole("searchbox", { name: "Search dashboard" }),
   ).toHaveValue("acme");
   await expect(page.getByText("acc_beta", { exact: true })).toHaveCount(0);
-  await page
-    .getByRole("button", { name: "Inspect acc_acme", exact: true })
-    .click();
-  await page
-    .getByRole("dialog", { name: "acc_acme" })
-    .getByRole("link", { name: "Open account" })
-    .click();
+  await page.getByRole("link", { name: "Open acc_acme", exact: true }).click();
   await expect(
     page.getByRole("heading", { name: "acc_acme", exact: true }),
   ).toBeVisible();
@@ -371,7 +373,13 @@ test("review requires a reason and records actor, action, evidence and audit his
   await expect(related.getByText("+2 more accounts not listed")).toBeVisible();
   await related.getByRole("button", { name: "Show fewer" }).click();
   await expect(accounts).toHaveCount(5);
-  const decide = page.locator(".incident-decide");
+  // The decision page is evidence; the incident is decided on the account page.
+  await page
+    .locator(".incident-decide")
+    .getByRole("link", { name: "Decide on the account page" })
+    .click();
+  await expect(page).toHaveURL(/\/accounts\/acc_acme\?resolve=1$/);
+  const decide = page.locator(".resolve-card", { hasText: "Resolve account" });
   await decide.getByLabel("Takeover").check();
   await decide.getByLabel("Your name").fill("Pooja");
   // No reason: the browser refuses the submit, nothing reaches the API.
@@ -525,7 +533,7 @@ test("mobile layout supports navigation without document overflow", async ({
   });
   await page.goto(`/decisions/${id}`);
   const evidence = await page.locator(".hit-list").boundingBox();
-  const review = await page.locator(".review-form").boundingBox();
+  const review = await page.locator(".incident-decide").boundingBox();
   expect(evidence!.y).toBeLessThan(review!.y);
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
@@ -550,10 +558,10 @@ test("dashboard filters and pagination are reflected in the URL", async ({
   await page.getByRole("button", { name: "Block", exact: true }).click();
   await expect(page).toHaveURL(/severity=block/);
   await expect(
-    table.getByRole("button", { name: "Inspect acc_high", exact: true }),
+    table.getByRole("link", { name: "Open acc_high", exact: true }),
   ).toBeVisible();
   await expect(
-    table.getByRole("button", { name: "Inspect acc_acme", exact: true }),
+    table.getByRole("link", { name: "Open acc_acme", exact: true }),
   ).toHaveCount(0);
   await page
     .getByRole("button", { name: "View healthy accounts", exact: true })
@@ -565,7 +573,7 @@ test("dashboard filters and pagination are reflected in the URL", async ({
   await expect(page).not.toHaveURL(/severity=/);
   await expect(page.getByRole("group", { name: "Sort by" })).toBeVisible();
   await expect(
-    table.getByRole("button", { name: "Inspect acc_good", exact: true }),
+    table.getByRole("link", { name: "Open acc_good", exact: true }),
   ).toBeVisible();
   await expect(table).toContainText("Learning baseline");
   await page
@@ -576,14 +584,14 @@ test("dashboard filters and pagination are reflected in the URL", async ({
     .press("Enter");
   await expect(page).toHaveURL(/q=key_good/);
   await expect(
-    table.getByRole("button", { name: "Inspect acc_learning", exact: true }),
+    table.getByRole("link", { name: "Open acc_learning", exact: true }),
   ).toHaveCount(0);
   await page.goto("/?tab=baseline&severity=high&sort=recent");
   await expect(
-    table.getByRole("button", { name: "Inspect acc_good", exact: true }),
+    table.getByRole("link", { name: "Open acc_good", exact: true }),
   ).toBeVisible();
   await expect(
-    table.getByRole("button", { name: "Inspect acc_learning", exact: true }),
+    table.getByRole("link", { name: "Open acc_learning", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByRole("group", { name: "Filter by decision" }),
@@ -669,7 +677,7 @@ test("metric cards open matching drilldowns and retain selection through reload 
   await expect(firstKey.locator(".account-inspect")).toHaveText("key_high");
   await expect(firstKey).toContainText("Account acc_high");
   await expect(
-    table.getByRole("button", { name: /^key_high on acc_high/ }),
+    table.getByRole("link", { name: /^key_high on acc_high/ }),
   ).toBeVisible();
   await expect(table).toContainText("Suspended automatically");
   await expect(table).toContainText("Suspended by an analyst");
@@ -873,57 +881,22 @@ test("newest-first sorts across pages, preserves filters, and explains monitorin
   }
 });
 
-test("inspection drawer traps focus, closes with Escape, and records audited suspension", async ({
+test("a queue row opens the account page to decide, and Back returns to the filtered queue", async ({
   page,
   request,
 }) => {
-  await signIn(page);
-  const trigger = page.getByRole("button", {
-    name: "Inspect acc_acme",
-    exact: true,
-  });
-  await trigger.click();
-  const drawer = page.getByRole("dialog", { name: "acc_acme", exact: true });
-  await expect(drawer).toBeVisible();
-  await expect(page).toHaveURL(/inspect=acc_acme/);
-  const evidence = await drawer.locator(".hit-list").boundingBox();
-  const review = await drawer.locator(".review-form").boundingBox();
-  // The light drawer reads top to bottom: evidence, the review form, then
-  // links to the full decision and the account.
-  const links = await drawer.locator(".drawer-links").boundingBox();
-  expect(evidence!.y).toBeLessThan(review!.y);
-  expect(review!.y).toBeLessThan(links!.y);
-  await expect(
-    drawer.getByRole("link", { name: "Open full decision" }),
-  ).toHaveAttribute("href", `/decisions/${id}`);
-  await drawer.screenshot({ path: "test-results/dashboard-drawer.png" });
-  const close = drawer.getByRole("button", { name: "Close inspection" });
-  await close.focus();
-  await page.keyboard.press("Shift+Tab");
-  expect(
-    await page.evaluate(() => !!document.activeElement?.closest("dialog")),
-  ).toBe(true);
-  await page.keyboard.press("Escape");
-  await expect(drawer).toHaveCount(0);
-  await expect(trigger).toBeFocused();
-  await trigger.click();
-  const decide = drawer.locator(".incident-decide");
-  await decide.getByLabel("Takeover").check();
-  await expect(decide.locator(".resolve-effects")).toContainText(
+  await signIn(page, "/?q=acme");
+  const card = await openAccount(page);
+  await card.getByLabel("Takeover").check();
+  await expect(card.locator(".resolve-effects")).toContainText(
     "Suspend key_prod_1 on your authority",
   );
-  await decide.getByLabel("Your name").fill("Pooja");
-  await decide
+  await card.getByLabel("Your name").fill("Pooja");
+  await card
     .getByLabel("Reason", { exact: true })
     .fill("Confirmed account takeover with the owner.");
-  await decide.getByRole("button", { name: RESOLVE }).click();
-  await expect(drawer.locator(".dashboard-toast")).toContainText(
-    "Resolved as takeover",
-  );
-  await expect(drawer.locator(".drawer-score > strong")).toHaveText("75 / 100");
-  await expect(
-    drawer.getByText("Reviewed: takeover", { exact: true }),
-  ).toBeVisible();
+  await card.getByRole("button", { name: RESOLVE }).click();
+  await expect(card.getByRole("status")).toContainText("Resolved as takeover");
   const calls = await (
     await request.get("http://127.0.0.1:3102/__requests")
   ).json();
@@ -936,10 +909,11 @@ test("inspection drawer traps focus, closes with Escape, and records audited sus
     actor: "Pooja",
     reason: "Confirmed account takeover with the owner.",
   });
-  await close.click();
+  await page.goBack();
+  await expect(page).toHaveURL(/\/\?q=acme$/);
   // The queue row leads with the verdict, the original hold underneath.
   const row = page.getByRole("row").filter({
-    has: page.getByRole("button", { name: "Inspect acc_acme", exact: true }),
+    has: page.getByRole("link", { name: "Open acc_acme", exact: true }),
   });
   await expect(row.locator(".dashboard-decision")).toContainText(
     "Confirmed takeover",
@@ -960,37 +934,28 @@ test("legitimate approval refreshes membership while preserving the original hol
     data: { actor: "fixture", reason: "Key secured", confirm: "acc_acme" },
   });
   await signIn(page);
-  const row = page.getByRole("row").filter({
-    has: page.getByRole("button", { name: "Inspect acc_acme", exact: true }),
-  });
-  await row.getByRole("button", { name: /^Inspect / }).click();
-  const drawer = page.getByRole("dialog", { name: "acc_acme", exact: true });
-  const decide = drawer.locator(".incident-decide");
-  await decide.getByLabel("Your name").fill("Pooja");
-  await decide
+  const card = await openAccount(page);
+  await card.getByLabel("Your name").fill("Pooja");
+  await card
     .getByLabel("Reason", { exact: true })
     .fill("Confirmed legitimate traffic with the owner.");
   // No outcome is preselected: "Legitimate" teaches the baseline, so an
   // unread submit must not record it.
-  await expect(decide.getByLabel("Legitimate")).not.toBeChecked();
-  await expect(decide.getByLabel("Takeover")).not.toBeChecked();
-  await expect(decide.getByRole("button", { name: RESOLVE })).toBeDisabled();
-  await decide.getByLabel("Legitimate").check();
-  await decide.locator(".resolve-warning input").fill("acc_acme");
-  await decide.getByRole("button", { name: RESOLVE }).click();
-  await expect(drawer.locator(".dashboard-toast")).toContainText(
+  await expect(card.getByLabel("Legitimate")).not.toBeChecked();
+  await expect(card.getByLabel("Takeover")).not.toBeChecked();
+  await expect(card.getByRole("button", { name: RESOLVE })).toBeDisabled();
+  await card.getByLabel("Legitimate").check();
+  await card.locator(".resolve-warning input").fill("acc_acme");
+  await card.getByRole("button", { name: RESOLVE }).click();
+  await expect(card.getByRole("status")).toContainText(
     "Nothing else is open on this account, so it moves to Healthy.",
   );
-  await expect(drawer.locator(".drawer-score > strong")).toHaveText("75 / 100");
-  await expect(
-    drawer.getByText("Reviewed: legitimate", { exact: true }),
-  ).toBeVisible();
-  await drawer.getByRole("button", { name: "Close inspection" }).click();
+  await page.goto("/");
   await page
     .getByRole("button", { name: "View healthy accounts", exact: true })
     .click();
   const approved = page.getByRole("row").filter({
-    has: page.getByRole("button", { name: "Inspect acc_acme", exact: true }),
+    has: page.getByRole("link", { name: "Open acc_acme", exact: true }),
   });
   // The verdict leads; the original hold and its score stay underneath.
   await expect(approved).toContainText("Marked legitimate");
@@ -999,7 +964,7 @@ test("legitimate approval refreshes membership while preserving the original hol
   await expect(approved.locator(".score-number")).toHaveText("75");
 });
 
-test("polling pauses for review drafts and hidden pages, and keeps the last snapshot on failure", async ({
+test("polling pauses for hidden pages, and keeps the last snapshot on failure", async ({
   page,
   request,
 }) => {
@@ -1013,25 +978,6 @@ test("polling pauses for review drafts and hidden pages, and keeps the last snap
       call.path.startsWith("/v1/dashboard"),
     ).length;
   };
-  await page
-    .getByRole("button", { name: "Inspect acc_acme", exact: true })
-    .click();
-  const drawer = page.getByRole("dialog", { name: "acc_acme", exact: true });
-  await drawer.getByLabel("Your name").fill("Draft analyst");
-  await drawer
-    .getByLabel("Reason", { exact: true })
-    .fill("Evidence still being reviewed.");
-  const before = await count();
-  await page.clock.runFor(31_000);
-  // Real time for a refresh, had one started, to reach the API before counting.
-  await page.waitForTimeout(1_000);
-  expect(await count()).toBe(before);
-  await expect(drawer.getByLabel("Reason", { exact: true })).toHaveValue(
-    "Evidence still being reviewed.",
-  );
-  page.once("dialog", (dialog) => dialog.accept());
-  await drawer.getByRole("button", { name: "Close inspection" }).click();
-  await expect(drawer).toHaveCount(0);
   await page.evaluate(() =>
     Object.defineProperty(document, "visibilityState", {
       configurable: true,
@@ -1057,7 +1003,7 @@ test("polling pauses for review drafts and hidden pages, and keeps the last snap
     page.locator(".dashboard > .api-error[role=alert]"),
   ).toContainText("Showing the last successful snapshot");
   await expect(
-    page.getByRole("button", { name: "Inspect acc_acme", exact: true }),
+    page.getByRole("link", { name: "Open acc_acme", exact: true }),
   ).toBeVisible();
   await request.post("http://127.0.0.1:3102/__recover");
   await page.getByRole("button", { name: /Refresh$/ }).click();
@@ -1103,25 +1049,6 @@ test("automatic refresh never overlaps a pending dashboard request", async ({
   await expect(page.getByRole("button", { name: /Refresh$/ })).toBeEnabled();
 });
 
-test("an unavailable inspection has a clear error and can be closed", async ({
-  page,
-}) => {
-  await signIn(page, "/?inspect=missing-account");
-  const drawer = page.getByRole("dialog", {
-    name: "missing-account",
-    exact: true,
-  });
-  await expect(drawer.getByRole("alert")).toContainText("could not be found");
-  await expect(
-    drawer.getByRole("button", { name: "Record review" }),
-  ).toHaveCount(0);
-  await page.keyboard.press("Escape");
-  await expect(drawer).toHaveCount(0);
-  await expect(
-    page.getByRole("table", { name: "Dashboard accounts" }),
-  ).toBeVisible();
-});
-
 test("a page past the end of the list does not claim the queue is empty", async ({
   page,
 }) => {
@@ -1132,69 +1059,26 @@ test("a page past the end of the list does not claim the queue is empty", async 
   await expect(page.getByText("Your review queue is clear.")).toHaveCount(0);
 });
 
-test("marking legitimate says the suspended key is the step left, and offers it", async ({
+test("the review message names the restore and links to it, and a restore confirms in place", async ({
   page,
 }) => {
-  await signIn(page, `/decisions/${id}`);
-  // The key's state is visible before the review, with restore inline.
-  const keyLine = page.locator(".key-line");
-  await expect(keyLine).toContainText("key_prod_1 suspended");
-  await expect(
-    keyLine.getByText("Restore access", { exact: true }),
-  ).toBeVisible();
-  const decide = page.locator(".incident-decide");
-  await decide.getByLabel("Legitimate").check();
-  await decide.locator(".resolve-warning input").fill("acc_acme");
-  await decide.getByLabel("Your name").fill("Pooja");
-  await decide
-    .getByLabel("Reason", { exact: true })
-    .fill("Owner confirmed the new network.");
-  await decide.getByRole("button", { name: RESOLVE }).click();
-  // The page refreshes into the labeled state; the key line now says what is left.
-  await expect(keyLine).toContainText(
-    "Marked legitimate; restore access to finish.",
-  );
-  await expect(
-    keyLine.getByText("Restore access", { exact: true }),
-  ).toBeVisible();
-});
-
-test("the drawer's review message names the restore, and a restore confirms in place", async ({
-  page,
-}) => {
-  await page.clock.install();
   await signIn(page);
-  await page
-    .getByRole("button", { name: "Inspect acc_acme", exact: true })
-    .click();
-  const drawer = page.getByRole("dialog", { name: "acc_acme" });
-  const decide = drawer.locator(".incident-decide");
-  await decide.getByLabel("Legitimate").check();
-  await decide.locator(".resolve-warning input").fill("acc_acme");
-  await decide.getByLabel("Your name").fill("Pooja");
-  await decide
+  const card = await openAccount(page);
+  await card.getByLabel("Legitimate").check();
+  await card.locator(".resolve-warning input").fill("acc_acme");
+  await card.getByLabel("Your name").fill("Pooja");
+  await card
     .getByLabel("Reason", { exact: true })
     .fill("Owner confirmed the new network.");
-  await decide.getByRole("button", { name: RESOLVE }).click();
-  const toast = drawer.locator(".dashboard-toast");
-  await expect(toast).toContainText(
+  await card.getByRole("button", { name: RESOLVE }).click();
+  const message = card.getByRole("status");
+  await expect(message).toContainText(
     "key_prod_1 is still suspended: restore access to finish.",
   );
-  // The pop-up links to the step left, opened and ready; it doesn't time out.
-  await page.clock.runFor(10_000);
-  await expect(toast).toBeVisible();
-  await toast.getByRole("link", { name: "Restore key_prod_1" }).click();
+  await card.getByRole("link", { name: "Restore key_prod_1" }).click();
   await expect(page).toHaveURL(/\/accounts\/acc_acme\?restore=key_prod_1/);
-  const opened = page.locator(".key-line").first();
-  await expect(opened.getByLabel("Your name")).toBeVisible();
-  await expect(
-    opened.getByRole("button", { name: "Restore key access" }),
-  ).toBeVisible();
-
-  // Restoring on the decision page keeps its confirmation after the key turns active.
-  await page.goto(`/decisions/${id}`);
-  const keyLine = page.locator(".key-line");
-  await keyLine.getByText("Restore access", { exact: true }).click();
+  // The link opens the key's restore form, ready; the restore confirms in place.
+  const keyLine = page.locator(".key-line").first();
   await keyLine.getByLabel("Your name").fill("Pooja");
   await keyLine.getByLabel("Reason", { exact: true }).fill("Key rotated.");
   // The key was stopped for a young domain: restoring is typed.
@@ -1212,21 +1096,14 @@ test("a reviewed account whose key is still suspended reads as a restore, not a 
   await signIn(page);
   const row = page.locator("tr", { hasText: "acc_acme" }).first();
   await expect(row.locator(".dashboard-decision .badge-hold")).toHaveCount(1);
-  await page
-    .getByRole("button", { name: "Inspect acc_acme", exact: true })
-    .click();
-  const drawer = page.getByRole("dialog", { name: "acc_acme" });
-  const decide = drawer.locator(".incident-decide");
-  await decide.getByLabel("Legitimate").check();
-  await decide.locator(".resolve-warning input").fill("acc_acme");
-  await decide.getByLabel("Your name").fill("Pooja");
-  await decide.getByLabel("Reason", { exact: true }).fill("Owner confirmed.");
-  await decide.getByRole("button", { name: RESOLVE }).click();
-  await expect(drawer.locator(".dashboard-toast")).toContainText(
-    "still suspended",
-  );
-  await drawer.getByRole("button", { name: "Close inspection" }).click();
-  await page.reload();
+  const card = await openAccount(page);
+  await card.getByLabel("Legitimate").check();
+  await card.locator(".resolve-warning input").fill("acc_acme");
+  await card.getByLabel("Your name").fill("Pooja");
+  await card.getByLabel("Reason", { exact: true }).fill("Owner confirmed.");
+  await card.getByRole("button", { name: RESOLVE }).click();
+  await expect(card.getByRole("status")).toContainText("still suspended");
+  await page.goto("/");
   const decision = row.locator(".dashboard-decision");
   await expect(decision).toContainText("Marked legitimate");
   await expect(decision).toContainText("Was hold · 75");
@@ -1412,8 +1289,8 @@ test("an active key can be suspended directly from its key line", async ({
 test("after a confirmed takeover, restoring the key is recovery: typed, with a warning", async ({
   page,
 }) => {
-  await signIn(page, `/decisions/${id}`);
-  const decide = page.locator(".incident-decide");
+  await signIn(page, "/accounts/acc_acme");
+  const decide = page.locator(".resolve-card", { hasText: "Resolve account" });
   await decide.getByLabel("Takeover").check();
   await decide.getByLabel("Your name").fill("Pooja");
   await decide.getByLabel("Reason", { exact: true }).fill("Owner said not me.");
@@ -1440,32 +1317,35 @@ test("after a confirmed takeover, restoring the key is recovery: typed, with a w
   await expect(line).toContainText("key_prod_1 active");
 });
 
-test("the decision page offers one action: resolve the incident before its deadline", async ({
+test("the decision page is evidence: it states the incident and its deadline, and links to decide", async ({
   page,
+  request,
 }) => {
   await signIn(page, `/decisions/${id}`);
   const decide = page.locator(".decision-decide");
-  await expect(decide).toContainText("Resolve this incident");
+  await expect(decide).toContainText("Part of an open incident");
   await expect(decide).toContainText(
     "1 open review · 1 held email · 1 suspended key",
   );
   await expect(decide.locator(".incident-deadline")).toContainText("Decide by");
-  // No per-email review: the incident is the unit of decision.
-  await expect(decide.getByLabel("Review outcome")).toHaveCount(0);
-  await expect(page.locator(".just-this")).toHaveCount(0);
-  await decide.getByLabel("Takeover").check();
-  await decide.getByLabel("Your name").fill("Pooja");
-  await decide
-    .getByLabel("Reason", { exact: true })
-    .fill("New network and young domain.");
-  await decide.getByRole("button", { name: RESOLVE }).click();
-  await expect(decide.getByRole("status")).toContainText(
-    "Resolved as takeover",
-  );
-  // Nothing open is left: the panel falls back to this email's own state.
+  // No decision controls here: one place decides, the account page.
+  await expect(decide.getByLabel("Takeover")).toHaveCount(0);
+  await expect(
+    decide.getByRole("link", { name: "Decide on the account page" }),
+  ).toHaveAttribute("href", "/accounts/acc_acme?resolve=1");
+  await request.post("http://127.0.0.1:3102/v1/accounts/acc_acme/resolve", {
+    headers: { Authorization: "Bearer fixture-analyst-token" },
+    data: {
+      decision_ids: [id],
+      outcome: "takeover",
+      restore_keys: false,
+      actor: "fixture",
+      reason: "Resolved elsewhere",
+    },
+  });
   await page.reload();
-  await expect(decide).not.toContainText("Resolve this incident");
-  await expect(decide).toContainText("Review complete");
+  await expect(decide).toContainText("Reviewed: takeover");
+  await expect(decide).toContainText("Nothing is open on this account.");
 });
 
 test("resolving spells out what it will and won't do, lists the reviews and names the button", async ({

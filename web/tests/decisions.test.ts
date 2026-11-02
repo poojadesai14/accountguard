@@ -9,7 +9,6 @@ import {
   holdCountdown,
   relatedSummary,
   relatedVerdict,
-  restoreIsLastStep,
 } from "../src/lib/decisions";
 import type {
   Action,
@@ -335,34 +334,4 @@ test("an account opens on the decision that explains it, not a follow-on rejecti
   );
   assert.equal(defaultEvent([row("n1", "allow"), row("n2", null)])?.id, "n1");
   assert.equal(defaultEvent([]), undefined);
-});
-
-test("restore is the step left only when this legitimate decision auto-suspended the key", () => {
-  const decision = { decision_id: "d1", label: "legitimate" };
-  const key = {
-    api_key_id: "k1",
-    account_id: "a1",
-    status: "suspended" as const,
-    reason: "auto",
-    decision_id: "d1",
-    updated_at: "2026-11-01T10:00:00Z",
-  };
-  assert.equal(restoreIsLastStep(decision, key), true);
-  // Suspended by another decision (e.g. a later, unreviewed block).
-  assert.equal(
-    restoreIsLastStep(decision, { ...key, decision_id: "d2" }),
-    false,
-  );
-  // Suspended by a confirmed takeover or the owner: never "restore to finish".
-  assert.equal(
-    restoreIsLastStep(decision, { ...key, reason: "analyst" }),
-    false,
-  );
-  assert.equal(restoreIsLastStep(decision, { ...key, reason: "owner" }), false);
-  assert.equal(
-    restoreIsLastStep(decision, { ...key, status: "active" }),
-    false,
-  );
-  assert.equal(restoreIsLastStep({ ...decision, label: null }, key), false);
-  assert.equal(restoreIsLastStep(decision, null), false);
 });
