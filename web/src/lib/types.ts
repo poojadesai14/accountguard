@@ -62,6 +62,8 @@ export type KeyStatus = {
   updated_at: string;
   /** The account has a confirmed takeover: restoring needs the account ID typed. */
   takeover?: boolean;
+  /** Risky signals on the emails this key was stopped for: restoring needs the account ID typed. */
+  warnings?: { signal: string; detail: string }[];
 };
 export type OpenCounts = {
   reviews: number;

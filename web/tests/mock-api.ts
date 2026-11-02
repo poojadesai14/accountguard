@@ -503,6 +503,15 @@ createServer(async (req, res) => {
         error:
           "this key was locked for a confirmed takeover: type the account ID to confirm the owner has secured the account and rotated credentials",
       });
+    if (
+      url.pathname.endsWith("/unblock") &&
+      risky() &&
+      body.confirm !== "acc_acme"
+    )
+      return reply(409, {
+        error:
+          "restoring lets this key send again, and the emails it was stopped for show young_domain: type the account ID to confirm",
+      });
     if (url.pathname.endsWith("/unblock")) {
       suspended = false;
       return reply(200, { status: "active" });
@@ -810,6 +819,15 @@ createServer(async (req, res) => {
           status: suspended ? "suspended" : "active",
           reason: "auto",
           takeover: detail.decision.label === "takeover",
+          warnings:
+            suspended && detail.decision.label !== "takeover" && risky()
+              ? [
+                  {
+                    signal: "young_domain",
+                    detail: "invoice-portal.net was registered 4 days ago",
+                  },
+                ]
+              : [],
           decision_id: decisionId,
           updated_at: hours[11],
         },
@@ -858,6 +876,17 @@ createServer(async (req, res) => {
         reason: "auto",
         decision_id: decisionId,
         updated_at: hours[11],
+        // Same as the profile's key_status: the real API builds both alike.
+        takeover: detail.decision.label === "takeover",
+        warnings:
+          suspended && detail.decision.label !== "takeover" && risky()
+            ? [
+                {
+                  signal: "young_domain",
+                  detail: "invoice-portal.net was registered 4 days ago",
+                },
+              ]
+            : [],
       },
     });
   return reply(404, { error: "not found" });

@@ -420,6 +420,8 @@ test("suspended key can be restored with an audited reason", async ({
   await line
     .getByLabel("Reason", { exact: true })
     .fill("Key rotated and account secured.");
+  // The key was stopped for a young domain: restoring is typed.
+  await line.locator(".resolve-warning input").fill("acc_acme");
   await line.getByRole("button", { name: "Restore key access" }).click();
   // The key's line stays as confirmation, now muted and active.
   await expect(page.locator(".key-line").first()).toContainText(
@@ -964,7 +966,7 @@ test("legitimate approval refreshes membership while preserving the original hol
 }) => {
   await request.post("http://127.0.0.1:3102/v1/keys/key_prod_1/unblock", {
     headers: { Authorization: "Bearer fixture-analyst-token" },
-    data: { actor: "fixture", reason: "Key secured" },
+    data: { actor: "fixture", reason: "Key secured", confirm: "acc_acme" },
   });
   await signIn(page);
   const row = page.getByRole("row").filter({
@@ -1206,6 +1208,8 @@ test("the drawer's review message names the restore, and a restore confirms in p
   await keyLine.getByText("Restore access", { exact: true }).click();
   await keyLine.getByLabel("Your name").fill("Pooja");
   await keyLine.getByLabel("Reason", { exact: true }).fill("Key rotated.");
+  // The key was stopped for a young domain: restoring is typed.
+  await keyLine.locator(".resolve-warning input").fill("acc_acme");
   await keyLine.getByRole("button", { name: "Restore key access" }).click();
   await expect(
     keyLine.getByText("Key access restored", { exact: false }),
@@ -1400,6 +1404,8 @@ test("an active key can be suspended directly from its key line", async ({
   await keyLine.getByText("Restore access", { exact: true }).click();
   await keyLine.getByLabel("Your name").fill("Pooja");
   await keyLine.getByLabel("Reason", { exact: true }).fill("Rotated.");
+  // The key was stopped for a young domain: restoring is typed.
+  await keyLine.locator(".resolve-warning input").fill("acc_acme");
   await keyLine.getByRole("button", { name: "Restore key access" }).click();
   await expect(keyLine).toContainText("key_prod_1 active");
   await page.reload();
@@ -1542,4 +1548,34 @@ test("resolving spells out what it will and won't do, lists the reviews and name
   await expect(
     card.getByRole("button", { name: "Resolve 1 review as legitimate" }),
   ).toBeVisible();
+});
+
+test("restoring a key stopped for risky signals shows that evidence and is typed", async ({
+  page,
+}) => {
+  await signIn(page, "/accounts/acc_acme");
+  const line = page.locator(".key-line").first();
+  // The reason is visible before opening anything.
+  await expect(line).toContainText(
+    "key_prod_1 suspended · stopped for young domain",
+  );
+  await line.getByText("Restore access", { exact: true }).click();
+  const warning = line.locator(".resolve-warning");
+  await expect(warning).toContainText(
+    "Restoring lets this key send again. It was stopped for:",
+  );
+  await expect(warning).toContainText(
+    "young domain: invoice-portal.net was registered 4 days ago",
+  );
+  await line.getByLabel("Your name").fill("Pooja");
+  await line
+    .getByLabel("Reason", { exact: true })
+    .fill("Owner confirmed the vendor.");
+  const restore = line.getByRole("button", { name: "Restore key access" });
+  await expect(restore).toBeDisabled();
+  await warning.getByRole("textbox").fill("acc_other");
+  await expect(restore).toBeDisabled();
+  await warning.getByRole("textbox").fill("acc_acme");
+  await restore.click();
+  await expect(line).toContainText("key_prod_1 active");
 });

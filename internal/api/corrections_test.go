@@ -175,3 +175,37 @@ func TestMarkLegitimateNeedsConfirmOverRiskyEvidence(t *testing.T) {
 	risky(owned)
 	requireStatus(t, f.post("/v1/holds/"+owned+"/owner-response", map[string]any{"response": "this_was_me"}), http.StatusOK)
 }
+
+// Restoring a key stopped for risky signals shows that evidence and needs the
+// account ID typed, even after its emails were marked legitimate
+// (QA: sim_1101_0747_012); a key stopped for ordinary signals restores in one step.
+func TestRestoreNeedsConfirmOverRiskyEvidence(t *testing.T) {
+	f := newAPIFixture(t)
+	ctx := context.Background()
+	block := dashboardDecision(t, f, dashboardDecisionInput{account: "resent", key: "key_r", action: "block", score: 90, at: testNow, review: "resolved", label: strp("legitimate")})
+	if _, err := f.server.Store.Pool.Exec(ctx, `update decisions set hits = '[{"name":"young_domain","category":"content","points":20,"detail":"invoice-portal.net registered 6 days ago"},{"name":"new_asn","category":"network","points":30,"detail":"AS49453 first seen"}]' where decision_id = $1`, block); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.server.Store.Pool.Exec(ctx, `insert into key_status(api_key_id,account_id,status,reason,decision_id) values('key_r','resent','suspended','auto',$1)`, block); err != nil {
+		t.Fatal(err)
+	}
+	keys := decodeResponse[struct {
+		Keys []store.KeyStatus `json:"key_status"`
+	}](t, f.get("/v1/accounts/resent/profile")).Keys
+	if len(keys) != 1 || len(keys[0].Warnings) != 1 || keys[0].Warnings[0].Signal != "young_domain" {
+		t.Fatalf("key warnings = %+v, want young_domain only", keys)
+	}
+	restore := func(confirm string) *httptest.ResponseRecorder {
+		return f.post("/v1/keys/key_r/unblock", map[string]any{"confirm": confirm, "actor": "r", "reason": "owner says fine"})
+	}
+	requireStatus(t, restore(""), http.StatusConflict)
+	requireStatus(t, restore("other"), http.StatusConflict)
+	requireStatus(t, restore("resent"), http.StatusOK)
+
+	// Ordinary signals only: one step, no typing.
+	plain := dashboardDecision(t, f, dashboardDecisionInput{account: "plain_key", key: "key_p", action: "block", score: 85, at: testNow, review: "resolved", label: strp("legitimate")})
+	if _, err := f.server.Store.Pool.Exec(ctx, `insert into key_status(api_key_id,account_id,status,reason,decision_id) values('key_p','plain_key','suspended','auto',$1)`, plain); err != nil {
+		t.Fatal(err)
+	}
+	requireStatus(t, f.post("/v1/keys/key_p/unblock", map[string]any{"actor": "r", "reason": "rotated"}), http.StatusOK)
+}
