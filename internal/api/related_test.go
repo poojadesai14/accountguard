@@ -38,23 +38,42 @@ func TestDecisionRelatedIndicators(t *testing.T) {
 	for _, r := range f.detail(id).Related {
 		byIndicator[r.Kind+" "+r.Value] = r
 	}
-
-	link := byIndicator["link_domain invoice-portal.net"]
-	if link.Accounts != 2 || link.Confirmed != 1 || len(link.Top) != 2 ||
-		link.Top[0].AccountID != "other_confirmed" || !link.Top[0].Confirmed || link.Top[0].DecisionID != confirmed {
-		t.Errorf("link domain = %+v, want 2 accounts in the window, confirmed takeover first", link)
-	}
-	if r := byIndicator["reply_to_domain invoice-portal.net"]; r.Accounts != 1 || r.Top[0].AccountID != "other_unconfirmed" {
-		t.Errorf("reply-to domain = %+v, want other_unconfirmed only", r)
-	}
-	if r := byIndicator["ip 203.0.113.50"]; r.Accounts != 1 || r.Top[0].AccountID != "other_same_ip" {
-		t.Errorf("ip = %+v, want other_same_ip only", r)
-	}
-	if _, ok := byIndicator["reply_to_domain gmail.com"]; ok {
-		t.Error("freemail Reply-To domain should not be matched across accounts")
-	}
 	if len(byIndicator) != 3 {
 		t.Errorf("indicators = %v, want link domain, reply-to domain and IP", byIndicator)
+	}
+
+	tests := []struct {
+		name          string
+		indicator     string
+		wantPresent   bool
+		wantAccounts  int
+		wantConfirmed int
+		wantFirst     string // first account listed
+		wantDecision  string // its linked decision, when checked
+	}{
+		{name: "a shared link domain lists the window's accounts, confirmed takeover first", indicator: "link_domain invoice-portal.net",
+			wantPresent: true, wantAccounts: 2, wantConfirmed: 1, wantFirst: "other_confirmed", wantDecision: confirmed},
+		{name: "a shared non-freemail Reply-To domain", indicator: "reply_to_domain invoice-portal.net",
+			wantPresent: true, wantAccounts: 1, wantFirst: "other_unconfirmed"},
+		{name: "a shared IP", indicator: "ip 203.0.113.50", wantPresent: true, wantAccounts: 1, wantFirst: "other_same_ip"},
+		{name: "a freemail Reply-To domain is never matched", indicator: "reply_to_domain gmail.com", wantPresent: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r, ok := byIndicator[tt.indicator]
+			if ok != tt.wantPresent {
+				t.Fatalf("present = %v, want %v", ok, tt.wantPresent)
+			}
+			if !ok {
+				return
+			}
+			if r.Accounts != tt.wantAccounts || r.Confirmed != tt.wantConfirmed || len(r.Top) != tt.wantAccounts || r.Top[0].AccountID != tt.wantFirst {
+				t.Errorf("%s = %+v, want %d accounts (%d confirmed), %s first", tt.indicator, r, tt.wantAccounts, tt.wantConfirmed, tt.wantFirst)
+			}
+			if tt.wantDecision != "" && (r.Top[0].DecisionID != tt.wantDecision || !r.Top[0].Confirmed) {
+				t.Errorf("first = %+v, want confirmed, linking decision %s", r.Top[0], tt.wantDecision)
+			}
+		})
 	}
 }
 
@@ -85,38 +104,70 @@ func TestRelatedIgnoresKeySuspendedRejections(t *testing.T) {
 	ev := f.email(testNow, 16509, "github.com")
 	ev.Network.IP = "203.0.113.77"
 	d := decodeResponse[DecisionResponse](t, request(t, f.handler, "POST", "/v1/events", testIngestToken, ev))
+	var github *store.RelatedIndicator
 	for _, r := range f.detail(d.DecisionID).Related {
 		if r.Kind == "link_domain" && r.Value == "github.com" {
-			if r.Accounts != 1 || r.Stopped != 0 || r.Top[0].WorstAction != "allow" || r.Top[0].DecisionID != allowed {
-				t.Errorf("github.com = %+v, want 1 account, 0 stopped, worst action allow linking the allowed decision %s", r, allowed)
-			}
-			return
+			github = &r
 		}
 	}
-	t.Fatal("github.com was not reported as shared with the collateral account")
+	if github == nil {
+		t.Fatal("github.com was not reported as shared with the collateral account")
+	}
+	tests := []struct {
+		name string
+		got  any
+		want any
+	}{
+		{name: "the collateral account is counted once", got: github.Accounts, want: 1},
+		{name: "the rejection doesn't count as stopped", got: github.Stopped, want: 0},
+		{name: "its worst action is the genuine allow", got: github.Top[0].WorstAction, want: "allow"},
+		{name: "it links the allowed decision, not the rejection", got: github.Top[0].DecisionID, want: allowed},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("got %v, want %v", tt.got, tt.want)
+			}
+		})
+	}
 }
 
 // The panel shows five accounts and expands to the rest, so the API lists more
 // than five; before, "+2 more accounts" had nothing behind it.
 func TestRelatedListsBeyondFive(t *testing.T) {
 	f := newAPIFixture(t)
-	for i := 0; i < 7; i++ {
-		ev := f.email(testNow.Add(-time.Duration(i+1)*time.Hour), 14061, "invoice-portal.net")
-		ev.AccountID, ev.APIKeyID, ev.Network.IP = fmt.Sprintf("other_%d", i), fmt.Sprintf("other_%d_key", i), fmt.Sprintf("198.51.100.%d", 10+i)
-		decodeResponse[DecisionResponse](t, request(t, f.handler, "POST", "/v1/events", testIngestToken, ev))
+	tests := []struct {
+		name   string
+		others int
+	}{
+		{name: "one other account", others: 1},
+		{name: "exactly the five the panel shows first", others: 5},
+		{name: "seven: all listed, so the panel can expand to them", others: 7},
 	}
-	ev := f.email(testNow, 14061, "invoice-portal.net")
-	ev.Network.IP = "203.0.113.99"
-	d := decodeResponse[DecisionResponse](t, request(t, f.handler, "POST", "/v1/events", testIngestToken, ev))
-	for _, r := range f.detail(d.DecisionID).Related {
-		if r.Kind == "link_domain" {
-			if r.Accounts != 7 || len(r.Top) != 7 {
-				t.Errorf("link domain lists %d of %d accounts, want all 7", len(r.Top), r.Accounts)
+	for c, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Each case shares its own domain from its own IPs.
+			domain := fmt.Sprintf("shared-%d.example", c)
+			for i := 0; i < tt.others; i++ {
+				ev := f.email(testNow.Add(-time.Duration(i+1)*time.Hour), 14061, domain)
+				ev.AccountID, ev.APIKeyID = fmt.Sprintf("other_%d_%d", c, i), fmt.Sprintf("other_%d_%d_key", c, i)
+				ev.Network.IP = fmt.Sprintf("198.51.%d.%d", 100+c, 10+i)
+				decodeResponse[DecisionResponse](t, request(t, f.handler, "POST", "/v1/events", testIngestToken, ev))
 			}
-			return
-		}
+			ev := f.email(testNow.Add(time.Duration(c)*time.Minute), 14061, domain)
+			ev.Network.IP = fmt.Sprintf("203.0.%d.99", 113+c)
+			d := decodeResponse[DecisionResponse](t, request(t, f.handler, "POST", "/v1/events", testIngestToken, ev))
+			for _, r := range f.detail(d.DecisionID).Related {
+				if r.Kind == "link_domain" && r.Value == domain {
+					if r.Accounts != tt.others || len(r.Top) != tt.others {
+						t.Errorf("lists %d of %d accounts, want all %d", len(r.Top), r.Accounts, tt.others)
+					}
+					return
+				}
+			}
+			t.Fatalf("%s was not reported as shared", domain)
+		})
 	}
-	t.Fatal("invoice-portal.net was not reported as shared")
 }
 
 func TestDecisionIncludesCurrentKeyStatus(t *testing.T) {
@@ -125,13 +176,30 @@ func TestDecisionIncludesCurrentKeyStatus(t *testing.T) {
 	type withKey struct {
 		Key *store.KeyStatus `json:"key"`
 	}
-	if got := decodeResponse[withKey](t, f.get("/v1/decisions/"+d.DecisionID)); got.Key != nil {
-		t.Errorf("key = %+v, want null for a key that was never suspended", got.Key)
+	// Steps in order: the key's status changes between them.
+	tests := []struct {
+		name       string
+		setup      string // SQL run first, if any
+		wantStatus string // empty: no key status at all
+	}{
+		{name: "a key never suspended has no status", wantStatus: ""},
+		{name: "a suspended key is included", setup: `insert into key_status(api_key_id,account_id,status,reason) values('key','account','suspended','analyst')`, wantStatus: "suspended"},
+		{name: "a restored key is included as active", setup: `update key_status set status = 'active' where api_key_id = 'key'`, wantStatus: "active"},
 	}
-	if _, err := f.server.Store.Pool.Exec(context.Background(), `insert into key_status(api_key_id,account_id,status,reason) values('key','account','suspended','analyst')`); err != nil {
-		t.Fatal(err)
-	}
-	if got := decodeResponse[withKey](t, f.get("/v1/decisions/"+d.DecisionID)); got.Key == nil || got.Key.Status != "suspended" {
-		t.Errorf("key = %+v, want the suspended key", got.Key)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.setup != "" {
+				if _, err := f.server.Store.Pool.Exec(context.Background(), tt.setup); err != nil {
+					t.Fatal(err)
+				}
+			}
+			got := decodeResponse[withKey](t, f.get("/v1/decisions/"+d.DecisionID)).Key
+			switch {
+			case tt.wantStatus == "" && got != nil:
+				t.Errorf("key = %+v, want null", got)
+			case tt.wantStatus != "" && (got == nil || got.Status != tt.wantStatus):
+				t.Errorf("key = %+v, want status %s", got, tt.wantStatus)
+			}
+		})
 	}
 }
