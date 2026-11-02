@@ -273,7 +273,8 @@ Analyst UI (Next.js) ──server-side, analyst token──▶ analyst API ─�
 - **One incident, not a review per rejected send.** Once a key is suspended, every later send on it is
   rejected (`key_suspended`) without opening a review: the suspension and the decision that caused it are
   the case. The queue ranks those rejections below the decision that caused them.
-- **Expired holds are dropped, not sent** (`hold.expire_action: drop`). A held email that nobody vouched for
+- **Expired holds are dropped, not sent** (`hold.expire_action: drop`, an instruction to the send pipeline;
+  this service only marks the hold expired and keeps the review open). A held email that nobody vouched for
   in 24 h is more likely phishing than urgent, and a phishing email delivered a day late still does harm.
   The cost is a legitimate email lost when the owner doesn't answer, so the owner is told it failed, and
   the setting can be `release` instead. A better policy: drop only while the account has another open

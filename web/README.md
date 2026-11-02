@@ -114,7 +114,7 @@ npm run test:e2e
 ```
 
 Browser tests run a local API fixture on port 3102 and the production UI on port 3101. They exercise login/logout, session cookies, token privacy, charts, date
-filters, account search, required reasons, reviews and audit history, key
+filters, required reasons, account resolution and audit history, key
 restoration, owner responses, empty/error states, and mobile layout. They do not
 use the hosted API or Supabase. CI runs these checks alongside the Go suite.
 
@@ -224,21 +224,19 @@ current-state counts, independent of account filters and telemetry time ranges.
 `limit`; the end time is exclusive. Records are ordered by descending ID and
 include an optional next-page cursor. Both endpoints require the analyst token.
 
-The UI refreshes every 30 seconds while visible, pauses for unsaved review
-input and pending actions, prevents overlapping requests, and retains the last
-snapshot with a stale-data message on failure. The API connection badge reflects
-successful real reads. The mode badge uses the API configuration: Monitoring
-only means shadow mode with automatic enforcement disabled; Enforcement active
-means automatic risk decisions are enforced. Each mode has an explanatory tooltip.
+The queue refreshes every 30 seconds while the tab is visible, never runs two
+refreshes at once, and keeps the last snapshot with an error message when a
+refresh fails. The mode chip comes from `GET /v1/config`: "Shadow · not
+enforced" or "Enforcing".
 
-Review opens Confirm takeover and Mark legitimate using the audited server actions.
-No outcome is preselected: Mark legitimate teaches the baseline, so it must be
-chosen deliberately. Backend 400/409 explanations (for example "hold is not
-pending") are shown as-is.
-Confirm takeover suspends the affected key and drops its pending holds. Both
-require an actor and reason. They preserve historical scores; marking a single
-event legitimate never silently restores a suspended key. No account email,
-HTTP endpoint, location, or risk scores are invented.
+Analysts decide per account, on the account page: Resolve account closes every
+open review as Takeover or Legitimate in one audited action. No outcome is
+preselected, because Legitimate teaches the baseline. Takeover keeps the keys
+suspended and drops held emails; Legitimate releases held emails and restores a
+key only when its box is ticked. Both require an actor and a reason, and a
+reason survives a failed submit. Backend 400/409 explanations (for example "hold
+is not pending") are shown as-is; on a 409 the page reloads the current reviews.
+Historical scores are never rewritten.
 
 Release the backend read endpoints before the frontend. No schema migration
 or change to scoring or enforcement mode is required.
