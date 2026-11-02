@@ -91,32 +91,36 @@ func (l *StringList) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+func reqField(ok bool, field string) error {
+	if ok {
+		return nil
+	}
+	return fmt.Errorf("%s is required", field)
+}
+
+func oneOfField(v string, allowed []string, field string) error {
+	if slices.Contains(allowed, v) {
+		return nil
+	}
+	return fmt.Errorf("%s must be one of %v", field, allowed)
+}
+
 // Validate checks required fields. The error message is safe to return to the caller.
 func (e *Event) Validate() error {
-	var errs []error
-	req := func(ok bool, field string) {
-		if !ok {
-			errs = append(errs, fmt.Errorf("%s is required", field))
-		}
+	errs := []error{
+		reqField(e.EventID != "", "event_id"),
+		oneOfField(e.Type, types, "type"),
+		reqField(!e.OccurredAt.IsZero(), "occurred_at"),
+		reqField(e.AccountID != "", "account_id"),
+		oneOfField(e.Source, sources, "source"),
 	}
-	oneOf := func(v string, allowed []string, field string) {
-		if !slices.Contains(allowed, v) {
-			errs = append(errs, fmt.Errorf("%s must be one of %v", field, allowed))
-		}
-	}
-
-	req(e.EventID != "", "event_id")
-	oneOf(e.Type, types, "type")
-	req(!e.OccurredAt.IsZero(), "occurred_at")
-	req(e.AccountID != "", "account_id")
-	oneOf(e.Source, sources, "source")
 	if e.Source == "api" || e.Source == "smtp" {
-		req(e.APIKeyID != "", "api_key_id")
+		errs = append(errs, reqField(e.APIKeyID != "", "api_key_id"))
 	}
 	if net.ParseIP(e.Network.IP) == nil {
 		errs = append(errs, errors.New("network.ip must be a valid IP address"))
 	}
-	req(e.Network.ASN > 0, "network.asn")
+	errs = append(errs, reqField(e.Network.ASN > 0, "network.asn"))
 
 	switch e.Type {
 	case TypeEmailSend:
@@ -124,20 +128,22 @@ func (e *Event) Validate() error {
 			errs = append(errs, errors.New("email is required for email.send"))
 			break
 		}
-		req(e.Email.From != "", "email.from")
-		req(len(e.Email.To)+len(e.Email.CC)+len(e.Email.BCC) > 0, "at least one recipient")
+		errs = append(errs,
+			reqField(e.Email.From != "", "email.from"),
+			reqField(len(e.Email.To)+len(e.Email.CC)+len(e.Email.BCC) > 0, "at least one recipient"),
+		)
 	case TypeAccountChange:
 		if e.Change == nil {
 			errs = append(errs, errors.New("change is required for account.change"))
 			break
 		}
-		oneOf(e.Change.Kind, changeKinds, "change.kind")
+		errs = append(errs, oneOfField(e.Change.Kind, changeKinds, "change.kind"))
 	case TypeAPIRead:
 		if e.Read == nil {
 			errs = append(errs, errors.New("read is required for api.read"))
 			break
 		}
-		oneOf(e.Read.Resource, readResources, "read.resource")
+		errs = append(errs, oneOfField(e.Read.Resource, readResources, "read.resource"))
 		if e.Read.Status < 100 || e.Read.Status > 599 {
 			errs = append(errs, errors.New("read.status must be an HTTP status code"))
 		}
