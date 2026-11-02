@@ -99,9 +99,10 @@ func (a *account) send(at time.Time, net event.Network, recipients int, links []
 	a.add(&event.Event{Type: event.TypeEmailSend, OccurredAt: at, Network: net, Email: e}, malicious)
 }
 
-func (a *account) change(at time.Time, net event.Network, kind string, malicious bool) {
+// change records an account change; target is what it changed, such as the new key.
+func (a *account) change(at time.Time, net event.Network, kind, target string, malicious bool) {
 	a.add(&event.Event{Type: event.TypeAccountChange, OccurredAt: at, Network: net,
-		Change: &event.Change{Kind: kind, TargetID: "x"}}, malicious)
+		Change: &event.Change{Kind: kind, TargetID: target}}, malicious)
 }
 
 func (a *account) normalSend(at time.Time) {
@@ -172,14 +173,14 @@ var scenarios = []scenario{
 		repeat(4, t0, time.Hour, func(at time.Time) { a.send(at, a.nets[0], a.base, []string{"typeform.com"}, "", false) })
 	}},
 	{"new_api_key", false, false, func(a *account, t0 time.Time) {
-		a.change(t0, a.nets[0], "api_key.created", false)
+		a.change(t0, a.nets[0], "api_key.created", a.key+"_new", false)
 		repeat(4, t0.Add(10*time.Minute), time.Hour, func(at time.Time) {
 			a.send(at, a.nets[0], a.base, a.links[:1], "", false)
 			a.events[len(a.events)-1].ev.APIKeyID = a.key + "_new"
 		})
 	}},
 	{"new_member_then_campaign", false, false, func(a *account, t0 time.Time) {
-		a.change(t0, a.nets[0], "team_member.added", false)
+		a.change(t0, a.nets[0], "team_member.added", "member_"+a.id, false)
 		repeat(8, t0.Add(30*time.Minute), 5*time.Minute, func(at time.Time) { a.send(at, a.nets[0], a.base*2, a.links[:1], "", false) })
 	}},
 	{"owner_uses_gmail_reply_to", false, false, func(a *account, t0 time.Time) {
@@ -214,7 +215,8 @@ var scenarios = []scenario{
 		net, d := a.attackerNet(), a.young()
 		a.add(&event.Event{Type: event.TypeAPIRead, OccurredAt: t0, Network: net,
 			Read: &event.Read{Resource: "contacts", Status: 200}}, true)
-		a.change(t0.Add(2*time.Minute), net, "api_key.created", true)
+		// Persistence: a backup key the attacker never sends with.
+		a.change(t0.Add(2*time.Minute), net, "api_key.created", a.key+"_backup", true)
 		repeat(10, t0.Add(10*time.Minute), 3*time.Minute, func(at time.Time) { a.send(at, net, 10, []string{d}, "", true) })
 	}},
 	{"takeover_brand_lookalike", true, true, func(a *account, t0 time.Time) {

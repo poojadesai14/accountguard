@@ -285,6 +285,12 @@ func KeyAccount(ctx context.Context, db DBTX, apiKeyID string) (accountID string
 		select account_id, status, 0 as source, null::timestamptz as at from key_status where api_key_id = $1
 		union all
 		(select account_id, null, 1, occurred_at from events where api_key_id = $1 order by occurred_at desc limit 1)
+		union all
+		-- A key that was created but never used: an attacker's backup can be suspended
+		-- before it sends.
+		(select account_id, null, 2, occurred_at from events
+		  where type = 'account.change' and change_kind = 'api_key.created' and change_target_id = $1
+		  order by occurred_at desc limit 1)
 		) k order by source limit 1`, apiKeyID).Scan(&accountID, &status)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return "", false, false, nil
@@ -357,6 +363,28 @@ func LegitimateDecisions(ctx context.Context, db DBTX, accountID string) ([]Revi
 		return nil, err
 	}
 	return pgx.CollectRows(rows, pgx.RowToStructByPos[ReviewedDecision])
+}
+
+// CreatedKey is a key an account.change event says was created, still not deleted.
+// A key the attacker creates for persistence may never send before it's found, so
+// the analyst sees it here rather than only once it sends.
+type CreatedKey struct {
+	APIKeyID  string    `json:"api_key_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func CreatedKeys(ctx context.Context, db DBTX, accountID string) ([]CreatedKey, error) {
+	rows, err := db.Query(ctx, `select change_target_id, max(occurred_at) from events e
+		where account_id = $1 and type = 'account.change' and change_kind = 'api_key.created'
+		  and change_target_id is not null
+		  and not exists (select 1 from events d where d.account_id = $1 and d.type = 'account.change'
+		    and d.change_kind = 'api_key.deleted' and d.change_target_id = e.change_target_id
+		    and d.occurred_at >= e.occurred_at)
+		group by change_target_id order by 2 desc, 1 limit 50`, accountID)
+	if err != nil {
+		return nil, err
+	}
+	return pgx.CollectRows(rows, pgx.RowToStructByPos[CreatedKey])
 }
 
 // OpenCounts is what an account-level resolution would close. DecisionIDs are the

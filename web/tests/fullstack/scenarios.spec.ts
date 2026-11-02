@@ -152,6 +152,23 @@ test("a takeover is resolved in one step: reviews closed, holds dropped, key kep
   await expect(row.locator(".dashboard-decision")).toContainText(
     "Confirmed takeover",
   );
+  // The attacker's backup key was never used, so resolving left it active; it is
+  // listed anyway, flagged as unvouched, and suspended by hand.
+  await page.goto(`/accounts/${account}`);
+  const backup = page.locator(".key-line", { hasText: `${account}_backup` });
+  await expect(backup).toContainText(`${account}_backup active`);
+  await expect(backup.locator(".key-new")).toContainText(
+    "no allowed sends yet",
+  );
+  await backup.getByText("Suspend key", { exact: true }).click();
+  await identity(backup, "Backup key created during the takeover.");
+  await backup.getByRole("button", { name: "Suspend key" }).click();
+  await expect(backup.getByRole("status")).toContainText("Key suspended");
+  expect(
+    (await profile(request, account)).key_status?.find(
+      (k) => k.api_key_id === `${account}_backup`,
+    ),
+  ).toMatchObject({ status: "suspended", reason: "analyst" });
   const actions = await api<{ items: { action: string; actor: string }[] }>(
     request,
     "/v1/analyst-actions?limit=200",

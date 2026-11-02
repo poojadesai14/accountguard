@@ -115,6 +115,8 @@ export type ProfileResponse = {
   key_status: KeyStatus[] | null;
   open?: OpenCounts;
   legitimate_decisions?: ReviewedDecision[];
+  /** Keys created by account changes and not deleted, newest first. */
+  created_keys?: { api_key_id: string; created_at: string }[] | null;
 };
 export type AccountResolution = {
   outcome: "legitimate" | "takeover";

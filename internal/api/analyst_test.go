@@ -903,3 +903,46 @@ func TestConfigEndpoint(t *testing.T) {
 		})
 	}
 }
+
+// A created key is listed even before it sends, so an attacker's backup key can be
+// found and suspended. Steps run in order on one account.
+func TestProfileListsCreatedKeys(t *testing.T) {
+	f := newAPIFixture(t)
+	f.history()
+	change := func(at time.Duration, kind, key string) {
+		t.Helper()
+		ev := f.email(testNow.Add(at), 16509, "")
+		ev.Type, ev.Email, ev.Change = event.TypeAccountChange, nil, &event.Change{Kind: kind, TargetID: key}
+		decodeResponse[DecisionResponse](t, request(t, f.handler, "POST", "/v1/events", testIngestToken, ev))
+	}
+	type created struct {
+		APIKeyID  string    `json:"api_key_id"`
+		CreatedAt time.Time `json:"created_at"`
+	}
+	tests := []struct {
+		name string
+		do   func()
+		want []string // newest first
+	}{
+		{name: "no key created: none listed", do: func() {}, want: nil},
+		{name: "a created key is listed though it never sent", do: func() { change(time.Minute, "api_key.created", "backup") }, want: []string{"backup"}},
+		{name: "newest first", do: func() { change(2*time.Minute, "api_key.created", "second") }, want: []string{"second", "backup"}},
+		{name: "a deleted key drops off", do: func() { change(3*time.Minute, "api_key.deleted", "backup") }, want: []string{"second"}},
+		{name: "a key created again after deletion is back", do: func() { change(4*time.Minute, "api_key.created", "backup") }, want: []string{"backup", "second"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tt.do()
+			got := decodeResponse[struct {
+				CreatedKeys []created `json:"created_keys"`
+			}](t, f.get("/v1/accounts/account/profile")).CreatedKeys
+			var ids []string
+			for _, k := range got {
+				ids = append(ids, k.APIKeyID)
+			}
+			if !slices.Equal(ids, tt.want) {
+				t.Errorf("created_keys = %v, want %v", ids, tt.want)
+			}
+		})
+	}
+}

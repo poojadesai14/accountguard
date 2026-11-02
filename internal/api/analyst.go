@@ -179,7 +179,13 @@ func (s *Server) getProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	legitimate, err := store.LegitimateDecisions(ctx, s.Store.Pool, id)
-	respond(w, map[string]any{"profile": p, "key_status": keys, "open": open, "legitimate_decisions": legitimate}, err)
+	if err != nil {
+		respond(w, nil, err)
+		return
+	}
+	created, err := store.CreatedKeys(ctx, s.Store.Pool, id)
+	respond(w, map[string]any{"profile": p, "key_status": keys, "open": open, "legitimate_decisions": legitimate,
+		"created_keys": created}, err)
 }
 
 func (s *Server) getDecision(w http.ResponseWriter, r *http.Request) {

@@ -48,11 +48,15 @@ export default async function AccountPage({
     );
   const p = profile.data!.profile;
   const statuses = profile.data!.key_status ?? [];
-  // Every key the account has sent with: its status row if it has one, otherwise
-  // active (never suspended). Suspending is available on each.
+  const created = new Map(
+    (profile.data!.created_keys ?? []).map((k) => [k.api_key_id, k.created_at]),
+  );
+  // Every key the account has: its status row if it has one, otherwise active
+  // (never suspended), including keys created but not yet trusted, which an
+  // attacker may have made to keep access. Suspending is available on each.
   const keys: KeyStatus[] = [
     ...statuses,
-    ...Object.keys(p.key_asns ?? {})
+    ...[...new Set([...Object.keys(p.key_asns ?? {}), ...created.keys()])]
       .filter((k) => !statuses.some((s) => s.api_key_id === k))
       .sort()
       .map((k) => ({
@@ -76,6 +80,9 @@ export default async function AccountPage({
           // A Restore link to this page remounts its key line, opened.
           key={`${key.api_key_id}${search.restore === key.api_key_id ? ":restore" : ""}`}
           keyStatus={key}
+          createdAt={created.get(key.api_key_id)}
+          // No allowed send yet: nothing has vouched for this key.
+          untrusted={!p.key_asns?.[key.api_key_id]}
           initiallyOpen={search.restore === key.api_key_id}
         />
       ))}

@@ -33,16 +33,15 @@ Open `http://localhost:3000` and sign in with `UI_PASSWORD`.
 ## Views
 
 Three screens, one job each: the queue says what needs attention now, the
-account page shows what changed and when, the decision page explains a call and
-records the next one. Every page shows the engine mode once, in the top bar
+decision page explains why one email was stopped, and the account page is the
+one place to decide. Every page shows the engine mode once, in the top bar
 (`GET /v1/config`), and the footer keeps the "not an official Resend product"
 note.
 
 - `/`: the review queue. One slim row of counts opens each view (to review, on
   hold, keys suspended, healthy), then the decision filter, search (Enter) and
-  the sort. Rows open a light drawer: the call, up to three signals, the hold
-  or key state, the audited review form, and links to the full decision and
-  the account. Search, sorting, and pagination use the URL. Telemetry is a
+  the sort. A row opens the account page. Search, sorting, and pagination use
+  the URL, so Back returns to the same filtered queue. Telemetry is a
   sidebar item (`/?tab=telemetry`).
 - `/accounts` redirects to the queue search, keeping its query.
 - `/accounts/[id]`: charts first, on one shared time axis: hourly recipients with
@@ -50,21 +49,32 @@ note.
   content and account-change markers, and flag/hold/block decisions (allowed
   events are counted, not drawn). A dashed line marks the first hold or block on
   every lane, which is where a takeover lights several signals up at once.
-  A key that was ever suspended is one line under the title (restore inline), and
-  **Resolve account** closes the whole incident with one audited outcome
-  (legitimate or takeover); restoring the keys those reviews suspended is a
-  separate, unticked box. It shows only while a review is open.
+  Under the title, one line per key: every key that has sent or been suspended,
+  plus keys an account change created that haven't sent yet ("Created … · no
+  allowed sends yet", in orange: an attacker may create one to keep access). A
+  suspended key restores inline, with the account ID typed when it was stopped
+  for risky signals or after a confirmed takeover; an active key can be
+  suspended. **Resolve account** closes the whole incident with one audited
+  outcome (legitimate or takeover). It leads with the deadline ("Decide by …:
+  the held email is dropped automatically then"), lists the reviews it closes
+  and what it will and won't change, and names its button after it ("Resolve 3
+  reviews as takeover"). Restoring the keys those reviews suspended is a
+  separate, unticked box; otherwise the success message links to the key left
+  to restore. It shows only while a review is open. **Correct to takeover**
+  undoes a wrong legitimate call. Required fields are marked, and the analyst's
+  name is remembered in the browser.
   Beside the charts: the baseline. Below: the event stream (opens on the latest
   flag, hold or block) beside one card for the selected event: its decision,
   signal evidence and a link to the full review, with copyable raw metadata
   collapsed underneath.
 - `/decisions/[id]`: the account, the call and one status line in the header;
   then why (the score on the engine's 0–100 scale, a plain-language reason and
-  each signal's evidence), the review form with its audit history, the same
+  each signal's evidence), the incident this email belongs to (open reviews,
+  held emails, suspended keys, the deadline) with a link to decide it on the
+  account page, the audit history, the same
   infrastructure on other accounts (link domains, non-freemail Reply-To domains
   and source IP within 7 days, with how many of those accounts were held,
-  blocked or confirmed as takeovers), and the event metadata, collapsed. On
-  desktop the form stays beside the evidence; on mobile it follows the signals.
+  blocked or confirmed as takeovers), and the event metadata, collapsed.
 - `/hold/[id]`: owner response demo, behind the same analyst password gate. It
   shows the link and Reply-To domains, which are what an owner can recognize.
 
@@ -122,18 +132,19 @@ npm run test:fullstack:ui      # Playwright UI mode: run one scenario, step thro
 (`scripts/fullstack-api.sh` recreates it each run). `world.ts` builds the data
 through the real ingest API, so every decision is scored by the engine: six
 accounts with 12 days of history, four of them then attacked with a young link
-domain until a recipient spike blocks the key. The scenarios cover the analyst's
+domain until a recipient spike blocks the key; on one, the attacker also creates
+a backup key. The scenarios cover the analyst's
 main journeys end to end, checking both the page and the API:
 
-| Scenario                           | Checks                                                                                                                      |
-| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Engine calls reach the queue       | attacks queued with suspended keys; a lone flag and a quiet account are not                                                 |
-| A hold explains itself             | signals and evidence on the decision page; the shared domain links the other attacked accounts                              |
-| Takeover in one step               | Resolve account → Takeover: no reviews or holds left, key suspended by the analyst, row reads Confirmed takeover, audit row |
-| False positive over risky evidence | typed account ID required, restore box, key active, account in Healthy as Marked legitimate                                 |
-| Wrong call corrected               | legitimate + restore teaches the baseline; Correct to takeover relabels, unlearns the network and domain, re-suspends       |
-| One decision at a time             | Record review says what's left; "Resolve the rest" opens Resolve account; the account reaches Healthy                       |
-| Suspend and restore by hand        | an active key is suspended (account queued) and restored (account Healthy)                                                  |
+| Scenario                           | Checks                                                                                                                                                   |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Engine calls reach the queue       | attacks queued with suspended keys; a lone flag and a quiet account are not                                                                              |
+| A hold explains itself             | signals and evidence on the decision page; the shared domain links the other attacked accounts                                                           |
+| Takeover in one step               | Resolve account → Takeover: no reviews or holds left, key suspended, row reads Confirmed takeover; the unused backup key is listed and suspended by hand |
+| False positive over risky evidence | typed account ID required, restore box, key active, account in Healthy as Marked legitimate                                                              |
+| Wrong call corrected               | legitimate + restore teaches the baseline; Correct to takeover relabels, unlearns the network and domain, re-suspends                                    |
+| From a decision                    | the deadline shows; "Decide on the account page" → resolve; the Restore link opens the key; the account reaches Healthy                                  |
+| Suspend and restore by hand        | an active key is suspended (account queued) and restored (account Healthy)                                                                               |
 
 Young domains are pinned in `config.yaml`, so the attack scores as intended until
 those dates age past `young_days`.
@@ -189,7 +200,7 @@ echoes `view`; totals and pagination count that view's accounts, events, or keys
 Stable key and decision IDs break ties within an account. Global metrics remain
 independent of the selected view and filters.
 
-Clicking a metric clears search, severity, pagination, and the inspection while
+Clicking a metric clears search, severity, and pagination while
 retaining the chosen sort. The selected card is keyboard accessible and marked
 as pressed; view selection persists in the URL through reloads and browser
 history. Clear view returns to the tab's full account list. Zero-count cards

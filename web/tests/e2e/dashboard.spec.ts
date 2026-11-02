@@ -1286,6 +1286,38 @@ test("an active key can be suspended directly from its key line", async ({
   await expect(keyLine).toContainText("key_prod_1 suspended");
 });
 
+test("a key created by an account change shows before it ever sends, and can be suspended", async ({
+  page,
+  request,
+}) => {
+  await signIn(page, "/accounts/acc_acme");
+  const backup = page.locator(".key-line", { hasText: "key_backup_2" });
+  await expect(backup).toContainText("key_backup_2 active");
+  await expect(backup.locator(".key-new")).toContainText(
+    "no allowed sends yet",
+  );
+  // A key that has sent shows no such warning.
+  await expect(
+    page.locator(".key-line", { hasText: "key_prod_1" }).locator(".key-new"),
+  ).toHaveCount(0);
+  await backup.getByText("Suspend key", { exact: true }).click();
+  await backup.getByLabel("Your name").fill("Pooja");
+  await backup
+    .getByLabel("Reason", { exact: true })
+    .fill("Created during the takeover.");
+  await backup.getByRole("button", { name: "Suspend key" }).click();
+  await expect(backup.getByRole("status")).toContainText("Key suspended");
+  await expect(backup).toContainText("key_backup_2 suspended");
+  const calls = await (
+    await request.get("http://127.0.0.1:3102/__requests")
+  ).json();
+  expect(
+    calls.some(
+      (call: { path: string }) => call.path === "/v1/keys/key_backup_2/suspend",
+    ),
+  ).toBe(true);
+});
+
 test("after a confirmed takeover, restoring the key is recovery: typed, with a warning", async ({
   page,
 }) => {
