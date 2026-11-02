@@ -287,7 +287,25 @@ export async function resolveAccount(
     r.keys_restored.length && `restored ${r.keys_restored.join(", ")}`,
     r.keys_suspended.length && `suspended ${r.keys_suspended.join(", ")}`,
   ].filter(Boolean);
+  const done = `Resolved as ${r.outcome}: ${parts.join(", ") || "nothing changed"}.`;
+  if (r.outcome === "takeover") return { success: done };
+  // Legitimate: say what still keeps the account out of Healthy, and link to it.
+  const page = `/accounts/${encodeURIComponent(account)}`;
+  const profile = await analystApi<ProfileResponse>(
+    `/v1/accounts/${encodeURIComponent(account)}/profile`,
+  );
+  const suspended = (profile.data?.key_status ?? []).filter(
+    (k) => k.status === "suspended",
+  );
+  if (!suspended.length)
+    return {
+      success: `${done} Nothing else is open on this account, so it moves to Healthy.`,
+    };
   return {
-    success: `Resolved as ${r.outcome}: ${parts.join(", ") || "nothing changed"}.`,
+    success: `${done} ${suspended.map((k) => k.api_key_id).join(", ")} ${suspended.length === 1 ? "is" : "are"} still suspended: restore access to finish.`,
+    next: suspended.map((k) => ({
+      label: `Restore ${k.api_key_id}`,
+      href: `${page}?restore=${encodeURIComponent(k.api_key_id)}`,
+    })),
   };
 }

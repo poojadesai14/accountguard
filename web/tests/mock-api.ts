@@ -786,6 +786,10 @@ createServer(async (req, res) => {
                   action: "hold",
                   score: 75,
                   hold_status: detail.decision.hold_status,
+                  hold_expires_at:
+                    detail.decision.hold_status === "pending"
+                      ? detail.decision.hold_expires_at
+                      : null,
                   api_key_id: "key_prod_1",
                   primary_driver: "new_asn",
                   detail:
@@ -802,6 +806,10 @@ createServer(async (req, res) => {
             : [],
         review_key_ids:
           detail.decision.review_status === "open" ? ["key_prod_1"] : [],
+        holds_expire_at:
+          detail.decision.hold_status === "pending"
+            ? detail.decision.hold_expires_at
+            : null,
         warnings:
           risky() && detail.decision.review_status === "open"
             ? [

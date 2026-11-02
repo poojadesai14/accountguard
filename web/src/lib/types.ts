@@ -80,6 +80,8 @@ export type OpenCounts = {
   suspended_key_ids?: string[];
   restorable_key_ids?: string[];
   review_key_ids?: string[];
+  /** The deadline: when the first pending hold is dropped automatically. */
+  holds_expire_at?: string | null;
 };
 /** One decision an account resolution would close. */
 export type OpenReview = {
@@ -88,6 +90,8 @@ export type OpenReview = {
   action: Action;
   score: number;
   hold_status: string | null;
+  /** When a pending hold is dropped automatically if nobody decides. */
+  hold_expires_at?: string | null;
   api_key_id: string | null;
   primary_driver: string;
   detail: string;

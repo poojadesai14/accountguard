@@ -94,6 +94,12 @@ func TestResolveAccount(t *testing.T) {
 					open.List[1].DecisionID != block || open.List[1].Score != 90 {
 					t.Errorf("list = %+v, want the hold (pending, new_asn) then the block 90", open.List)
 				}
+				// The deadline: the held email is dropped 24 h after it was held.
+				deadline := testNow.Add(24 * time.Hour)
+				if open.HoldsExpireAt == nil || !open.HoldsExpireAt.Equal(deadline) ||
+					open.List[0].HoldExpiresAt == nil || !open.List[0].HoldExpiresAt.Equal(deadline) || open.List[1].HoldExpiresAt != nil {
+					t.Errorf("deadline = %v (list %v, %v), want %v on the hold only", open.HoldsExpireAt, open.List[0].HoldExpiresAt, open.List[1].HoldExpiresAt, deadline)
+				}
 			},
 		},
 		{
