@@ -3,7 +3,7 @@ import { defineConfig, devices } from "@playwright/test";
 // Full-stack scenarios: a real browser, the production UI build, the real Go API
 // and a throwaway local Postgres database (scripts/fullstack-api.sh). Data comes
 // from the ingest API in tests/fullstack/world.ts, scored by the real engine.
-// Run: npm run build && npm run test:fullstack
+// Run: npm run build && npm run test:fullstack (:watch to see it, :ui to step through)
 export default defineConfig({
   testDir: "./tests/fullstack",
   globalSetup: "./tests/fullstack/world.ts",
@@ -11,7 +11,13 @@ export default defineConfig({
   workers: 1,
   timeout: 60_000,
   reporter: "list",
-  use: { baseURL: "http://localhost:3201", trace: "retain-on-failure" },
+  use: {
+    baseURL: "http://localhost:3201",
+    trace: "retain-on-failure",
+    // SLOWMO=600 (npm run test:fullstack:watch) pauses between actions so a
+    // person can follow the scenarios in the headed browser.
+    launchOptions: { slowMo: Number(process.env.SLOWMO ?? 0) },
+  },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: [
     {
