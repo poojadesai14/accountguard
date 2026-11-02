@@ -42,15 +42,17 @@ content:
     freemail_reply_to: 15
   freemail_domains: [gmail.com, googlemail.com, outlook.com, hotmail.com, live.com,
                      yahoo.com, icloud.com, proton.me, protonmail.com, aol.com, gmx.com, mail.com]
-  domain_ages:              # stands in for RDAP; unlisted = not young
-    invoice-portal.net: "2026-10-26"
-    acrne.com: "2026-10-20"
-    betta.io: "2026-10-22"
-    account-verify-center.com: "2026-10-18"
-    secure-payments-update.net: "2026-10-22"
-    docs-share-portal.com: "2026-10-25"
-    billing-notice-center.com: "2026-10-27"
-    wallet-confirm.co: "2026-10-24"
+  # Stands in for RDAP; unlisted = not young. A date ("2026-10-26") or days before
+  # the service started ("4d"), so the seed and simulator keep working on any date.
+  domain_ages:
+    invoice-portal.net: 4d
+    acrne.com: 10d
+    betta.io: 8d
+    account-verify-center.com: 12d
+    secure-payments-update.net: 8d
+    docs-share-portal.com: 5d
+    billing-notice-center.com: 3d
+    wallet-confirm.co: 6d
 
 account:
   window: 24h
@@ -63,4 +65,6 @@ account:
 hold:
   ttl: 24h
   tick: 1m
+  # What the send pipeline does with an expired hold. The service marks it
+  # expired and keeps the review open; it never sends mail itself.
   expire_action: drop

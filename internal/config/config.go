@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"os"
 	"slices"
+	"strconv"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -92,7 +94,13 @@ var knownSignals = map[string][]string{
 	"account":  {"recent_account_change", "first_read"},
 }
 
-func Load(path string) (*Config, error) {
+// Load reads, parses and validates the config at path. Relative domain ages
+// ("7d") are resolved against the current date.
+func Load(path string) (*Config, error) { return LoadAt(path, time.Now()) }
+
+// LoadAt is Load with relative domain ages resolved against now, so tests with
+// fixed event times get stable registration dates.
+func LoadAt(path string, now time.Time) (*Config, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -103,7 +111,7 @@ func Load(path string) (*Config, error) {
 	if err := dec.Decode(&c); err != nil {
 		return nil, fmt.Errorf("parse %s: %w", path, err)
 	}
-	if err := c.parse(); err != nil {
+	if err := c.parse(now); err != nil {
 		return nil, err
 	}
 	if err := c.Validate(); err != nil {
@@ -112,10 +120,11 @@ func Load(path string) (*Config, error) {
 	return &c, nil
 }
 
-func (c *Config) parse() error {
+func (c *Config) parse(now time.Time) error {
+	today := now.UTC().Truncate(24 * time.Hour)
 	c.Content.DomainAges = make(map[string]time.Time, len(c.Content.DomainAgesRaw))
 	for d, s := range c.Content.DomainAgesRaw {
-		t, err := time.Parse("2006-01-02", s)
+		t, err := parseDomainAge(s, today)
 		if err != nil {
 			return fmt.Errorf("content.domain_ages[%s]: %w", d, err)
 		}
@@ -126,6 +135,19 @@ func (c *Config) parse() error {
 		c.Content.Freemail[d] = true
 	}
 	return nil
+}
+
+// parseDomainAge accepts a registration date ("2026-10-26") or an age in days
+// before today ("4d").
+func parseDomainAge(s string, today time.Time) (time.Time, error) {
+	if days, ok := strings.CutSuffix(s, "d"); ok {
+		n, err := strconv.Atoi(days)
+		if err != nil || n < 0 {
+			return time.Time{}, fmt.Errorf("age %q must be a whole number of days, like 7d", s)
+		}
+		return today.AddDate(0, 0, -n), nil
+	}
+	return time.Parse("2006-01-02", s)
 }
 
 func (c *Config) Validate() error {
