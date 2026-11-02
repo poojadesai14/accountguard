@@ -46,6 +46,9 @@ export function KeyLine({
       <span className={suspended ? "suspended-state" : "muted"}>
         <span className="mono">{key.api_key_id}</span> {key.status}
         {locked && " · confirmed takeover"}
+        {suspended && !locked && key.warnings?.length
+          ? ` · stopped for ${key.warnings.map((w) => humanize(w.signal)).join(", ")}`
+          : ""}
       </span>
       {key.updated_at && (
         <span className="muted">
@@ -69,6 +72,7 @@ export function KeyLine({
             keyId={key.api_key_id}
             accountId={key.account_id}
             takeover={Boolean(key.takeover)}
+            warnings={key.warnings}
           />
         )}
         {mode === "suspend" && <SuspendKeyForm keyId={key.api_key_id} />}

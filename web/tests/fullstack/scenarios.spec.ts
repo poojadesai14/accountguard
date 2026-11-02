@@ -264,6 +264,10 @@ test("one decision at a time: the review says what's left and links to it", asyn
 
   await page.getByRole("link", { name: "Resolve the rest" }).click();
   await expect(page).toHaveURL(new RegExp(`/accounts/${account}\\?resolve=1`));
+  // The real API names what the key was stopped for, before any restore.
+  await expect(
+    page.locator(".key-line", { hasText: `${account}_key` }),
+  ).toContainText("stopped for young domain");
   const card = resolveCard(page);
   await card.getByLabel("Legitimate").check();
   await card.getByLabel("Also restore 1 automatically suspended key").check();

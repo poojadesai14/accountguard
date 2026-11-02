@@ -287,7 +287,9 @@ func suspendForTakeover(ctx context.Context, tx pgx.Tx, accountID string, keyDec
 
 // UnblockKey reverses a suspension. On an account with a confirmed takeover it
 // also needs confirm to equal the account ID: restoring there is recovery, after
-// the owner has secured the account and rotated credentials, not cleanup.
+// the owner has secured the account and rotated credentials, not cleanup. So does
+// a key stopped for risky signals (store.KeyWarnings), even if those emails were
+// marked legitimate: the analyst sees the evidence and types the ID to proceed.
 func (s *Service) UnblockKey(ctx context.Context, apiKeyID, confirm, actor, reason string) error {
 	return pgx.BeginFunc(ctx, s.Store.Pool, func(tx pgx.Tx) error {
 		accountID, takeover, found, err := store.KeyTakeover(ctx, tx, apiKeyID)
@@ -296,6 +298,19 @@ func (s *Service) UnblockKey(ctx context.Context, apiKeyID, confirm, actor, reas
 		}
 		if found && takeover && confirm != accountID {
 			return conflict("this key was locked for a confirmed takeover: type the account ID to confirm the owner has secured the account and rotated credentials")
+		}
+		if found && confirm != accountID {
+			warnings, err := store.KeyWarnings(ctx, tx, apiKeyID)
+			if err != nil {
+				return err
+			}
+			if len(warnings) > 0 {
+				names := make([]string, len(warnings))
+				for i, w := range warnings {
+					names[i] = w.Signal
+				}
+				return conflict("restoring lets this key send again, and the emails it was stopped for show %s: type the account ID to confirm", strings.Join(names, ", "))
+			}
 		}
 		wasSuspended, found, err := store.ActivateKey(ctx, tx, apiKeyID)
 		switch {

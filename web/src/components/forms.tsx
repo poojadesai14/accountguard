@@ -244,25 +244,50 @@ export function UnblockForm({
   keyId,
   accountId,
   takeover = false,
+  warnings = [],
 }: {
   keyId: string;
   accountId?: string;
   /** The account has a confirmed takeover: restoring is recovery, typed. */
   takeover?: boolean;
+  /** Risky signals on the emails this key was stopped for: shown, and typed. */
+  warnings?: { signal: string; detail: string }[];
 }) {
   const [state, action, pending] = useActionState(unblockKey, {});
   const [confirm, setConfirm] = useState("");
-  const confirmed = !takeover || confirm.trim() === accountId;
+  const risky = takeover || warnings.length > 0;
+  const confirmed = !risky || confirm.trim() === accountId;
   return (
     <form action={action} className="review-form">
       <input type="hidden" name="key_id" value={keyId} />
-      {takeover && (
+      {risky && (
         <div className="resolve-warning" role="note">
-          <strong>This key was locked for a confirmed takeover.</strong>
-          <p>
-            Restore it only after the owner has secured the account and rotated
-            this key; otherwise the attacker can send again.
-          </p>
+          {takeover ? (
+            <>
+              <strong>This key was locked for a confirmed takeover.</strong>
+              <p>
+                Restore it only after the owner has secured the account and
+                rotated this key; otherwise the attacker can send again.
+              </p>
+            </>
+          ) : (
+            <>
+              <strong>
+                Restoring lets this key send again. It was stopped for:
+              </strong>
+              <ul>
+                {warnings.map((w) => (
+                  <li key={w.signal}>
+                    {humanize(w.signal)}: {w.detail}
+                  </li>
+                ))}
+              </ul>
+              <p>
+                If that wasn't the owner, the same sender can use it again.
+                Restore only if you are sure.
+              </p>
+            </>
+          )}
           <label>
             Type <span className="mono">{accountId}</span> to confirm
             <input

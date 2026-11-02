@@ -246,6 +246,9 @@ type KeyStatus struct {
 	UpdatedAt  time.Time `json:"updated_at" db:"updated_at"`
 	// The account has a confirmed takeover: restoring needs the account ID typed.
 	Takeover bool `json:"takeover" db:"takeover"`
+	// Risky signals on the emails a suspended key was stopped for (KeyWarnings):
+	// restoring it also needs the account ID typed, with this evidence shown.
+	Warnings []Warning `json:"warnings" db:"-"`
 }
 
 // takeoverOnAccount: any decision on the key_status row's account is labelled takeover.
@@ -269,7 +272,44 @@ func KeyStatuses(ctx context.Context, db DBTX, accountID string) ([]KeyStatus, e
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(rows, pgx.RowToStructByName[KeyStatus])
+	keys, err := pgx.CollectRows(rows, pgx.RowToStructByName[KeyStatus])
+	if err != nil {
+		return nil, err
+	}
+	for i := range keys {
+		keys[i].Warnings = []Warning{}
+		if keys[i].Status == "suspended" {
+			if keys[i].Warnings, err = KeyWarnings(ctx, db, keys[i].APIKeyID); err != nil {
+				return nil, err
+			}
+		}
+	}
+	return keys, nil
+}
+
+// KeyWarnings lists the risky signals (RiskySignals) on the holds and blocks a key
+// was stopped for: scored stops on the key from 24 hours before the decision that
+// suspended it, whatever they were labelled. A takeover label is handled by the
+// account-level lock instead. Restoring such a key lets that sender send again.
+func KeyWarnings(ctx context.Context, db DBTX, apiKeyID string) ([]Warning, error) {
+	rows, err := db.Query(ctx, `select `+decisionCols+` from decisions d
+		where d.api_key_id = $1 and d.action in ('hold','block') and d.reason is null
+		and d.occurred_at >= coalesce((select s.occurred_at from key_status k join decisions s on s.decision_id = k.decision_id
+			where k.api_key_id = $1), now()) - interval '24 hours'
+		order by d.occurred_at`, apiKeyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var stops []*Decision
+	for rows.Next() {
+		d, err := scanDecision(rows)
+		if err != nil {
+			return nil, err
+		}
+		stops = append(stops, d)
+	}
+	return Warnings(stops), rows.Err()
 }
 
 type AnalystAction struct {
