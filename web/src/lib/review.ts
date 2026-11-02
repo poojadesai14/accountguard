@@ -1,4 +1,6 @@
-export type FormState = { error?: string; success?: string };
+/** A link to the step left after an action, e.g. restoring the key it left suspended. */
+export type NextStep = { label: string; href: string };
+export type FormState = { error?: string; success?: string; next?: NextStep[] };
 export const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function reviewFields(form: FormData) {

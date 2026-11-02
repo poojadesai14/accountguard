@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useEffect, useId, useRef, useState } from "react";
 import { ArrowRight, Check, ChevronDown, LockKeyhole } from "lucide-react";
 import {
@@ -13,7 +14,7 @@ import {
 } from "@/app/actions";
 import { riskyHits } from "@/lib/decisions";
 import { dateTime, humanize } from "@/lib/format";
-import type { FormState } from "@/lib/review";
+import type { FormState, NextStep } from "@/lib/review";
 import type { Decision, OpenCounts, ReviewedDecision } from "@/lib/types";
 
 function Feedback({ state }: { state: FormState }) {
@@ -30,7 +31,22 @@ function Feedback({ state }: { state: FormState }) {
           {state.success}
         </p>
       )}
+      <NextSteps next={state.next} />
     </div>
+  );
+}
+
+// NextSteps links to whatever an action left to do, opened and ready.
+export function NextSteps({ next }: { next?: NextStep[] }) {
+  if (!next?.length) return null;
+  return (
+    <p className="next-steps">
+      {next.map((step) => (
+        <Link key={step.href} className="text-link" href={step.href}>
+          {step.label} <ArrowRight size={14} aria-hidden="true" />
+        </Link>
+      ))}
+    </p>
   );
 }
 
@@ -98,7 +114,7 @@ export function ReviewForm({
   initialAction?: "confirm_takeover" | "mark_legitimate";
   onDirtyChange?: (dirty: boolean) => void;
   onPendingChange?: (pending: boolean) => void;
-  onSuccess?: (message: string) => void;
+  onSuccess?: (message: string, next?: NextStep[]) => void;
 }) {
   const [state, action, pending] = useActionState(reviewDecision, {});
   const handled = useRef<FormState | undefined>(undefined);
@@ -109,7 +125,7 @@ export function ReviewForm({
     if (state.success && handled.current !== state) {
       handled.current = state;
       onDirtyChange?.(false);
-      onSuccess?.(state.success);
+      onSuccess?.(state.success, state.next);
     }
   }, [state, onSuccess, onDirtyChange]);
   useEffect(
@@ -497,15 +513,19 @@ export function ResolveCard({
   accountId,
   open,
   summary,
+  initiallyOpen = false,
 }: {
   accountId: string;
   open: OpenCounts;
   summary: string;
+  /** Opened by a "Resolve the rest" link from a review. */
+  initiallyOpen?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(initiallyOpen && open.reviews > 0);
   if (!expanded && open.reviews === 0) return null;
   return (
     <details
+      open={expanded}
       className="card resolve-card"
       onToggle={(event) => setExpanded(event.currentTarget.open)}
     >

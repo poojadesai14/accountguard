@@ -3,7 +3,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef } from "react";
 import { ArrowRight, Check, X } from "lucide-react";
 import { Badge, EmptyState } from "./ui";
-import { ReviewForm } from "./forms";
+import { NextSteps, ReviewForm } from "./forms";
+import type { NextStep } from "@/lib/review";
 import { KeyLine } from "./key-line";
 import { dateTime, humanize } from "@/lib/format";
 import { scoreClassName } from "@/lib/decisions";
@@ -18,6 +19,7 @@ export function DashboardDrawer({
   onPending,
   onSuccess,
   toast,
+  toastNext,
   dismissToast,
 }: {
   account: string;
@@ -26,8 +28,9 @@ export function DashboardDrawer({
   onClose: () => void;
   onDirty: (dirty: boolean) => void;
   onPending: (pending: boolean) => void;
-  onSuccess: (message: string) => void;
+  onSuccess: (message: string, next?: NextStep[]) => void;
   toast?: string;
+  toastNext?: NextStep[];
   dismissToast: () => void;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
@@ -193,7 +196,10 @@ export function DashboardDrawer({
       {toast && (
         <div className="dashboard-toast" role="status">
           <Check size={18} />
-          <span>{toast}</span>
+          <span>
+            {toast}
+            <NextSteps next={toastNext} />
+          </span>
           <button
             type="button"
             className="text-button"

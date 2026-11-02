@@ -12,15 +12,20 @@ import { SuspendKeyForm, UnblockForm } from "./forms";
 export function KeyLine({
   keyStatus: key,
   hint,
+  initiallyOpen = false,
 }: {
   keyStatus: KeyStatus;
   hint?: string;
+  /** Opened by a "Restore access" link from a review. */
+  initiallyOpen?: boolean;
 }) {
   // The form is only mounted once opened, so it never duplicates the review
   // form's fields on the same page. It keeps the action it was opened for, so its
   // confirmation stays after the key's status flips.
-  const [mode, setMode] = useState<"restore" | "suspend" | null>(null);
   const suspended = key.status === "suspended";
+  const [mode, setMode] = useState<"restore" | "suspend" | null>(
+    initiallyOpen && suspended ? "restore" : null,
+  );
   const summary =
     mode === "restore"
       ? suspended
