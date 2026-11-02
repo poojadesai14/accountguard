@@ -108,6 +108,34 @@ filters, account search, required reasons, reviews and audit history, key
 restoration, owner responses, empty/error states, and mobile layout. They do not
 use the hosted API or Supabase. CI runs these checks alongside the Go suite.
 
+### Full-stack scenarios
+
+```sh
+npm run build
+npm run test:fullstack   # or `make e2e` from the repo root
+```
+
+`tests/fullstack` drives the production UI (port 3201) against the **real Go API**
+(port 3202) on a throwaway `ato_e2e` database in the local Docker Postgres
+(`scripts/fullstack-api.sh` recreates it each run). `world.ts` builds the data
+through the real ingest API, so every decision is scored by the engine: six
+accounts with 12 days of history, four of them then attacked with a young link
+domain until a recipient spike blocks the key. The scenarios cover the analyst's
+main journeys end to end, checking both the page and the API:
+
+| Scenario                           | Checks                                                                                                                      |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| Engine calls reach the queue       | attacks queued with suspended keys; a lone flag and a quiet account are not                                                 |
+| A hold explains itself             | signals and evidence on the decision page; the shared domain links the other attacked accounts                              |
+| Takeover in one step               | Resolve account → Takeover: no reviews or holds left, key suspended by the analyst, row reads Confirmed takeover, audit row |
+| False positive over risky evidence | typed account ID required, restore box, key active, account in Healthy as Marked legitimate                                 |
+| Wrong call corrected               | legitimate + restore teaches the baseline; Correct to takeover relabels, unlearns the network and domain, re-suspends       |
+| One decision at a time             | Record review says what's left; "Resolve the rest" opens Resolve account; the account reaches Healthy                       |
+| Suspend and restore by hand        | an active key is suspended (account queued) and restored (account Healthy)                                                  |
+
+Young domains are pinned in `config.yaml`, so the attack scores as intended until
+those dates age past `young_days`.
+
 ## Vercel deployment
 
 Import `poojadesai14/resend-ato` into Vercel and use:
