@@ -82,6 +82,17 @@ func TestResolveAccount(t *testing.T) {
 		!slices.Equal(open.DecisionIDs, []string{hold, block}) {
 		t.Fatalf("open counts = %+v, want 2 reviews [hold block], 1 held, 3 suspended, 2 restorable", open)
 	}
+	// ...and names it all, so the analyst sees exactly what they agree to.
+	if !slices.Equal(open.SuspendedKeyIDs, []string{"key_fp", "key_manual", "key_old"}) ||
+		!slices.Equal(open.RestorableKeyIDs, []string{"key_fp", "key_old"}) ||
+		!slices.Equal(open.ReviewKeyIDs, []string{"key_fp"}) {
+		t.Errorf("keys = suspended %v, restorable %v, reviews %v", open.SuspendedKeyIDs, open.RestorableKeyIDs, open.ReviewKeyIDs)
+	}
+	if len(open.List) != 2 || open.List[0].DecisionID != hold || open.List[0].Action != "hold" ||
+		open.List[0].HoldStatus == nil || *open.List[0].HoldStatus != "pending" || open.List[0].Driver != "new_asn" ||
+		open.List[1].DecisionID != block || open.List[1].Score != 90 {
+		t.Errorf("list = %+v, want the hold (pending, new_asn) then the block 90", open.List)
+	}
 
 	// Reviews the analyst didn't see: nothing changes.
 	requireStatus(t, f.post("/v1/accounts/fp/resolve", map[string]any{"decision_ids": []string{hold}, "outcome": "legitimate", "restore_keys": true, "actor": "r", "reason": "x"}), http.StatusConflict)

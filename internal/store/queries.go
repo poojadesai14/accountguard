@@ -368,25 +368,42 @@ type OpenCounts struct {
 	RestorableKeys int       `json:"restorable_keys"`
 	DecisionIDs    []string  `json:"decision_ids"`
 	Warnings       []Warning `json:"warnings"` // risky signals: "legitimate" needs a typed confirmation
+	// What the analyst is agreeing to, by name: the reviews themselves, the keys
+	// suspended now, the ones a legitimate resolution may restore, and the keys the
+	// reviews were sent with (what a takeover resolution suspends).
+	List             []OpenReview `json:"list"`
+	SuspendedKeyIDs  []string     `json:"suspended_key_ids"`
+	RestorableKeyIDs []string     `json:"restorable_key_ids"`
+	ReviewKeyIDs     []string     `json:"review_key_ids"`
+}
+
+// OpenReview is one decision an account resolution would close.
+type OpenReview struct {
+	DecisionID string    `json:"decision_id"`
+	OccurredAt time.Time `json:"occurred_at"`
+	Action     string    `json:"action"`
+	Score      int       `json:"score"`
+	HoldStatus *string   `json:"hold_status"`
+	APIKeyID   *string   `json:"api_key_id"`
+	Driver     string    `json:"primary_driver"`
+	Detail     string    `json:"detail"`
 }
 
 func AccountOpenCounts(ctx context.Context, db DBTX, accountID string) (OpenCounts, error) {
 	var c OpenCounts
 	err := db.QueryRow(ctx, `select
-		coalesce((select array_agg(decision_id::text order by occurred_at, decision_id) from decisions
-			where account_id = $1 and review_status = 'open'), '{}'),
 		(select count(*) from decisions where account_id = $1 and hold_status = 'pending'),
-		(select count(*) from key_status where account_id = $1 and status = 'suspended'),
-		(select count(*) from key_status k where k.account_id = $1 and `+autoSuspendedKey+`
+		coalesce((select array_agg(api_key_id order by api_key_id) from key_status where account_id = $1 and status = 'suspended'), '{}'),
+		coalesce((select array_agg(k.api_key_id order by k.api_key_id) from key_status k where k.account_id = $1 and `+autoSuspendedKey+`
 			and (k.decision_id in (select decision_id from decisions where account_id = $1 and review_status = 'open')
-				or exists (select 1 from decisions kd where kd.decision_id = k.decision_id and kd.label = 'legitimate')))`, accountID,
-	).Scan(&c.DecisionIDs, &c.PendingHolds, &c.SuspendedKeys, &c.RestorableKeys)
-	c.Reviews = len(c.DecisionIDs)
+				or exists (select 1 from decisions kd where kd.decision_id = k.decision_id and kd.label = 'legitimate'))), '{}')`, accountID,
+	).Scan(&c.PendingHolds, &c.SuspendedKeyIDs, &c.RestorableKeyIDs)
 	if err != nil {
 		return c, err
 	}
+	c.SuspendedKeys, c.RestorableKeys = len(c.SuspendedKeyIDs), len(c.RestorableKeyIDs)
 	rows, err := db.Query(ctx, `select `+decisionCols+` from decisions
-		where account_id = $1 and review_status = 'open'`, accountID)
+		where account_id = $1 and review_status = 'open' order by occurred_at, decision_id`, accountID)
 	if err != nil {
 		return c, err
 	}
@@ -399,6 +416,27 @@ func AccountOpenCounts(ctx context.Context, db DBTX, accountID string) (OpenCoun
 		}
 		open = append(open, d)
 	}
+	if err := rows.Err(); err != nil {
+		return c, err
+	}
+	c.DecisionIDs, c.List, c.ReviewKeyIDs = []string{}, []OpenReview{}, []string{}
+	for _, d := range open {
+		r := OpenReview{DecisionID: d.DecisionID, OccurredAt: d.OccurredAt, Action: d.Action, Score: d.Score,
+			HoldStatus: d.HoldStatus, APIKeyID: d.APIKeyID, Driver: "No scored signals"}
+		if d.Reason != nil {
+			r.Driver = *d.Reason
+		} else if len(d.Hits) > 0 {
+			top := slices.MaxFunc(d.Hits, func(a, b signal.Hit) int { return a.Points - b.Points })
+			r.Driver, r.Detail = top.Name, top.Detail
+		}
+		c.DecisionIDs = append(c.DecisionIDs, d.DecisionID)
+		c.List = append(c.List, r)
+		if d.APIKeyID != nil && !slices.Contains(c.ReviewKeyIDs, *d.APIKeyID) {
+			c.ReviewKeyIDs = append(c.ReviewKeyIDs, *d.APIKeyID)
+		}
+	}
+	slices.Sort(c.ReviewKeyIDs)
+	c.Reviews = len(c.DecisionIDs)
 	c.Warnings = Warnings(open)
-	return c, rows.Err()
+	return c, nil
 }
