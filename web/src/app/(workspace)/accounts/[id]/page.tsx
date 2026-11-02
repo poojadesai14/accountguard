@@ -82,7 +82,8 @@ export default async function AccountPage({
         <ResolveCard
           accountId={id}
           open={open}
-          initiallyOpen={search.resolve === "1"}
+          // The incident is the unit of work: open while anything is.
+          initiallyOpen={search.resolve === "1" || open.reviews > 0}
           summary={[
             open.reviews &&
               `${open.reviews} open review${open.reviews === 1 ? "" : "s"}`,

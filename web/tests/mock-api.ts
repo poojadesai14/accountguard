@@ -768,6 +768,31 @@ createServer(async (req, res) => {
             : 0,
         decision_ids:
           detail.decision.review_status === "open" ? [decisionId] : [],
+        list:
+          detail.decision.review_status === "open"
+            ? [
+                {
+                  decision_id: decisionId,
+                  occurred_at: hours[10],
+                  action: "hold",
+                  score: 75,
+                  hold_status: detail.decision.hold_status,
+                  api_key_id: "key_prod_1",
+                  primary_driver: "new_asn",
+                  detail:
+                    "AS14061 DIGITALOCEAN-ASN first seen for key key_prod_1",
+                },
+              ]
+            : [],
+        suspended_key_ids: suspended ? ["key_prod_1"] : [],
+        restorable_key_ids:
+          suspended &&
+          (detail.decision.review_status === "open" ||
+            detail.decision.label === "legitimate")
+            ? ["key_prod_1"]
+            : [],
+        review_key_ids:
+          detail.decision.review_status === "open" ? ["key_prod_1"] : [],
         warnings:
           risky() && detail.decision.review_status === "open"
             ? [

@@ -11,6 +11,9 @@ import { API, ANALYST, ATTACKED, QUIET } from "./world";
 // One shared world (world.ts), so the scenarios run in order on separate accounts.
 test.describe.configure({ mode: "serial" });
 
+// The Resolve button names what it will do once an outcome is chosen.
+const RESOLVE = /^Resolve (account|\d+ reviews? as (legitimate|takeover))$/;
+
 async function signIn(page: Page, path = "/") {
   await page.goto(`/login?next=${encodeURIComponent(path)}`);
   await page.getByLabel("Workspace password").fill("fullstack-password");
@@ -105,11 +108,22 @@ test("a takeover is resolved in one step: reviews closed, holds dropped, key kep
   const account = ATTACKED.takeover;
   await signIn(page, `/accounts/${account}`);
   const card = resolveCard(page);
-  await card.locator("summary").click();
+  // Everything it resolves is listed and counted in the button.
+  const reviews = (await profile(request, account)).open.reviews;
+  await card.getByText(`See the ${reviews} reviews this resolves`).click();
+  await expect(card.locator(".resolve-list li")).toHaveCount(reviews);
   await card.getByLabel("Takeover").check();
+  await expect(card.locator(".resolve-effects")).toContainText(
+    `Label ${reviews} reviews takeover.`,
+  );
+  await expect(
+    card.getByRole("button", {
+      name: `Resolve ${reviews} reviews as takeover`,
+    }),
+  ).toBeVisible();
   await expect(card.locator(".resolve-warning")).toHaveCount(0); // no typing for takeover
   await identity(card, "New network and a 6-day-old domain.");
-  await card.getByRole("button", { name: "Resolve account" }).click();
+  await card.getByRole("button", { name: RESOLVE }).click();
   await expect(card.getByRole("status")).toContainText("Resolved as takeover");
 
   const p = await profile(request, account);
@@ -156,13 +170,12 @@ test("a false positive over takeover evidence needs the account typed, then reac
   const account = ATTACKED.vendor;
   await signIn(page, `/accounts/${account}`);
   const card = resolveCard(page);
-  await card.locator("summary").click();
   await card.getByLabel("Legitimate").check();
   const warning = card.locator(".resolve-warning");
   await expect(warning).toContainText("young domain");
   await card.getByLabel("Also restore 1 automatically suspended key").check();
   await identity(card, "Owner confirmed the new vendor.");
-  const submit = card.getByRole("button", { name: "Resolve account" });
+  const submit = card.getByRole("button", { name: RESOLVE });
   await expect(submit).toBeDisabled();
   await warning.getByRole("textbox").fill(account);
   await submit.click();
@@ -191,12 +204,11 @@ test("a wrong legitimate call is corrected: relabelled, unlearned and re-locked"
   const account = ATTACKED.oops;
   await signIn(page, `/accounts/${account}`);
   const card = resolveCard(page);
-  await card.locator("summary").click();
   await card.getByLabel("Legitimate").check();
   await card.getByLabel("Also restore 1 automatically suspended key").check();
   await card.locator(".resolve-warning").getByRole("textbox").fill(account);
   await identity(card, "Looked fine at first.");
-  await card.getByRole("button", { name: "Resolve account" }).click();
+  await card.getByRole("button", { name: RESOLVE }).click();
   await expect(card.getByRole("status")).toContainText("restored");
   let p = await profile(request, account);
   expect(p.profile.key_asns[`${account}_key`]?.["14061"]).toBeGreaterThan(0);
@@ -234,10 +246,16 @@ test("one decision at a time: the review says what's left and links to it", asyn
   // The key row's decision is the block that suspended it.
   const [keyRow] = await rows(request, `view=keys&q=${account}`);
   await signIn(page, `/decisions/${keyRow.decision_id}`);
-  await page.getByLabel("Review outcome").selectOption("mark_legitimate");
-  await page.locator(".resolve-warning").getByRole("textbox").fill(account);
-  await identity(page.locator(".review-form"), "Owner confirmed this send.");
-  await page.getByRole("button", { name: "Record review" }).click();
+  // The incident leads; this scenario takes the one-email path on purpose.
+  await expect(page.locator(".decision-decide")).toContainText(
+    "Resolve this incident",
+  );
+  const single = page.locator(".just-this");
+  await single.locator("summary").click();
+  await single.getByLabel("Review outcome").selectOption("mark_legitimate");
+  await single.locator(".resolve-warning").getByRole("textbox").fill(account);
+  await identity(single, "Owner confirmed this send.");
+  await single.getByRole("button", { name: "Record review" }).click();
   const feedback = page
     .getByRole("status")
     .filter({ hasText: "Marked legitimate" });
@@ -251,7 +269,7 @@ test("one decision at a time: the review says what's left and links to it", asyn
   await card.getByLabel("Also restore 1 automatically suspended key").check();
   await card.locator(".resolve-warning").getByRole("textbox").fill(account);
   await identity(card, "Same vendor, rest of the batch.");
-  await card.getByRole("button", { name: "Resolve account" }).click();
+  await card.getByRole("button", { name: RESOLVE }).click();
   await expect(card.getByRole("status")).toContainText(
     `restored ${account}_key`,
   );

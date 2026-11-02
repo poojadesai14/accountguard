@@ -73,6 +73,22 @@ export type OpenCounts = {
   decision_ids: string[];
   /** Risky signals on the open reviews: "legitimate" then needs the account ID typed. */
   warnings?: { signal: string; detail: string }[];
+  /** What the analyst agrees to, by name. */
+  list?: OpenReview[];
+  suspended_key_ids?: string[];
+  restorable_key_ids?: string[];
+  review_key_ids?: string[];
+};
+/** One decision an account resolution would close. */
+export type OpenReview = {
+  decision_id: string;
+  occurred_at: string;
+  action: Action;
+  score: number;
+  hold_status: string | null;
+  api_key_id: string | null;
+  primary_driver: string;
+  detail: string;
 };
 /** A non-allow decision marked legitimate: what a correction to takeover can act on. */
 export type ReviewedDecision = {

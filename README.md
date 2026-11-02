@@ -280,7 +280,9 @@ Analyst UI (Next.js) ──server-side, analyst token──▶ analyst API ─�
   block 90 / Key still suspended · Restore access to finish", not a red Block: only when the row is that
   block, nothing on the account is open, every suspended key is in that state and the account has no
   confirmed takeover, so the row never hides a takeover or a newer decision.
-- **Resolve the account, not each event.** Analysts reason per account, so the account page has one
+- **Resolve the incident, not each event.** Analysts reason per account, so the decision page, the drawer
+  and the account page all lead with **Resolve this incident**; reviewing a single email is folded away
+  for the rare mixed incident where some stopped emails were the owner's. The account page has one
   audited **Resolve account** action (`POST /v1/accounts/{id}/resolve`) that closes every open review with
   one outcome in one transaction: *legitimate* labels them, teaches the baseline from each stopped event
   and releases pending holds; *takeover* labels them, drops pending holds and suspends the keys they used.

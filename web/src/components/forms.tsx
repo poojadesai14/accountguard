@@ -309,6 +309,79 @@ export function SuspendKeyForm({ keyId }: { keyId: string }) {
   );
 }
 
+// DecidePanel is where a decision is acted on. An analyst judges an incident,
+// not an email: while the account has open reviews, the panel leads with
+// resolving all of them (one audited action that labels each decision
+// underneath), and handling just this email is the exception, folded away for a
+// mixed incident where some stopped emails were the owner's.
+export function DecidePanel({
+  decision,
+  open,
+  initialAction,
+  onDirtyChange,
+  onPendingChange,
+  onSuccess,
+}: {
+  decision: Decision;
+  open?: OpenCounts;
+  initialAction?: "confirm_takeover" | "mark_legitimate";
+  onDirtyChange?: (dirty: boolean) => void;
+  onPendingChange?: (pending: boolean) => void;
+  onSuccess?: (message: string, next?: NextStep[]) => void;
+}) {
+  const [single, setSingle] = useState(Boolean(initialAction));
+  // Once shown, the incident panel stays until the page changes, so resolving
+  // the last review keeps its confirmation instead of swapping the panel out.
+  const [incident] = useState(Boolean(open && open.reviews > 0));
+  const review = (
+    <ReviewForm
+      key={decision.decision_id}
+      decision={decision}
+      initialAction={initialAction}
+      onDirtyChange={onDirtyChange}
+      onPendingChange={onPendingChange}
+      onSuccess={onSuccess}
+    />
+  );
+  if (!open || (!incident && open.reviews === 0)) return review;
+  const plural = (n: number, word: string) =>
+    `${n} ${word}${n === 1 ? "" : "s"}`;
+  return (
+    <div className="incident-decide">
+      <h4>Resolve this incident</h4>
+      <p className="form-help">
+        {[
+          plural(open.reviews, "open review"),
+          open.pending_holds && plural(open.pending_holds, "held email"),
+          open.suspended_keys && plural(open.suspended_keys, "suspended key"),
+        ]
+          .filter(Boolean)
+          .join(" · ")}{" "}
+        on this account, judged together. Each decision is labelled and audited
+        underneath.
+      </p>
+      <ResolveAccountForm
+        accountId={decision.account_id}
+        open={open}
+        onSuccess={onSuccess}
+        onDirtyChange={onDirtyChange}
+        onPendingChange={onPendingChange}
+      />
+      <details
+        className="just-this"
+        open={single}
+        onToggle={(event) => setSingle(event.currentTarget.open)}
+      >
+        <summary>Handle just this email</summary>
+        <p className="form-help">
+          Only for a mixed incident, where some stopped emails were the owner's.
+        </p>
+        {single && review}
+      </details>
+    </div>
+  );
+}
+
 // CorrectionCard undoes a wrong "legitimate": the chosen decisions become
 // takeover, the baseline forgets them and their keys are suspended. Mounted on
 // open, like ResolveCard, so its fields never duplicate another form's.
@@ -430,11 +503,36 @@ export function OwnerForm({ decision }: { decision: Decision }) {
 export function ResolveAccountForm({
   accountId,
   open,
+  onSuccess,
+  onDirtyChange,
+  onPendingChange,
 }: {
   accountId: string;
   open: OpenCounts;
+  onSuccess?: (message: string, next?: NextStep[]) => void;
+  /** Like ReviewForm: a draft in progress pauses the dashboard's polling. */
+  onDirtyChange?: (dirty: boolean) => void;
+  onPendingChange?: (pending: boolean) => void;
 }) {
   const [state, action, pending] = useActionState(resolveAccount, {});
+  const handled = useRef<FormState | undefined>(undefined);
+  useEffect(() => {
+    onPendingChange?.(pending);
+  }, [pending, onPendingChange]);
+  useEffect(() => {
+    if (state.success && handled.current !== state) {
+      handled.current = state;
+      onDirtyChange?.(false);
+      onSuccess?.(state.success, state.next);
+    }
+  }, [state, onSuccess, onDirtyChange]);
+  useEffect(
+    () => () => {
+      onDirtyChange?.(false);
+      onPendingChange?.(false);
+    },
+    [onDirtyChange, onPendingChange],
+  );
   const [outcome, setOutcome] = useState<"" | "legitimate" | "takeover">("");
   const [confirm, setConfirm] = useState("");
   const plural = (n: number, word: string) =>
@@ -443,12 +541,84 @@ export function ResolveAccountForm({
   // "legitimate" needs the account ID typed (the API enforces the same rule).
   const warnings = outcome === "legitimate" ? (open.warnings ?? []) : [];
   const confirmed = warnings.length === 0 || confirm.trim() === accountId;
+  const [restore, setRestore] = useState(false);
+  const list = open.list ?? [];
+  const suspended = open.suspended_key_ids ?? [];
+  const restorable = open.restorable_key_ids ?? [];
+  const sentWith = open.review_key_ids ?? [];
+  const keys = (ids: string[]) => ids.join(", ");
+  // Spelled out for the chosen outcome: everything this will and won't change.
+  const will: string[] = [];
+  const wont: string[] = [];
+  if (outcome === "takeover") {
+    will.push(`Label ${plural(open.reviews, "review")} takeover.`);
+    if (open.pending_holds)
+      will.push(
+        `Drop ${plural(open.pending_holds, "held email")}: never sent.`,
+      );
+    if (sentWith.length)
+      will.push(
+        `Suspend ${keys(sentWith)} on your authority (already suspended stays suspended).`,
+      );
+    wont.push("Restore any key or release any email.");
+    wont.push("Teach the baseline anything from these emails.");
+  } else if (outcome === "legitimate") {
+    will.push(
+      `Label ${plural(open.reviews, "review")} legitimate and teach the baseline their networks and domains.`,
+    );
+    if (open.pending_holds)
+      will.push(
+        `Release ${plural(open.pending_holds, "held email")}: they will be sent.`,
+      );
+    if (restore && restorable.length)
+      will.push(`Restore ${keys(restorable)}: it can send again.`);
+    const staying = suspended.filter(
+      (k) => !(restore && restorable.includes(k)),
+    );
+    if (staying.length)
+      wont.push(
+        `Restore ${keys(staying)}: ${staying.length === 1 ? "it stays" : "they stay"} suspended${
+          restorable.length && !restore ? " (tick the box to restore)" : ""
+        }.`,
+      );
+  }
   return (
-    <form action={action} className="review-form resolve-form">
+    <form
+      action={action}
+      className="review-form resolve-form"
+      onChange={() => onDirtyChange?.(true)}
+    >
       <input type="hidden" name="account_id" value={accountId} />
       {open.decision_ids.map((id) => (
         <input key={id} type="hidden" name="decision_id" value={id} />
       ))}
+      {list.length > 0 && (
+        <details className="resolve-list">
+          <summary>
+            See the {plural(list.length, "review")} this resolves
+          </summary>
+          <ol>
+            {list.map((r) => (
+              <li key={r.decision_id}>
+                <Link
+                  className="text-link"
+                  href={`/decisions/${r.decision_id}`}
+                >
+                  {dateTime(r.occurred_at)}
+                </Link>
+                <span>
+                  {humanize(r.action)} {r.score} · {humanize(r.primary_driver)}
+                  {r.hold_status === "pending" ? " · email held" : ""}
+                </span>
+                <small className="muted">
+                  {r.api_key_id ?? "no key"}
+                  {r.detail ? ` · ${r.detail}` : ""}
+                </small>
+              </li>
+            ))}
+          </ol>
+        </details>
+      )}
       <fieldset className="resolve-outcome">
         <legend>Outcome</legend>
         {(
@@ -470,41 +640,42 @@ export function ResolveAccountForm({
           </label>
         ))}
       </fieldset>
-      {outcome === "legitimate" && (
-        <p className="form-help">
-          Labels the open reviews legitimate and teaches the baseline from them
-          {open.pending_holds
-            ? `, and releases ${plural(open.pending_holds, "held email")}`
-            : ""}
-          .
-        </p>
-      )}
-      {outcome === "takeover" && (
-        <p className="form-help">
-          Labels the open reviews takeover
-          {open.pending_holds
-            ? `, drops ${plural(open.pending_holds, "held email")}`
-            : ""}{" "}
-          and suspends the keys they were sent with.
-        </p>
-      )}
-      {outcome === "legitimate" && open.restorable_keys > 0 && (
+      {outcome === "legitimate" && restorable.length > 0 && (
         <label className="restore-keys">
-          <input type="checkbox" name="restore_keys" />
+          <input
+            type="checkbox"
+            name="restore_keys"
+            checked={restore}
+            onChange={(event) => setRestore(event.target.checked)}
+          />
           Also restore{" "}
-          {plural(open.restorable_keys, "automatically suspended key")}
+          {plural(restorable.length, "automatically suspended key")}
         </label>
       )}
-      {outcome === "legitimate" &&
-        open.suspended_keys > open.restorable_keys && (
-          <p className="form-help">
-            {plural(open.suspended_keys - open.restorable_keys, "other key")}{" "}
-            {open.suspended_keys - open.restorable_keys === 1
-              ? "stays"
-              : "stay"}{" "}
-            suspended: restore those one at a time above.
-          </p>
-        )}
+      {outcome ? (
+        <div className="resolve-effects" aria-live="polite">
+          <strong>This will</strong>
+          <ul>
+            {will.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+          {wont.length > 0 && (
+            <>
+              <strong>This won't</strong>
+              <ul>
+                {wont.map((line) => (
+                  <li key={line}>{line}</li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
+      ) : (
+        <p className="form-help">
+          Choose an outcome to see exactly what it will and won't change.
+        </p>
+      )}
       {warnings.length > 0 && (
         <div className="resolve-warning" role="note">
           <strong>These reviews look like a takeover:</strong>
@@ -534,7 +705,11 @@ export function ResolveAccountForm({
         className="button button-primary"
         disabled={pending || !outcome || open.reviews === 0 || !confirmed}
       >
-        {pending ? "Resolving…" : "Resolve account"}
+        {pending
+          ? "Resolving…"
+          : outcome
+            ? `Resolve ${plural(open.reviews, "review")} as ${outcome}`
+            : "Resolve account"}
       </button>
     </form>
   );
