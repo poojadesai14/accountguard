@@ -373,7 +373,13 @@ test("review requires a reason and records actor, action, evidence and audit his
   await expect(related.getByText("+2 more accounts not listed")).toBeVisible();
   await related.getByRole("button", { name: "Show fewer" }).click();
   await expect(accounts).toHaveCount(5);
-  const decide = page.locator(".incident-decide");
+  // The decision page is evidence; the incident is decided on the account page.
+  await page
+    .locator(".incident-decide")
+    .getByRole("link", { name: "Decide on the account page" })
+    .click();
+  await expect(page).toHaveURL(/\/accounts\/acc_acme\?resolve=1$/);
+  const decide = page.locator(".resolve-card", { hasText: "Resolve account" });
   await decide.getByLabel("Takeover").check();
   await decide.getByLabel("Your name").fill("Pooja");
   // No reason: the browser refuses the submit, nothing reaches the API.
@@ -527,7 +533,7 @@ test("mobile layout supports navigation without document overflow", async ({
   });
   await page.goto(`/decisions/${id}`);
   const evidence = await page.locator(".hit-list").boundingBox();
-  const review = await page.locator(".review-form").boundingBox();
+  const review = await page.locator(".incident-decide").boundingBox();
   expect(evidence!.y).toBeLessThan(review!.y);
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
@@ -1053,33 +1059,6 @@ test("a page past the end of the list does not claim the queue is empty", async 
   await expect(page.getByText("Your review queue is clear.")).toHaveCount(0);
 });
 
-test("marking legitimate says the suspended key is the step left, and offers it", async ({
-  page,
-}) => {
-  await signIn(page, `/decisions/${id}`);
-  // The key's state is visible before the review, with restore inline.
-  const keyLine = page.locator(".key-line");
-  await expect(keyLine).toContainText("key_prod_1 suspended");
-  await expect(
-    keyLine.getByText("Restore access", { exact: true }),
-  ).toBeVisible();
-  const decide = page.locator(".incident-decide");
-  await decide.getByLabel("Legitimate").check();
-  await decide.locator(".resolve-warning input").fill("acc_acme");
-  await decide.getByLabel("Your name").fill("Pooja");
-  await decide
-    .getByLabel("Reason", { exact: true })
-    .fill("Owner confirmed the new network.");
-  await decide.getByRole("button", { name: RESOLVE }).click();
-  // The page refreshes into the labeled state; the key line now says what is left.
-  await expect(keyLine).toContainText(
-    "Marked legitimate; restore access to finish.",
-  );
-  await expect(
-    keyLine.getByText("Restore access", { exact: true }),
-  ).toBeVisible();
-});
-
 test("the review message names the restore and links to it, and a restore confirms in place", async ({
   page,
 }) => {
@@ -1098,16 +1077,8 @@ test("the review message names the restore and links to it, and a restore confir
   );
   await card.getByRole("link", { name: "Restore key_prod_1" }).click();
   await expect(page).toHaveURL(/\/accounts\/acc_acme\?restore=key_prod_1/);
-  const opened = page.locator(".key-line").first();
-  await expect(opened.getByLabel("Your name")).toBeVisible();
-  await expect(
-    opened.getByRole("button", { name: "Restore key access" }),
-  ).toBeVisible();
-
-  // Restoring on the decision page keeps its confirmation after the key turns active.
-  await page.goto(`/decisions/${id}`);
-  const keyLine = page.locator(".key-line");
-  await keyLine.getByText("Restore access", { exact: true }).click();
+  // The link opens the key's restore form, ready; the restore confirms in place.
+  const keyLine = page.locator(".key-line").first();
   await keyLine.getByLabel("Your name").fill("Pooja");
   await keyLine.getByLabel("Reason", { exact: true }).fill("Key rotated.");
   // The key was stopped for a young domain: restoring is typed.
@@ -1318,8 +1289,8 @@ test("an active key can be suspended directly from its key line", async ({
 test("after a confirmed takeover, restoring the key is recovery: typed, with a warning", async ({
   page,
 }) => {
-  await signIn(page, `/decisions/${id}`);
-  const decide = page.locator(".incident-decide");
+  await signIn(page, "/accounts/acc_acme");
+  const decide = page.locator(".resolve-card", { hasText: "Resolve account" });
   await decide.getByLabel("Takeover").check();
   await decide.getByLabel("Your name").fill("Pooja");
   await decide.getByLabel("Reason", { exact: true }).fill("Owner said not me.");
@@ -1346,32 +1317,35 @@ test("after a confirmed takeover, restoring the key is recovery: typed, with a w
   await expect(line).toContainText("key_prod_1 active");
 });
 
-test("the decision page offers one action: resolve the incident before its deadline", async ({
+test("the decision page is evidence: it states the incident and its deadline, and links to decide", async ({
   page,
+  request,
 }) => {
   await signIn(page, `/decisions/${id}`);
   const decide = page.locator(".decision-decide");
-  await expect(decide).toContainText("Resolve this incident");
+  await expect(decide).toContainText("Part of an open incident");
   await expect(decide).toContainText(
     "1 open review · 1 held email · 1 suspended key",
   );
   await expect(decide.locator(".incident-deadline")).toContainText("Decide by");
-  // No per-email review: the incident is the unit of decision.
-  await expect(decide.getByLabel("Review outcome")).toHaveCount(0);
-  await expect(page.locator(".just-this")).toHaveCount(0);
-  await decide.getByLabel("Takeover").check();
-  await decide.getByLabel("Your name").fill("Pooja");
-  await decide
-    .getByLabel("Reason", { exact: true })
-    .fill("New network and young domain.");
-  await decide.getByRole("button", { name: RESOLVE }).click();
-  await expect(decide.getByRole("status")).toContainText(
-    "Resolved as takeover",
-  );
-  // Nothing open is left: the panel falls back to this email's own state.
+  // No decision controls here: one place decides, the account page.
+  await expect(decide.getByLabel("Takeover")).toHaveCount(0);
+  await expect(
+    decide.getByRole("link", { name: "Decide on the account page" }),
+  ).toHaveAttribute("href", "/accounts/acc_acme?resolve=1");
+  await request.post("http://127.0.0.1:3102/v1/accounts/acc_acme/resolve", {
+    headers: { Authorization: "Bearer fixture-analyst-token" },
+    data: {
+      decision_ids: [id],
+      outcome: "takeover",
+      restore_keys: false,
+      actor: "fixture",
+      reason: "Resolved elsewhere",
+    },
+  });
   await page.reload();
-  await expect(decide).not.toContainText("Resolve this incident");
-  await expect(decide).toContainText("Review complete");
+  await expect(decide).toContainText("Reviewed: takeover");
+  await expect(decide).toContainText("Nothing is open on this account.");
 });
 
 test("resolving spells out what it will and won't do, lists the reviews and names the button", async ({

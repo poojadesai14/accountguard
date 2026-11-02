@@ -238,7 +238,7 @@ test("a wrong legitimate call is corrected: relabelled, unlearned and re-locked"
   ).toHaveCount(0);
 });
 
-test("from a decision: resolve, then follow the link to restore the key and reach Healthy", async ({
+test("from a decision: decide on the account page, then follow the link to restore the key and reach Healthy", async ({
   page,
   request,
 }) => {
@@ -246,11 +246,15 @@ test("from a decision: resolve, then follow the link to restore the key and reac
   // The key row's decision is the block that suspended it.
   const [keyRow] = await rows(request, `view=keys&q=${account}`);
   await signIn(page, `/decisions/${keyRow.decision_id}`);
-  // One action for the incident, led by the deadline for its held emails.
-  const decide = page.locator(".incident-decide");
-  await expect(decide).toContainText("Resolve this incident");
-  await expect(decide.locator(".incident-deadline")).toContainText("Decide by");
-  await expect(page.locator(".just-this")).toHaveCount(0);
+  // The decision states the incident and its deadline, and links to decide it.
+  const incident = page.locator(".incident-decide");
+  await expect(incident.locator(".incident-deadline")).toContainText(
+    "Decide by",
+  );
+  await incident
+    .getByRole("link", { name: "Decide on the account page" })
+    .click();
+  const decide = resolveCard(page);
   await decide.getByLabel("Legitimate").check();
   await decide.locator(".resolve-warning").getByRole("textbox").fill(account);
   await identity(decide, "Owner confirmed the new vendor.");
