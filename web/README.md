@@ -113,6 +113,8 @@ use the hosted API or Supabase. CI runs these checks alongside the Go suite.
 ```sh
 npm run build
 npm run test:fullstack   # or `make e2e` from the repo root
+npm run test:fullstack:watch   # same, in a visible browser, slowed down (SLOWMO=600 ms)
+npm run test:fullstack:ui      # Playwright UI mode: run one scenario, step through its timeline
 ```
 
 `tests/fullstack` drives the production UI (port 3201) against the **real Go API**
