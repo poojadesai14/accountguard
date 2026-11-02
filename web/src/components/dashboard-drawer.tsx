@@ -3,7 +3,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef } from "react";
 import { ArrowRight, Check, X } from "lucide-react";
 import { Badge, EmptyState } from "./ui";
-import { NextSteps, ReviewForm } from "./forms";
+import { DecidePanel, NextSteps } from "./forms";
 import type { NextStep } from "@/lib/review";
 import { KeyLine } from "./key-line";
 import { dateTime, humanize } from "@/lib/format";
@@ -161,9 +161,10 @@ export function DashboardDrawer({
             )}
             <section className="drawer-review" ref={reviewRef}>
               <h3>Decide</h3>
-              <ReviewForm
+              <DecidePanel
                 key={decision.decision_id}
                 decision={decision}
+                open={inspection?.profile?.open}
                 initialAction={initialAction}
                 onDirtyChange={onDirty}
                 onPendingChange={onPending}

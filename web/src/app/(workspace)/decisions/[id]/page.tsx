@@ -3,7 +3,12 @@ import { notFound } from "next/navigation";
 import { Check } from "lucide-react";
 import { analystApi } from "@/lib/api";
 import { dateTime, humanize, number } from "@/lib/format";
-import type { DecisionDetail, RelatedIndicator, Thresholds } from "@/lib/types";
+import type {
+  DecisionDetail,
+  ProfileResponse,
+  RelatedIndicator,
+  Thresholds,
+} from "@/lib/types";
 import { UUID } from "@/lib/review";
 import {
   ACTION_LABELS,
@@ -22,7 +27,7 @@ import {
   DetailList,
   PageHeader,
 } from "@/components/ui";
-import { ReviewForm } from "@/components/forms";
+import { DecidePanel } from "@/components/forms";
 import { RelatedAccounts } from "@/components/related-accounts";
 import { KeyLine } from "@/components/key-line";
 
@@ -51,6 +56,10 @@ export default async function DecisionPage({
     related,
     key,
   } = result.data!;
+  // What else is open on the account: the incident this decision belongs to.
+  const profile = await analystApi<ProfileResponse>(
+    `/v1/accounts/${encodeURIComponent(d.account_id)}/profile`,
+  );
   const explanation = explainDecision(d, thresholds);
   const accountHref = `/accounts/${encodeURIComponent(d.account_id)}`;
   // One status line instead of a separate status card; each fact once.
@@ -165,7 +174,7 @@ export default async function DecisionPage({
         </section>
         <aside className="card decision-decide">
           <CardHeader title="Decide" />
-          <ReviewForm decision={d} />
+          <DecidePanel decision={d} open={profile.data?.open} />
           {actions?.length ? (
             <ol className="audit-history">
               {actions.map((action) => (

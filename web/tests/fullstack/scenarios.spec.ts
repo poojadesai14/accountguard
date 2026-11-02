@@ -105,7 +105,6 @@ test("a takeover is resolved in one step: reviews closed, holds dropped, key kep
   const account = ATTACKED.takeover;
   await signIn(page, `/accounts/${account}`);
   const card = resolveCard(page);
-  await card.locator("summary").click();
   await card.getByLabel("Takeover").check();
   await expect(card.locator(".resolve-warning")).toHaveCount(0); // no typing for takeover
   await identity(card, "New network and a 6-day-old domain.");
@@ -156,7 +155,6 @@ test("a false positive over takeover evidence needs the account typed, then reac
   const account = ATTACKED.vendor;
   await signIn(page, `/accounts/${account}`);
   const card = resolveCard(page);
-  await card.locator("summary").click();
   await card.getByLabel("Legitimate").check();
   const warning = card.locator(".resolve-warning");
   await expect(warning).toContainText("young domain");
@@ -191,7 +189,6 @@ test("a wrong legitimate call is corrected: relabelled, unlearned and re-locked"
   const account = ATTACKED.oops;
   await signIn(page, `/accounts/${account}`);
   const card = resolveCard(page);
-  await card.locator("summary").click();
   await card.getByLabel("Legitimate").check();
   await card.getByLabel("Also restore 1 automatically suspended key").check();
   await card.locator(".resolve-warning").getByRole("textbox").fill(account);
@@ -234,10 +231,16 @@ test("one decision at a time: the review says what's left and links to it", asyn
   // The key row's decision is the block that suspended it.
   const [keyRow] = await rows(request, `view=keys&q=${account}`);
   await signIn(page, `/decisions/${keyRow.decision_id}`);
-  await page.getByLabel("Review outcome").selectOption("mark_legitimate");
-  await page.locator(".resolve-warning").getByRole("textbox").fill(account);
-  await identity(page.locator(".review-form"), "Owner confirmed this send.");
-  await page.getByRole("button", { name: "Record review" }).click();
+  // The incident leads; this scenario takes the one-email path on purpose.
+  await expect(page.locator(".decision-decide")).toContainText(
+    "Resolve this incident",
+  );
+  const single = page.locator(".just-this");
+  await single.locator("summary").click();
+  await single.getByLabel("Review outcome").selectOption("mark_legitimate");
+  await single.locator(".resolve-warning").getByRole("textbox").fill(account);
+  await identity(single, "Owner confirmed this send.");
+  await single.getByRole("button", { name: "Record review" }).click();
   const feedback = page
     .getByRole("status")
     .filter({ hasText: "Marked legitimate" });

@@ -1,6 +1,15 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect, type Locator, type Page } from "@playwright/test";
 
 const id = "11111111-1111-4111-8111-111111111111";
+// The per-email review lives under "Handle just this email"; the incident
+// (Resolve) leads. Opens it if needed and returns it, to scope the form.
+async function justThisEmail(scope: Page | Locator) {
+  const section = scope.locator(".just-this");
+  if (!(await section.evaluate((el) => (el as HTMLDetailsElement).open)))
+    await section.locator("summary").click();
+  return section;
+}
+
 async function signIn(page: Page, path = "/") {
   await page.goto(path);
   await page.getByLabel("Workspace password").fill("dashboard-test-password");
@@ -368,17 +377,18 @@ test("review requires a reason and records actor, action, evidence and audit his
   await expect(related.getByText("+2 more accounts not listed")).toBeVisible();
   await related.getByRole("button", { name: "Show fewer" }).click();
   await expect(accounts).toHaveCount(5);
-  await page.getByLabel("Review outcome").selectOption("confirm_takeover");
-  await page.getByLabel("Your name").fill("Pooja");
-  await page.getByRole("button", { name: "Record review" }).click();
+  const single = await justThisEmail(page);
+  await single.getByLabel("Review outcome").selectOption("confirm_takeover");
+  await single.getByLabel("Your name").fill("Pooja");
+  await single.getByRole("button", { name: "Record review" }).click();
   const before = await (
     await request.get("http://127.0.0.1:3102/__requests")
   ).json();
   expect(before.some((call: { body?: unknown }) => call.body)).toBe(false);
-  await page
+  await single
     .getByLabel("Reason", { exact: true })
     .fill("Confirmed unauthorized activity with the account owner.");
-  await page.getByRole("button", { name: "Record review" }).click();
+  await single.getByRole("button", { name: "Record review" }).click();
   await expect(
     page.getByText("Review complete", { exact: false }),
   ).toBeVisible();
@@ -401,12 +411,13 @@ test("suspended key can be restored with an audited reason", async ({
   page,
 }) => {
   await signIn(page, "/accounts/acc_acme");
-  await page.getByText("Restore access", { exact: true }).click();
-  await page.getByLabel("Your name").fill("Pooja");
-  await page
+  const line = page.locator(".key-line").first();
+  await line.getByText("Restore access", { exact: true }).click();
+  await line.getByLabel("Your name").fill("Pooja");
+  await line
     .getByLabel("Reason", { exact: true })
     .fill("Key rotated and account secured.");
-  await page.getByRole("button", { name: "Restore key access" }).click();
+  await line.getByRole("button", { name: "Restore key access" }).click();
   // The key's line stays as confirmation, now muted and active.
   await expect(page.locator(".key-line").first()).toContainText(
     "key_prod_1 active",
@@ -902,15 +913,16 @@ test("inspection drawer traps focus, closes with Escape, and records audited sus
   await expect(drawer).toHaveCount(0);
   await expect(trigger).toBeFocused();
   await trigger.click();
-  await drawer.getByLabel("Review outcome").selectOption("confirm_takeover");
+  const single = await justThisEmail(drawer);
+  await single.getByLabel("Review outcome").selectOption("confirm_takeover");
   await expect(
     drawer.getByText("Affected key:", { exact: false }),
   ).toContainText("key_prod_1");
-  await drawer.getByLabel("Your name").fill("Pooja");
-  await drawer
+  await single.getByLabel("Your name").fill("Pooja");
+  await single
     .getByLabel("Reason", { exact: true })
     .fill("Confirmed account takeover with the owner.");
-  await drawer.getByRole("button", { name: "Record review" }).click();
+  await single.getByRole("button", { name: "Record review" }).click();
   await expect(drawer.locator(".dashboard-toast")).toContainText(
     "Takeover confirmed: key key_prod_1 suspended",
   );
@@ -957,20 +969,21 @@ test("legitimate approval refreshes membership while preserving the original hol
   });
   await row.getByRole("button", { name: /^Inspect / }).click();
   const drawer = page.getByRole("dialog", { name: "acc_acme", exact: true });
-  await drawer.getByLabel("Your name").fill("Pooja");
-  await drawer
+  const single = await justThisEmail(drawer);
+  await single.getByLabel("Your name").fill("Pooja");
+  await single
     .getByLabel("Reason", { exact: true })
     .fill("Confirmed legitimate traffic with the owner.");
   // No outcome is preselected: "Mark legitimate" teaches the baseline, so an
   // unread submit must not record it.
-  const outcome = drawer.getByLabel("Review outcome");
+  const outcome = single.getByLabel("Review outcome");
   await expect(outcome).toHaveValue("");
   await expect(
-    drawer.getByRole("button", { name: "Record review" }),
+    single.getByRole("button", { name: "Record review" }),
   ).toBeDisabled();
   await outcome.selectOption("mark_legitimate");
-  await page.locator(".resolve-warning input").fill("acc_acme");
-  await drawer.getByRole("button", { name: "Record review" }).click();
+  await single.locator(".resolve-warning input").fill("acc_acme");
+  await single.getByRole("button", { name: "Record review" }).click();
   await expect(drawer.locator(".dashboard-toast")).toContainText(
     "Nothing else is open on this account, so it moves to Healthy.",
   );
@@ -1132,13 +1145,14 @@ test("marking legitimate says the suspended key is the step left, and offers it"
   await expect(
     keyLine.getByText("Restore access", { exact: true }),
   ).toBeVisible();
-  await page.getByLabel("Review outcome").selectOption("mark_legitimate");
-  await page.locator(".resolve-warning input").fill("acc_acme");
-  await page.getByLabel("Your name").fill("Pooja");
-  await page
+  const single = await justThisEmail(page);
+  await single.getByLabel("Review outcome").selectOption("mark_legitimate");
+  await single.locator(".resolve-warning input").fill("acc_acme");
+  await single.getByLabel("Your name").fill("Pooja");
+  await single
     .getByLabel("Reason", { exact: true })
     .fill("Owner confirmed the new network.");
-  await page.getByRole("button", { name: "Record review" }).click();
+  await single.getByRole("button", { name: "Record review" }).click();
   // The page refreshes into the labeled state; the key line now says what is left.
   await expect(keyLine).toContainText(
     "Marked legitimate; restore access to finish.",
@@ -1157,13 +1171,14 @@ test("the drawer's review message names the restore, and a restore confirms in p
     .getByRole("button", { name: "Inspect acc_acme", exact: true })
     .click();
   const drawer = page.getByRole("dialog", { name: "acc_acme" });
-  await drawer.getByLabel("Review outcome").selectOption("mark_legitimate");
+  const single = await justThisEmail(drawer);
+  await single.getByLabel("Review outcome").selectOption("mark_legitimate");
   await page.locator(".resolve-warning input").fill("acc_acme");
-  await drawer.getByLabel("Your name").fill("Pooja");
-  await drawer
+  await single.getByLabel("Your name").fill("Pooja");
+  await single
     .getByLabel("Reason", { exact: true })
     .fill("Owner confirmed the new network.");
-  await drawer.getByRole("button", { name: "Record review" }).click();
+  await single.getByRole("button", { name: "Record review" }).click();
   const toast = drawer.locator(".dashboard-toast");
   await expect(toast).toContainText(
     "Key key_prod_1 is still suspended: restore access to finish.",
@@ -1202,11 +1217,12 @@ test("a reviewed account whose key is still suspended reads as a restore, not a 
     .getByRole("button", { name: "Inspect acc_acme", exact: true })
     .click();
   const drawer = page.getByRole("dialog", { name: "acc_acme" });
-  await drawer.getByLabel("Review outcome").selectOption("mark_legitimate");
+  const single = await justThisEmail(drawer);
+  await single.getByLabel("Review outcome").selectOption("mark_legitimate");
   await page.locator(".resolve-warning input").fill("acc_acme");
-  await drawer.getByLabel("Your name").fill("Pooja");
-  await drawer.getByLabel("Reason", { exact: true }).fill("Owner confirmed.");
-  await drawer.getByRole("button", { name: "Record review" }).click();
+  await single.getByLabel("Your name").fill("Pooja");
+  await single.getByLabel("Reason", { exact: true }).fill("Owner confirmed.");
+  await single.getByRole("button", { name: "Record review" }).click();
   await expect(drawer.locator(".dashboard-toast")).toContainText(
     "still suspended",
   );
@@ -1241,7 +1257,6 @@ test("an account's incident resolves in one audited step, keys only on request",
   await expect(card.locator("summary")).toContainText(
     "1 open review · 1 held email · 1 suspended key",
   );
-  await card.locator("summary").click();
   const submit = card.getByRole("button", { name: "Resolve account" });
   await expect(submit).toBeDisabled();
   await card.getByLabel("Legitimate").check();
@@ -1272,7 +1287,6 @@ test("the restore box brings back only the key the resolved reviews suspended", 
 }) => {
   await signIn(page, "/accounts/acc_acme");
   const card = page.locator(".resolve-card", { hasText: "Resolve account" });
-  await card.locator("summary").click();
   await card.getByLabel("Legitimate").check();
   await page.locator(".resolve-warning input").fill("acc_acme");
   await card.getByLabel("Also restore 1 automatically suspended key").check();
@@ -1295,7 +1309,6 @@ test("a resolution is refused when the account's reviews changed since it loaded
 }) => {
   await signIn(page, "/accounts/acc_acme");
   const card = page.locator(".resolve-card", { hasText: "Resolve account" });
-  await card.locator("summary").click();
   await card.getByLabel("Takeover").check();
   await expect(card).toContainText("drops 1 held email");
   await expect(
@@ -1322,7 +1335,6 @@ test("legitimate over takeover evidence needs the account typed, and a wrong cal
   const card = page
     .locator(".resolve-card", { hasText: "Resolve account" })
     .first();
-  await card.locator("summary").click();
   await card.getByLabel("Legitimate").check();
   const warning = card.locator(".resolve-warning");
   await expect(warning).toContainText("young domain");
@@ -1399,15 +1411,16 @@ test("marking one decision legitimate over takeover evidence needs the account t
   await request.post("http://127.0.0.1:3102/__risky-review");
   await signIn(page, `/decisions/${id}`);
   // Nothing to submit until an outcome is chosen.
+  const single = await justThisEmail(page);
   await expect(
-    page.getByRole("button", { name: "Record review" }),
+    single.getByRole("button", { name: "Record review" }),
   ).toBeDisabled();
-  await page.getByLabel("Review outcome").selectOption("mark_legitimate");
-  const warning = page.locator(".resolve-warning");
+  await single.getByLabel("Review outcome").selectOption("mark_legitimate");
+  const warning = single.locator(".resolve-warning");
   await expect(warning).toContainText("young domain");
-  await page.getByLabel("Your name").fill("Pooja");
-  await page.getByLabel("Reason", { exact: true }).fill("Owner says fine.");
-  const submit = page.getByRole("button", { name: "Record review" });
+  await single.getByLabel("Your name").fill("Pooja");
+  await single.getByLabel("Reason", { exact: true }).fill("Owner says fine.");
+  const submit = single.getByRole("button", { name: "Record review" });
   await expect(submit).toBeDisabled();
   await warning.getByLabel(/to confirm it is legitimate/).fill("acc_acme");
   await submit.click();
@@ -1424,10 +1437,11 @@ test("after a confirmed takeover, restoring the key is recovery: typed, with a w
   page,
 }) => {
   await signIn(page, `/decisions/${id}`);
-  await page.getByLabel("Review outcome").selectOption("confirm_takeover");
-  await page.getByLabel("Your name").fill("Pooja");
-  await page.getByLabel("Reason", { exact: true }).fill("Owner said not me.");
-  await page.getByRole("button", { name: "Record review" }).click();
+  const single = await justThisEmail(page);
+  await single.getByLabel("Review outcome").selectOption("confirm_takeover");
+  await single.getByLabel("Your name").fill("Pooja");
+  await single.getByLabel("Reason", { exact: true }).fill("Owner said not me.");
+  await single.getByRole("button", { name: "Record review" }).click();
   await expect(page.locator(".resolved-notice")).toBeVisible();
 
   await page.goto("/accounts/acc_acme");
@@ -1446,4 +1460,30 @@ test("after a confirmed takeover, restoring the key is recovery: typed, with a w
   await line.locator(".resolve-warning input").fill("acc_acme");
   await restore.click();
   await expect(line).toContainText("key_prod_1 active");
+});
+
+test("the decision page leads with the incident; one email is the exception", async ({
+  page,
+}) => {
+  await signIn(page, `/decisions/${id}`);
+  const decide = page.locator(".decision-decide");
+  await expect(decide).toContainText("Resolve this incident");
+  await expect(decide).toContainText(
+    "1 open review · 1 held email · 1 suspended key",
+  );
+  // The per-email review is folded away until asked for.
+  await expect(decide.getByLabel("Review outcome")).toHaveCount(0);
+  await decide.getByLabel("Takeover").check();
+  await decide.getByLabel("Your name").fill("Pooja");
+  await decide
+    .getByLabel("Reason", { exact: true })
+    .fill("New network and young domain.");
+  await decide.getByRole("button", { name: "Resolve account" }).click();
+  await expect(decide.getByRole("status")).toContainText(
+    "Resolved as takeover",
+  );
+  // Nothing open is left: the panel falls back to this email's own state.
+  await page.reload();
+  await expect(decide).not.toContainText("Resolve this incident");
+  await expect(decide).toContainText("Review complete");
 });

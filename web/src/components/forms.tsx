@@ -309,6 +309,77 @@ export function SuspendKeyForm({ keyId }: { keyId: string }) {
   );
 }
 
+// DecidePanel is where a decision is acted on. An analyst judges an incident,
+// not an email: while the account has open reviews, the panel leads with
+// resolving all of them (one audited action that labels each decision
+// underneath), and handling just this email is the exception, folded away for a
+// mixed incident where some stopped emails were the owner's.
+export function DecidePanel({
+  decision,
+  open,
+  initialAction,
+  onDirtyChange,
+  onPendingChange,
+  onSuccess,
+}: {
+  decision: Decision;
+  open?: OpenCounts;
+  initialAction?: "confirm_takeover" | "mark_legitimate";
+  onDirtyChange?: (dirty: boolean) => void;
+  onPendingChange?: (pending: boolean) => void;
+  onSuccess?: (message: string, next?: NextStep[]) => void;
+}) {
+  const [single, setSingle] = useState(Boolean(initialAction));
+  // Once shown, the incident panel stays until the page changes, so resolving
+  // the last review keeps its confirmation instead of swapping the panel out.
+  const [incident] = useState(Boolean(open && open.reviews > 0));
+  const review = (
+    <ReviewForm
+      key={decision.decision_id}
+      decision={decision}
+      initialAction={initialAction}
+      onDirtyChange={onDirtyChange}
+      onPendingChange={onPendingChange}
+      onSuccess={onSuccess}
+    />
+  );
+  if (!open || (!incident && open.reviews === 0)) return review;
+  const plural = (n: number, word: string) =>
+    `${n} ${word}${n === 1 ? "" : "s"}`;
+  return (
+    <div className="incident-decide">
+      <h4>Resolve this incident</h4>
+      <p className="form-help">
+        {[
+          plural(open.reviews, "open review"),
+          open.pending_holds && plural(open.pending_holds, "held email"),
+          open.suspended_keys && plural(open.suspended_keys, "suspended key"),
+        ]
+          .filter(Boolean)
+          .join(" · ")}{" "}
+        on this account, judged together. Each decision is labelled and audited
+        underneath.
+      </p>
+      <ResolveAccountForm
+        accountId={decision.account_id}
+        open={open}
+        onSuccess={onSuccess}
+      />
+      <details
+        className="just-this"
+        open={single}
+        onToggle={(event) => setSingle(event.currentTarget.open)}
+      >
+        <summary>Handle just this email</summary>
+        <p className="form-help">
+          Only for a mixed incident, where some stopped emails were the owner's.
+        </p>
+        {single && review}
+      </details>
+    </div>
+  );
+}
+
 // CorrectionCard undoes a wrong "legitimate": the chosen decisions become
 // takeover, the baseline forgets them and their keys are suspended. Mounted on
 // open, like ResolveCard, so its fields never duplicate another form's.
@@ -430,11 +501,20 @@ export function OwnerForm({ decision }: { decision: Decision }) {
 export function ResolveAccountForm({
   accountId,
   open,
+  onSuccess,
 }: {
   accountId: string;
   open: OpenCounts;
+  onSuccess?: (message: string, next?: NextStep[]) => void;
 }) {
   const [state, action, pending] = useActionState(resolveAccount, {});
+  const handled = useRef<FormState | undefined>(undefined);
+  useEffect(() => {
+    if (state.success && handled.current !== state) {
+      handled.current = state;
+      onSuccess?.(state.success, state.next);
+    }
+  }, [state, onSuccess]);
   const [outcome, setOutcome] = useState<"" | "legitimate" | "takeover">("");
   const [confirm, setConfirm] = useState("");
   const plural = (n: number, word: string) =>

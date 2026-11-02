@@ -3492,6 +3492,12 @@ td strong {
 }
 .resolve-outcome legend {
   margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-family: var(--mono);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
 }
 .resolve-outcome label,
 .restore-keys {
@@ -3502,6 +3508,12 @@ td strong {
   cursor: pointer;
 }
 .resolve-outcome label {
+  margin-top: 0;
+  color: inherit;
+  font-family: inherit;
+  font-size: 13px;
+  text-transform: none;
+  letter-spacing: normal;
   padding: 8px 14px;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -3567,4 +3579,25 @@ td strong {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+.incident-decide h4 {
+  margin: 0 0 4px;
+  font-size: 15px;
+}
+/* The decision page's card has no inner padding of its own; the drawer does. */
+.decision-decide .incident-decide {
+  padding: 0 22px 22px;
+}
+.incident-decide .review-form {
+  padding: 0;
+}
+.just-this {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.just-this > summary {
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--muted);
 }
