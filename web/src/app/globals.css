@@ -3601,3 +3601,59 @@ td strong {
   font-size: 13px;
   color: var(--muted);
 }
+.resolve-list {
+  margin: 4px 0 10px;
+  font-size: 13px;
+}
+.resolve-list > summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+.resolve-list ol {
+  display: grid;
+  gap: 6px;
+  max-height: 280px;
+  margin: 8px 0 0;
+  padding: 0 0 0 18px;
+  overflow-y: auto;
+}
+.resolve-list li {
+  display: grid;
+  gap: 1px;
+}
+.resolve-effects {
+  margin: 4px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.resolve-effects ul {
+  margin: 4px 0 8px;
+  padding-left: 18px;
+}
+.resolve-effects ul:last-child {
+  margin-bottom: 0;
+}
+/* The restore checkbox sits inside .review-form: undo its label and input styles. */
+.review-form .restore-keys {
+  display: inline-flex;
+  margin-top: 4px;
+  color: inherit;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: normal;
+}
+.review-form .restore-keys input {
+  width: 16px;
+  height: 16px;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  flex: none;
+}
+.resolve-list li a {
+  font-size: 13px;
+}

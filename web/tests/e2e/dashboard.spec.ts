@@ -10,6 +10,9 @@ async function justThisEmail(scope: Page | Locator) {
   return section;
 }
 
+// The Resolve button names what it will do once an outcome is chosen.
+const RESOLVE = /^Resolve (account|\d+ reviews? as (legitimate|takeover))$/;
+
 async function signIn(page: Page, path = "/") {
   await page.goto(path);
   await page.getByLabel("Workspace password").fill("dashboard-test-password");
@@ -1029,6 +1032,8 @@ test("polling pauses for review drafts and hidden pages, and keeps the last snap
     .fill("Evidence still being reviewed.");
   const before = await count();
   await page.clock.runFor(31_000);
+  // Real time for a refresh, had one started, to reach the API before counting.
+  await page.waitForTimeout(1_000);
   expect(await count()).toBe(before);
   await expect(drawer.getByLabel("Reason", { exact: true })).toHaveValue(
     "Evidence still being reviewed.",
@@ -1044,6 +1049,7 @@ test("polling pauses for review drafts and hidden pages, and keeps the last snap
   );
   const hiddenCount = await count();
   await page.clock.runFor(31_000);
+  await page.waitForTimeout(1_000);
   expect(await count()).toBe(hiddenCount);
   await page.evaluate(() => {
     Object.defineProperty(document, "visibilityState", {
@@ -1254,14 +1260,17 @@ test("an account's incident resolves in one audited step, keys only on request",
 }) => {
   await signIn(page, "/accounts/acc_acme");
   const card = page.locator(".resolve-card", { hasText: "Resolve account" });
-  await expect(card.locator("summary")).toContainText(
+  await expect(card.locator(":scope > summary")).toContainText(
     "1 open review · 1 held email · 1 suspended key",
   );
-  const submit = card.getByRole("button", { name: "Resolve account" });
+  const submit = card.getByRole("button", { name: RESOLVE });
   await expect(submit).toBeDisabled();
   await card.getByLabel("Legitimate").check();
   await page.locator(".resolve-warning input").fill("acc_acme");
-  await expect(card).toContainText("releases 1 held email");
+  await expect(card).toContainText("Release 1 held email: they will be sent.");
+  await expect(card).toContainText(
+    "Restore key_prod_1: it stays suspended (tick the box to restore).",
+  );
   const restore = card.getByLabel("Also restore 1 automatically suspended key");
   await expect(restore).not.toBeChecked();
   await card.getByLabel("Your name").fill("Pooja");
@@ -1292,7 +1301,7 @@ test("the restore box brings back only the key the resolved reviews suspended", 
   await card.getByLabel("Also restore 1 automatically suspended key").check();
   await card.getByLabel("Your name").fill("Pooja");
   await card.getByLabel("Reason", { exact: true }).fill("Key rotated.");
-  await card.getByRole("button", { name: "Resolve account" }).click();
+  await card.getByRole("button", { name: RESOLVE }).click();
   await expect(card.getByRole("status")).toContainText("restored key_prod_1");
   await page.reload();
   await expect(
@@ -1310,7 +1319,8 @@ test("a resolution is refused when the account's reviews changed since it loaded
   await signIn(page, "/accounts/acc_acme");
   const card = page.locator(".resolve-card", { hasText: "Resolve account" });
   await card.getByLabel("Takeover").check();
-  await expect(card).toContainText("drops 1 held email");
+  await expect(card).toContainText("Drop 1 held email: never sent.");
+  await expect(card).toContainText("Restore any key or release any email.");
   await expect(
     card.getByLabel("Also restore 1 automatically suspended key"),
   ).toHaveCount(0);
@@ -1320,7 +1330,7 @@ test("a resolution is refused when the account's reviews changed since it loaded
     .fill("Confirmed with owner.");
   // The attacker sends again after the page loaded.
   await request.post("http://127.0.0.1:3102/__newer-review");
-  await card.getByRole("button", { name: "Resolve account" }).click();
+  await card.getByRole("button", { name: RESOLVE }).click();
   await expect(card.getByRole("alert")).toContainText(
     "open reviews changed since you loaded it",
   );
@@ -1339,7 +1349,7 @@ test("legitimate over takeover evidence needs the account typed, and a wrong cal
   const warning = card.locator(".resolve-warning");
   await expect(warning).toContainText("young domain");
   await expect(warning).toContainText("docs-share-portal.com");
-  const submit = card.getByRole("button", { name: "Resolve account" });
+  const submit = card.getByRole("button", { name: RESOLVE });
   await card.getByLabel("Also restore 1 automatically suspended key").check();
   await card.getByLabel("Your name").fill("Pooja");
   await card.getByLabel("Reason", { exact: true }).fill("Owner says fine.");
@@ -1478,7 +1488,7 @@ test("the decision page leads with the incident; one email is the exception", as
   await decide
     .getByLabel("Reason", { exact: true })
     .fill("New network and young domain.");
-  await decide.getByRole("button", { name: "Resolve account" }).click();
+  await decide.getByRole("button", { name: RESOLVE }).click();
   await expect(decide.getByRole("status")).toContainText(
     "Resolved as takeover",
   );
@@ -1486,4 +1496,50 @@ test("the decision page leads with the incident; one email is the exception", as
   await page.reload();
   await expect(decide).not.toContainText("Resolve this incident");
   await expect(decide).toContainText("Review complete");
+});
+
+test("resolving spells out what it will and won't do, lists the reviews and names the button", async ({
+  page,
+}) => {
+  await signIn(page, "/accounts/acc_acme");
+  const card = page.locator(".resolve-card", { hasText: "Resolve account" });
+  // The reviews are one click away, each linked to its page.
+  await card.getByText("See the 1 review this resolves").click();
+  await expect(card.locator(".resolve-list li")).toHaveCount(1);
+  await expect(card.locator(".resolve-list")).toContainText(
+    "hold 75 · new asn · email held",
+  );
+  await expect(card.locator(".resolve-list a")).toHaveAttribute(
+    "href",
+    `/decisions/${id}`,
+  );
+  await expect(card).toContainText(
+    "Choose an outcome to see exactly what it will and won't change.",
+  );
+
+  await card.getByLabel("Takeover").check();
+  const effects = card.locator(".resolve-effects");
+  await expect(effects).toContainText("Label 1 review takeover.");
+  await expect(effects).toContainText("Drop 1 held email: never sent.");
+  await expect(effects).toContainText("Suspend key_prod_1 on your authority");
+  await expect(effects).toContainText(
+    "Teach the baseline anything from these emails.",
+  );
+  await expect(
+    card.getByRole("button", { name: "Resolve 1 review as takeover" }),
+  ).toBeVisible();
+
+  await card.getByLabel("Legitimate").check();
+  await expect(effects).toContainText(
+    "Release 1 held email: they will be sent.",
+  );
+  await expect(effects).toContainText(
+    "Restore key_prod_1: it stays suspended (tick the box to restore).",
+  );
+  await card.getByLabel("Also restore 1 automatically suspended key").check();
+  await expect(effects).toContainText("Restore key_prod_1: it can send again.");
+  await expect(effects).not.toContainText("it stays suspended");
+  await expect(
+    card.getByRole("button", { name: "Resolve 1 review as legitimate" }),
+  ).toBeVisible();
 });
