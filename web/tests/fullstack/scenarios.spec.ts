@@ -118,6 +118,20 @@ test("a takeover is resolved in one step: reviews closed, holds dropped, key kep
     status: "suspended",
     reason: "analyst",
   });
+  // The key line treats a restore as recovery: warned and typed.
+  await page.reload();
+  const line = page.locator(".key-line", { hasText: `${account}_key` });
+  await expect(line).toContainText("confirmed takeover");
+  await line.getByText("Restore after recovery", { exact: true }).click();
+  await identity(line, "Checking the guard only.");
+  await expect(
+    line.getByRole("button", { name: "Restore key access" }),
+  ).toBeDisabled();
+  const refused = await request.post(`${API}/v1/keys/${account}_key/unblock`, {
+    headers: ANALYST,
+    data: { actor: "Fullstack", reason: "no confirmation" },
+  });
+  expect(refused.status()).toBe(409);
   // Still in the queue (its key is locked), led by the verdict.
   await page.goto(`/?q=${account}`);
   const row = page.locator("tr", { hasText: account }).first();

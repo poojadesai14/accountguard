@@ -297,6 +297,8 @@ Analyst UI (Next.js) ──server-side, analyst token──▶ analyst API ─�
   takeover** relabels the chosen decisions, removes them from the baseline (the key's network, the domains,
   the event count), suspends their keys and drops held emails; released emails stay sent, and the audit
   log says who corrected what. Any active key can also be **suspended** directly from its key line.
+  After a confirmed takeover, restoring a key is recovery, not cleanup: the key line says "confirmed
+  takeover", and restoring needs the account ID typed (enforced by the API) once the owner has rotated it.
 - **Production version: a case object.** A stored case would group the trigger, its rejections and the
   holds from the same window, so an analyst could resolve one incident on an account that has several.
   Restoring a key after a takeover would require the owner to rotate it, not an analyst click.

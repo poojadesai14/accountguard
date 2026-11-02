@@ -240,18 +240,51 @@ export function ReviewForm({
   );
 }
 
-export function UnblockForm({ keyId }: { keyId: string }) {
+export function UnblockForm({
+  keyId,
+  accountId,
+  takeover = false,
+}: {
+  keyId: string;
+  accountId?: string;
+  /** The account has a confirmed takeover: restoring is recovery, typed. */
+  takeover?: boolean;
+}) {
   const [state, action, pending] = useActionState(unblockKey, {});
+  const [confirm, setConfirm] = useState("");
+  const confirmed = !takeover || confirm.trim() === accountId;
   return (
     <form action={action} className="review-form">
       <input type="hidden" name="key_id" value={keyId} />
+      {takeover && (
+        <div className="resolve-warning" role="note">
+          <strong>This key was locked for a confirmed takeover.</strong>
+          <p>
+            Restore it only after the owner has secured the account and rotated
+            this key; otherwise the attacker can send again.
+          </p>
+          <label>
+            Type <span className="mono">{accountId}</span> to confirm
+            <input
+              name="confirm"
+              autoComplete="off"
+              spellCheck={false}
+              value={confirm}
+              onChange={(event) => setConfirm(event.target.value)}
+            />
+          </label>
+        </div>
+      )}
       <ReviewIdentity />
       <p className="form-help">
         Restoring access allows this key to send again. Confirm the credential
         has been secured before proceeding.
       </p>
       <Feedback state={state} />
-      <button className="button button-secondary" disabled={pending}>
+      <button
+        className="button button-secondary"
+        disabled={pending || !confirmed}
+      >
         {pending ? "Restoring…" : "Restore key access"}
       </button>
     </form>

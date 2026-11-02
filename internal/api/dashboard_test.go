@@ -752,7 +752,7 @@ func TestAnalystAuditFeed(t *testing.T) {
 	ctx := context.Background()
 	decision := dashboardDecision(t, f, dashboardDecisionInput{account: "audit_account", key: "audit_key", action: "flag", score: 45, at: testNow, review: "open"})
 	requireStatus(t, f.action(decision, "confirm_takeover"), 200)
-	requireStatus(t, f.post("/v1/keys/audit_key/unblock", map[string]string{"actor": "reviewer", "reason": "key secured"}), 200)
+	requireStatus(t, f.post("/v1/keys/audit_key/unblock", map[string]string{"confirm": "audit_account", "actor": "reviewer", "reason": "key secured"}), 200)
 	var newestID int64
 	if err := f.server.Store.Pool.QueryRow(ctx, `select max(id) from analyst_actions`).Scan(&newestID); err != nil {
 		t.Fatal(err)

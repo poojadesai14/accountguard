@@ -1419,3 +1419,31 @@ test("marking one decision legitimate over takeover evidence needs the account t
   await page.goto(`/decisions/${id}`);
   await expect(page.locator(".resolve-warning")).toHaveCount(0);
 });
+
+test("after a confirmed takeover, restoring the key is recovery: typed, with a warning", async ({
+  page,
+}) => {
+  await signIn(page, `/decisions/${id}`);
+  await page.getByLabel("Review outcome").selectOption("confirm_takeover");
+  await page.getByLabel("Your name").fill("Pooja");
+  await page.getByLabel("Reason", { exact: true }).fill("Owner said not me.");
+  await page.getByRole("button", { name: "Record review" }).click();
+  await expect(page.locator(".resolved-notice")).toBeVisible();
+
+  await page.goto("/accounts/acc_acme");
+  const line = page.locator(".key-line").first();
+  await expect(line).toContainText("key_prod_1 suspended · confirmed takeover");
+  await line.getByText("Restore after recovery", { exact: true }).click();
+  await expect(line.locator(".resolve-warning")).toContainText(
+    "locked for a confirmed takeover",
+  );
+  await line.getByLabel("Your name").fill("Pooja");
+  await line
+    .getByLabel("Reason", { exact: true })
+    .fill("Owner rotated the key.");
+  const restore = line.getByRole("button", { name: "Restore key access" });
+  await expect(restore).toBeDisabled();
+  await line.locator(".resolve-warning input").fill("acc_acme");
+  await restore.click();
+  await expect(line).toContainText("key_prod_1 active");
+});

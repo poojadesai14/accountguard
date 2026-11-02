@@ -501,7 +501,12 @@ func TestAnalystReleaseConfirmAndUnblock(t *testing.T) {
 			requireStatus(t, f.action(selected.DecisionID, tt.action), 409)
 			if tt.restoreKey {
 				f.ingest(f.email(testNow.Add(time.Minute), 16509, "stripe.com"), "block")
-				requireStatus(t, f.post("/v1/keys/key/unblock", actionRequest{Actor: "reviewer", Reason: "owner rotated key"}), 200)
+				if tt.action == "confirm_takeover" {
+					// After a confirmed takeover, restoring needs the account ID typed.
+					requireStatus(t, f.post("/v1/keys/key/unblock", actionRequest{Actor: "reviewer", Reason: "owner rotated key"}), 409)
+					requireStatus(t, f.post("/v1/keys/key/unblock", actionRequest{Confirm: "someone_else", Actor: "reviewer", Reason: "owner rotated key"}), 409)
+				}
+				requireStatus(t, f.post("/v1/keys/key/unblock", actionRequest{Confirm: "account", Actor: "reviewer", Reason: "owner rotated key"}), 200)
 				f.ingest(f.email(testNow.Add(2*time.Minute), 16509, "stripe.com"), "allow")
 				requireStatus(t, f.post("/v1/keys/key/unblock", actionRequest{Actor: "reviewer", Reason: "again"}), 409)
 			}

@@ -163,7 +163,7 @@ export async function unblockKey(
   if (fields.error) return { error: fields.error };
   const result = await analystApi(
     `/v1/keys/${encodeURIComponent(id)}/unblock`,
-    { actor: fields.actor, reason: fields.reason },
+    { ...confirmField(form), actor: fields.actor, reason: fields.reason },
   );
   if (result.error) return { error: result.error };
   revalidatePath("/", "layout");

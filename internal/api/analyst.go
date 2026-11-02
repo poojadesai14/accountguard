@@ -283,7 +283,7 @@ func (s *Server) postUnblock(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &req) || !requireActor(w, req) {
 		return
 	}
-	err := s.Service.UnblockKey(r.Context(), r.PathValue("key_id"), req.Actor, req.Reason)
+	err := s.Service.UnblockKey(r.Context(), r.PathValue("key_id"), req.Confirm, req.Actor, req.Reason)
 	respond(w, map[string]string{"api_key_id": r.PathValue("key_id"), "status": "active"}, err)
 }
 
