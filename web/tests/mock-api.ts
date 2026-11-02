@@ -494,6 +494,15 @@ createServer(async (req, res) => {
         keys_suspended: ["key_prod_1"],
       });
     }
+    if (
+      url.pathname.endsWith("/unblock") &&
+      detail.decision.label === "takeover" &&
+      body.confirm !== "acc_acme"
+    )
+      return reply(409, {
+        error:
+          "this key was locked for a confirmed takeover: type the account ID to confirm the owner has secured the account and rotated credentials",
+      });
     if (url.pathname.endsWith("/unblock")) {
       suspended = false;
       return reply(200, { status: "active" });
@@ -775,6 +784,7 @@ createServer(async (req, res) => {
           account_id: "acc_acme",
           status: suspended ? "suspended" : "active",
           reason: "auto",
+          takeover: detail.decision.label === "takeover",
           decision_id: decisionId,
           updated_at: hours[11],
         },

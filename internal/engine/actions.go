@@ -285,9 +285,18 @@ func suspendForTakeover(ctx context.Context, tx pgx.Tx, accountID string, keyDec
 	return keys, nil
 }
 
-// UnblockKey reverses a suspension.
-func (s *Service) UnblockKey(ctx context.Context, apiKeyID, actor, reason string) error {
+// UnblockKey reverses a suspension. On an account with a confirmed takeover it
+// also needs confirm to equal the account ID: restoring there is recovery, after
+// the owner has secured the account and rotated credentials, not cleanup.
+func (s *Service) UnblockKey(ctx context.Context, apiKeyID, confirm, actor, reason string) error {
 	return pgx.BeginFunc(ctx, s.Store.Pool, func(tx pgx.Tx) error {
+		accountID, takeover, found, err := store.KeyTakeover(ctx, tx, apiKeyID)
+		if err != nil {
+			return err
+		}
+		if found && takeover && confirm != accountID {
+			return conflict("this key was locked for a confirmed takeover: type the account ID to confirm the owner has secured the account and rotated credentials")
+		}
 		wasSuspended, found, err := store.ActivateKey(ctx, tx, apiKeyID)
 		switch {
 		case err != nil:

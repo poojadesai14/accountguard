@@ -77,13 +77,13 @@ func TestConfirmTakeoverSuspendsKeyAndDropsHolds(t *testing.T) {
 			if _, err := f.svc.ApplyAction(ctx, holds[0].DecisionID, ActConfirmTakeover, "", "pooja", "again"); !isConflict(err) {
 				t.Errorf("repeated confirmation error = %v, want conflict", err)
 			}
-			if err := f.svc.UnblockKey(ctx, f.account+"_key", "pooja", "owner rotated key"); err != nil {
+			if err := f.svc.UnblockKey(ctx, f.account+"_key", f.account, "pooja", "owner rotated key"); err != nil {
 				t.Fatal(err)
 			}
 			if got := f.handle(f.send(at.Add(time.Minute), 16509, "stripe.com")); got.Action != "allow" {
 				t.Errorf("after restoring access = %s, want allow", got.Action)
 			}
-			if err := f.svc.UnblockKey(ctx, f.account+"_key", "pooja", "again"); !isConflict(err) {
+			if err := f.svc.UnblockKey(ctx, f.account+"_key", f.account, "pooja", "again"); !isConflict(err) {
 				t.Errorf("restoring active key error = %v, want conflict", err)
 			}
 		})
@@ -201,7 +201,7 @@ func TestActionMissingResources(t *testing.T) {
 			ctx := context.Background()
 			var err error
 			if tt.resource == "key" {
-				err = f.svc.UnblockKey(ctx, "no_such_key", "pooja", "reviewed evidence")
+				err = f.svc.UnblockKey(ctx, "no_such_key", "", "pooja", "reviewed evidence")
 			} else {
 				_, err = f.svc.ApplyAction(ctx, "00000000-0000-0000-0000-000000000000", ActReleaseHold, "", "pooja", "reviewed evidence")
 			}

@@ -60,6 +60,8 @@ export type KeyStatus = {
   reason: string;
   decision_id: string | null;
   updated_at: string;
+  /** The account has a confirmed takeover: restoring needs the account ID typed. */
+  takeover?: boolean;
 };
 export type OpenCounts = {
   reviews: number;

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -243,11 +244,27 @@ type KeyStatus struct {
 	Reason     string    `json:"reason" db:"reason"`
 	DecisionID *string   `json:"decision_id" db:"decision_id"`
 	UpdatedAt  time.Time `json:"updated_at" db:"updated_at"`
+	// The account has a confirmed takeover: restoring needs the account ID typed.
+	Takeover bool `json:"takeover" db:"takeover"`
+}
+
+// takeoverOnAccount: any decision on the key_status row's account is labelled takeover.
+const takeoverOnAccount = `exists (select 1 from decisions t where t.account_id = key_status.account_id and t.label = 'takeover')`
+
+// KeyTakeover finds a key's account and whether that account has a confirmed takeover.
+func KeyTakeover(ctx context.Context, db DBTX, apiKeyID string) (accountID string, takeover, found bool, err error) {
+	err = db.QueryRow(ctx, `select account_id, `+takeoverOnAccount+` from key_status where api_key_id = $1`, apiKeyID).
+		Scan(&accountID, &takeover)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, false, nil
+	}
+	return accountID, takeover, err == nil, err
 }
 
 func KeyStatuses(ctx context.Context, db DBTX, accountID string) ([]KeyStatus, error) {
 	rows, err := db.Query(ctx, `
-		select api_key_id, account_id, status, reason, decision_id::text as decision_id, updated_at
+		select api_key_id, account_id, status, reason, decision_id::text as decision_id, updated_at,
+			`+takeoverOnAccount+` as takeover
 		from key_status where account_id = $1 order by updated_at desc`, accountID)
 	if err != nil {
 		return nil, err

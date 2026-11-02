@@ -26,22 +26,26 @@ export function KeyLine({
   const [mode, setMode] = useState<"restore" | "suspend" | null>(
     initiallyOpen && suspended ? "restore" : null,
   );
+  // After a confirmed takeover, restoring is recovery, not a routine step.
+  const locked = suspended && key.takeover;
+  const restoreLabel = locked ? "Restore after recovery" : "Restore access";
   const summary =
     mode === "restore"
       ? suspended
-        ? "Restore access"
+        ? restoreLabel
         : "Restored"
       : mode === "suspend"
         ? suspended
           ? "Suspended"
           : "Suspend key"
         : suspended
-          ? "Restore access"
+          ? restoreLabel
           : "Suspend key";
   return (
     <div className="key-line">
       <span className={suspended ? "suspended-state" : "muted"}>
         <span className="mono">{key.api_key_id}</span> {key.status}
+        {locked && " · confirmed takeover"}
       </span>
       {key.updated_at && (
         <span className="muted">
@@ -60,7 +64,13 @@ export function KeyLine({
         }
       >
         <summary>{summary}</summary>
-        {mode === "restore" && <UnblockForm keyId={key.api_key_id} />}
+        {mode === "restore" && (
+          <UnblockForm
+            keyId={key.api_key_id}
+            accountId={key.account_id}
+            takeover={Boolean(key.takeover)}
+          />
+        )}
         {mode === "suspend" && <SuspendKeyForm keyId={key.api_key_id} />}
       </details>
     </div>
