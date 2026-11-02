@@ -238,7 +238,7 @@ test("a wrong legitimate call is corrected: relabelled, unlearned and re-locked"
   ).toHaveCount(0);
 });
 
-test("one decision at a time: the review says what's left and links to it", async ({
+test("from a decision: resolve, then follow the link to restore the key and reach Healthy", async ({
   page,
   request,
 }) => {
@@ -246,37 +246,30 @@ test("one decision at a time: the review says what's left and links to it", asyn
   // The key row's decision is the block that suspended it.
   const [keyRow] = await rows(request, `view=keys&q=${account}`);
   await signIn(page, `/decisions/${keyRow.decision_id}`);
-  // The incident leads; this scenario takes the one-email path on purpose.
-  await expect(page.locator(".decision-decide")).toContainText(
-    "Resolve this incident",
+  // One action for the incident, led by the deadline for its held emails.
+  const decide = page.locator(".incident-decide");
+  await expect(decide).toContainText("Resolve this incident");
+  await expect(decide.locator(".incident-deadline")).toContainText("Decide by");
+  await expect(page.locator(".just-this")).toHaveCount(0);
+  await decide.getByLabel("Legitimate").check();
+  await decide.locator(".resolve-warning").getByRole("textbox").fill(account);
+  await identity(decide, "Owner confirmed the new vendor.");
+  await decide.getByRole("button", { name: RESOLVE }).click();
+  // Resolved without restoring: the message names the key left and links to it.
+  await expect(decide.getByRole("status")).toContainText(
+    `${account}_key is still suspended: restore access to finish.`,
   );
-  const single = page.locator(".just-this");
-  await single.locator("summary").click();
-  await single.getByLabel("Review outcome").selectOption("mark_legitimate");
-  await single.locator(".resolve-warning").getByRole("textbox").fill(account);
-  await identity(single, "Owner confirmed this send.");
-  await single.getByRole("button", { name: "Record review" }).click();
-  const feedback = page
-    .getByRole("status")
-    .filter({ hasText: "Marked legitimate" });
-  await expect(feedback).toContainText("still open on this account");
-  await expect(feedback).toContainText(`Key ${account}_key is still suspended`);
-
-  await page.getByRole("link", { name: "Resolve the rest" }).click();
-  await expect(page).toHaveURL(new RegExp(`/accounts/${account}\\?resolve=1`));
-  // The real API names what the key was stopped for, before any restore.
-  await expect(
-    page.locator(".key-line", { hasText: `${account}_key` }),
-  ).toContainText("stopped for young domain");
-  const card = resolveCard(page);
-  await card.getByLabel("Legitimate").check();
-  await card.getByLabel("Also restore 1 automatically suspended key").check();
-  await card.locator(".resolve-warning").getByRole("textbox").fill(account);
-  await identity(card, "Same vendor, rest of the batch.");
-  await card.getByRole("button", { name: RESOLVE }).click();
-  await expect(card.getByRole("status")).toContainText(
-    `restored ${account}_key`,
+  await page.getByRole("link", { name: `Restore ${account}_key` }).click();
+  await expect(page).toHaveURL(
+    new RegExp(`/accounts/${account}\\?restore=${account}_key`),
   );
+  // The real API names what the key was stopped for; restoring it is typed.
+  const line = page.locator(".key-line", { hasText: `${account}_key` });
+  await expect(line).toContainText("stopped for young domain");
+  await identity(line, "Owner rotated the key.");
+  await line.locator(".resolve-warning").getByRole("textbox").fill(account);
+  await line.getByRole("button", { name: "Restore key access" }).click();
+  await expect(line).toContainText(`${account}_key active`);
   const healthy = (
     await rows(request, `view=healthy&segment=baseline&q=${account}`)
   ).map((r) => r.account_id);

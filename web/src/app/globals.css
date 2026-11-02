@@ -3591,16 +3591,6 @@ td strong {
 .incident-decide .review-form {
   padding: 0;
 }
-.just-this {
-  margin-top: 18px;
-  padding-top: 14px;
-  border-top: 1px solid var(--line);
-}
-.just-this > summary {
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--muted);
-}
 .resolve-list {
   margin: 4px 0 10px;
   font-size: 13px;
@@ -3656,4 +3646,26 @@ td strong {
 }
 .resolve-list li a {
   font-size: 13px;
+}
+.incident-deadline {
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+.incident-deadline.urgent strong {
+  color: var(--block);
+}
+.required {
+  color: var(--block);
+}
+
+/* A field's label with its required marker beside it, outside the label so
+   the accessible name stays the field's own. */
+.field-label {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.field-label label {
+  margin-top: 0 !important;
 }

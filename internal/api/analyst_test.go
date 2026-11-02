@@ -873,13 +873,33 @@ func TestScoringTimeoutRollsBackAndCanBeRetried(t *testing.T) {
 
 func TestConfigEndpoint(t *testing.T) {
 	f := newAPIFixture(t)
-	requireStatus(t, request(t, f.handler, "GET", "/v1/config", testIngestToken, nil), http.StatusUnauthorized)
-	got := decodeResponse[struct {
+	type config struct {
 		Mode          string     `json:"mode"`
 		ConfigVersion string     `json:"config_version"`
 		Thresholds    Thresholds `json:"thresholds"`
-	}](t, f.get("/v1/config"))
-	if got.Mode != f.server.Config.Mode || got.ConfigVersion != f.server.Config.Version || !reflect.DeepEqual(got.Thresholds, f.server.thresholds()) {
-		t.Errorf("config = %+v, want the server's mode, version and thresholds", got)
+	}
+	tests := []struct {
+		name       string
+		token      string
+		wantStatus int
+		wantConfig bool
+	}{
+		{name: "ingest token is refused", token: testIngestToken, wantStatus: http.StatusUnauthorized},
+		{name: "no token is refused", token: "", wantStatus: http.StatusUnauthorized},
+		{name: "analyst token reads mode, version and thresholds", token: testAnalystToken, wantStatus: http.StatusOK, wantConfig: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			w := request(t, f.handler, "GET", "/v1/config", tt.token, nil)
+			requireStatus(t, w, tt.wantStatus)
+			if !tt.wantConfig {
+				return
+			}
+			got := decodeResponse[config](t, w)
+			want := config{Mode: f.server.Config.Mode, ConfigVersion: f.server.Config.Version, Thresholds: f.server.thresholds()}
+			if !reflect.DeepEqual(got, want) {
+				t.Errorf("config = %+v, want %+v", got, want)
+			}
+		})
 	}
 }

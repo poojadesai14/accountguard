@@ -185,13 +185,23 @@ func TestServiceTakeoverHoldsThenBlocksAndDoesNotLearn(t *testing.T) {
 func TestServiceOpensReviewsOnlyForHoldAndBlock(t *testing.T) {
 	f := newFixture(t)
 	at := f.history(now.AddDate(0, 0, -5))
-	flag := f.handle(f.send(at, 14061, "stripe.com"))
-	if flag.Action != "flag" || flag.ReviewStatus != "none" {
-		t.Errorf("new ASN alone = %s/%s, want flag/none", flag.Action, flag.ReviewStatus)
+	tests := []struct {
+		name       string
+		asn        int
+		domain     string
+		wantAction string
+		wantReview string
+	}{
+		{name: "a new ASN alone flags without a review", asn: 14061, domain: "stripe.com", wantAction: "flag", wantReview: "none"},
+		{name: "a new ASN and a new domain hold with a review", asn: 14061, domain: "invoice-portal.net", wantAction: "hold", wantReview: "open"},
 	}
-	hold := f.handle(f.send(at.Add(time.Second), 14061, "invoice-portal.net"))
-	if hold.Action != "hold" || hold.ReviewStatus != "open" {
-		t.Errorf("new ASN and new domain = %s/%s, want hold/open", hold.Action, hold.ReviewStatus)
+	for i, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			d := f.handle(f.send(at.Add(time.Duration(i)*time.Second), tt.asn, tt.domain))
+			if d.Action != tt.wantAction || d.ReviewStatus != tt.wantReview {
+				t.Errorf("decision = %s/%s, want %s/%s", d.Action, d.ReviewStatus, tt.wantAction, tt.wantReview)
+			}
+		})
 	}
 }
 func TestServiceRecordsAccountChangeEvenWhenNotAllowed(t *testing.T) {

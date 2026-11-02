@@ -12,7 +12,7 @@ import {
   suspendKey,
   unblockKey,
 } from "@/app/actions";
-import { riskyHits } from "@/lib/decisions";
+import { holdCountdown, riskyHits } from "@/lib/decisions";
 import { dateTime, humanize } from "@/lib/format";
 import type { FormState, NextStep } from "@/lib/review";
 import type { Decision, OpenCounts, ReviewedDecision } from "@/lib/types";
@@ -77,11 +77,37 @@ export function LoginForm({ next }: { next: string }) {
   );
 }
 
+// Required marks a field as needed to submit; screen readers get the input's own
+// required state instead of the asterisk.
+function Required() {
+  return (
+    <span className="required" aria-hidden="true">
+      {" "}
+      *
+    </span>
+  );
+}
+
+// The analyst's name is remembered in this browser, so it isn't retyped on every
+// action; the reason is always written fresh, since it is the audit trail.
+const ANALYST_NAME = "ato.analyst-name";
+
 function ReviewIdentity() {
   const id = useId();
+  const [name, setName] = useState("");
+  useEffect(() => {
+    try {
+      setName(window.localStorage.getItem(ANALYST_NAME) ?? "");
+    } catch {
+      // Storage unavailable: the field simply starts empty.
+    }
+  }, []);
   return (
     <>
-      <label htmlFor={`${id}-actor`}>Your name</label>
+      <span className="field-label">
+        <label htmlFor={`${id}-actor`}>Your name</label>
+        <Required />
+      </span>
       <input
         id={`${id}-actor`}
         name="actor"
@@ -89,8 +115,20 @@ function ReviewIdentity() {
         placeholder="Who is reviewing this?"
         required
         maxLength={100}
+        value={name}
+        onChange={(event) => {
+          setName(event.target.value);
+          try {
+            window.localStorage.setItem(ANALYST_NAME, event.target.value);
+          } catch {
+            // Not remembered; still submitted.
+          }
+        }}
       />
-      <label htmlFor={`${id}-reason`}>Reason</label>
+      <span className="field-label">
+        <label htmlFor={`${id}-reason`}>Reason</label>
+        <Required />
+      </span>
       <textarea
         id={`${id}-reason`}
         name="reason"
@@ -335,10 +373,9 @@ export function SuspendKeyForm({ keyId }: { keyId: string }) {
 }
 
 // DecidePanel is where a decision is acted on. An analyst judges an incident,
-// not an email: while the account has open reviews, the panel leads with
-// resolving all of them (one audited action that labels each decision
-// underneath), and handling just this email is the exception, folded away for a
-// mixed incident where some stopped emails were the owner's.
+// not an email: while the account has open reviews, the only action is resolving
+// all of them (one audited action that labels each decision underneath), led by
+// the deadline that matters. With nothing open, the email's own state shows.
 export function DecidePanel({
   decision,
   open,
@@ -354,26 +391,26 @@ export function DecidePanel({
   onPendingChange?: (pending: boolean) => void;
   onSuccess?: (message: string, next?: NextStep[]) => void;
 }) {
-  const [single, setSingle] = useState(Boolean(initialAction));
   // Once shown, the incident panel stays until the page changes, so resolving
   // the last review keeps its confirmation instead of swapping the panel out.
   const [incident] = useState(Boolean(open && open.reviews > 0));
-  const review = (
-    <ReviewForm
-      key={decision.decision_id}
-      decision={decision}
-      initialAction={initialAction}
-      onDirtyChange={onDirtyChange}
-      onPendingChange={onPendingChange}
-      onSuccess={onSuccess}
-    />
-  );
-  if (!open || (!incident && open.reviews === 0)) return review;
+  if (!open || (!incident && open.reviews === 0))
+    return (
+      <ReviewForm
+        key={decision.decision_id}
+        decision={decision}
+        initialAction={initialAction}
+        onDirtyChange={onDirtyChange}
+        onPendingChange={onPendingChange}
+        onSuccess={onSuccess}
+      />
+    );
   const plural = (n: number, word: string) =>
     `${n} ${word}${n === 1 ? "" : "s"}`;
   return (
     <div className="incident-decide">
       <h4>Resolve this incident</h4>
+      <Deadline open={open} />
       <p className="form-help">
         {[
           plural(open.reviews, "open review"),
@@ -382,28 +419,50 @@ export function DecidePanel({
         ]
           .filter(Boolean)
           .join(" · ")}{" "}
-        on this account, judged together. Each decision is labelled and audited
-        underneath.
+        on this account, decided together.
       </p>
       <ResolveAccountForm
         accountId={decision.account_id}
         open={open}
+        initialOutcome={
+          initialAction === "confirm_takeover"
+            ? "takeover"
+            : initialAction === "mark_legitimate"
+              ? "legitimate"
+              : ""
+        }
         onSuccess={onSuccess}
         onDirtyChange={onDirtyChange}
         onPendingChange={onPendingChange}
       />
-      <details
-        className="just-this"
-        open={single}
-        onToggle={(event) => setSingle(event.currentTarget.open)}
-      >
-        <summary>Handle just this email</summary>
-        <p className="form-help">
-          Only for a mixed incident, where some stopped emails were the owner's.
-        </p>
-        {single && review}
-      </details>
     </div>
+  );
+}
+
+// Deadline is the one time-bound fact: held emails are dropped automatically
+// when their hold expires. The countdown is computed after mount, so the server
+// and browser render the same text first.
+function Deadline({ open }: { open: OpenCounts }) {
+  const [now, setNow] = useState<string | null>(null);
+  useEffect(() => {
+    setNow(new Date().toISOString());
+    const timer = setInterval(() => setNow(new Date().toISOString()), 60_000);
+    return () => clearInterval(timer);
+  }, []);
+  if (!open.holds_expire_at || !open.pending_holds) return null;
+  const countdown = now ? holdCountdown(open.holds_expire_at, now) : null;
+  return (
+    <p
+      className={`incident-deadline${countdown?.urgent ? " urgent" : ""}`}
+      role="note"
+    >
+      <strong>Decide by {dateTime(open.holds_expire_at)}</strong>
+      {countdown ? ` (${countdown.text.toLowerCase()})` : ""}:{" "}
+      {open.pending_holds === 1
+        ? "the held email is dropped"
+        : `the first of ${open.pending_holds} held emails is dropped`}{" "}
+      automatically then.
+    </p>
   );
 }
 
@@ -528,12 +587,15 @@ export function OwnerForm({ decision }: { decision: Decision }) {
 export function ResolveAccountForm({
   accountId,
   open,
+  initialOutcome = "",
   onSuccess,
   onDirtyChange,
   onPendingChange,
 }: {
   accountId: string;
   open: OpenCounts;
+  /** Preselected from the queue's review shortcut; still needs confirming. */
+  initialOutcome?: "" | "legitimate" | "takeover";
   onSuccess?: (message: string, next?: NextStep[]) => void;
   /** Like ReviewForm: a draft in progress pauses the dashboard's polling. */
   onDirtyChange?: (dirty: boolean) => void;
@@ -558,7 +620,9 @@ export function ResolveAccountForm({
     },
     [onDirtyChange, onPendingChange],
   );
-  const [outcome, setOutcome] = useState<"" | "legitimate" | "takeover">("");
+  const [outcome, setOutcome] = useState<"" | "legitimate" | "takeover">(
+    initialOutcome,
+  );
   const [confirm, setConfirm] = useState("");
   const plural = (n: number, word: string) =>
     `${n} ${word}${n === 1 ? "" : "s"}`;
@@ -633,7 +697,9 @@ export function ResolveAccountForm({
                 </Link>
                 <span>
                   {humanize(r.action)} {r.score} · {humanize(r.primary_driver)}
-                  {r.hold_status === "pending" ? " · email held" : ""}
+                  {r.hold_status === "pending"
+                    ? ` · email held${r.hold_expires_at ? `, dropped ${dateTime(r.hold_expires_at)}` : ""}`
+                    : ""}
                 </span>
                 <small className="muted">
                   {r.api_key_id ?? "no key"}
@@ -645,7 +711,10 @@ export function ResolveAccountForm({
         </details>
       )}
       <fieldset className="resolve-outcome">
-        <legend>Outcome</legend>
+        <legend>
+          Outcome
+          <Required />
+        </legend>
         {(
           [
             ["legitimate", "Legitimate"],

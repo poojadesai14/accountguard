@@ -849,27 +849,47 @@ func TestDashboardKeyAndHoldDetails(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	keys := decodeResponse[store.Dashboard](t, f.get("/v1/dashboard?view=keys"))
-	if len(keys.Items) != 1 || keys.Items[0].DecisionID == nil || *keys.Items[0].DecisionID != trigger {
-		t.Fatalf("keys view = %+v, want key_t with its triggering decision %s", keys.Items, trigger)
+	tests := []struct {
+		name         string
+		query        string
+		wantDecision string
+		check        func(t *testing.T, row store.DashboardAccount)
+	}{
+		{
+			name:         "a key row shows the decision that suspended it, by whom and when",
+			query:        "view=keys",
+			wantDecision: trigger,
+			check: func(t *testing.T, k store.DashboardAccount) {
+				if k.KeySuspendedBy == nil || *k.KeySuspendedBy != "auto" || k.KeySuspendedAt == nil {
+					t.Errorf("suspension = %v at %v, want auto with a time", k.KeySuspendedBy, k.KeySuspendedAt)
+				}
+			},
+		},
+		{
+			name:         "a held row shows its expiry, its event type and its restored key as active",
+			query:        "view=holds",
+			wantDecision: held,
+			check: func(t *testing.T, h store.DashboardAccount) {
+				if h.HoldExpiresAt == nil || !h.HoldExpiresAt.Equal(testNow.Add(2*time.Minute+24*time.Hour)) {
+					t.Errorf("hold expires at %v, want 24 h after the held event", h.HoldExpiresAt)
+				}
+				if h.EventType == nil || *h.EventType != "email.send" {
+					t.Errorf("event type = %v, want email.send", h.EventType)
+				}
+				if h.KeyStatus == nil || *h.KeyStatus != "active" || h.KeySuspendedBy != nil || h.KeySuspendedAt != nil {
+					t.Errorf("restored key = status %v, suspended by %v at %v; want active with no suspension details", h.KeyStatus, h.KeySuspendedBy, h.KeySuspendedAt)
+				}
+			},
+		},
 	}
-	if k := keys.Items[0]; k.KeySuspendedBy == nil || *k.KeySuspendedBy != "auto" || k.KeySuspendedAt == nil {
-		t.Errorf("key_t suspension = %v at %v, want auto with a time", k.KeySuspendedBy, k.KeySuspendedAt)
-	}
-
-	holds := decodeResponse[store.Dashboard](t, f.get("/v1/dashboard?view=holds"))
-	if len(holds.Items) != 1 || *holds.Items[0].DecisionID != held {
-		t.Fatalf("holds view = %+v, want the held decision %s", holds.Items, held)
-	}
-	h := holds.Items[0]
-	if h.HoldExpiresAt == nil || !h.HoldExpiresAt.Equal(testNow.Add(2*time.Minute+24*time.Hour)) {
-		t.Errorf("hold expires at %v, want 24 h after the held event", h.HoldExpiresAt)
-	}
-	if h.EventType == nil || *h.EventType != "email.send" {
-		t.Errorf("held row event type = %v, want email.send", h.EventType)
-	}
-	if h.KeyStatus == nil || *h.KeyStatus != "active" || h.KeySuspendedBy != nil || h.KeySuspendedAt != nil {
-		t.Errorf("restored key = status %v, suspended by %v at %v; want active with no suspension details", h.KeyStatus, h.KeySuspendedBy, h.KeySuspendedAt)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			items := decodeResponse[store.Dashboard](t, f.get("/v1/dashboard?"+tt.query)).Items
+			if len(items) != 1 || items[0].DecisionID == nil || *items[0].DecisionID != tt.wantDecision {
+				t.Fatalf("%s = %+v, want one row for decision %s", tt.query, items, tt.wantDecision)
+			}
+			tt.check(t, items[0])
+		})
 	}
 }
 
@@ -925,36 +945,52 @@ func TestDashboardRejectionsAfterResolution(t *testing.T) {
 	scored := dashboardDecision(t, f, dashboardDecisionInput{account: "owner_susp", key: "key_o1", action: "block", score: 60, at: testNow, review: "open"})
 	dashboardDecision(t, f, dashboardDecisionInput{account: "owner_susp", key: "key_o1", action: "block", score: 80, at: testNow.Add(time.Minute), review: "open", reason: strp("key_suspended")})
 	ctx := context.Background()
-	for _, k := range [][2]string{{"key_c1", "confirmed"}, {"key_r1", "only_rejected"}, {"key_o1", "owner_susp"}} {
-		reason := "auto"
-		if k[0] == "key_o1" {
-			reason = "owner"
-		}
-		if _, err := f.server.Store.Pool.Exec(ctx, `insert into key_status(api_key_id,account_id,status,reason) values($1,$2,'suspended',$3)`, k[0], k[1], reason); err != nil {
+	for _, k := range []struct{ key, account, reason string }{
+		{"key_c1", "confirmed", "auto"}, {"key_r1", "only_rejected", "auto"}, {"key_o1", "owner_susp", "owner"},
+	} {
+		if _, err := f.server.Store.Pool.Exec(ctx, `insert into key_status(api_key_id,account_id,status,reason) values($1,$2,'suspended',$3)`, k.key, k.account, k.reason); err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	rows := map[string]store.DashboardAccount{}
-	for _, item := range decodeResponse[store.Dashboard](t, f.get("/v1/dashboard")).Items {
-		rows[item.AccountID] = item
+	tests := []struct {
+		name         string
+		query        string
+		row          string // account, or API key in the keys view
+		wantDecision string // empty: not checked
+		wantDriver   string // empty: not checked
+		wantTotal    int    // -1: not checked
+	}{
+		{name: "a confirmed account is shown by its resolved trigger, not a later rejection", query: "", row: "confirmed", wantDecision: trigger, wantDriver: "new_asn", wantTotal: -1},
+		{name: "an account with only a rejection is labelled as one", query: "", row: "only_rejected", wantDriver: "key_suspended", wantTotal: -1},
+		{name: "searching key suspended finds the rejection-only account", query: "q=" + url.QueryEscape("key suspended"), wantTotal: 1},
+		{name: "an owner-suspended key row is its scored block, not the later rejection", query: "view=keys", row: "key_o1", wantDecision: scored, wantTotal: -1},
 	}
-	if r := rows["confirmed"]; r.DecisionID == nil || *r.DecisionID != trigger || r.PrimaryDriver != "new_asn" {
-		t.Errorf("confirmed account row = %v / %q, want the resolved trigger %s driven by new_asn", r.DecisionID, r.PrimaryDriver, trigger)
-	}
-	if r := rows["only_rejected"]; r.PrimaryDriver != "key_suspended" {
-		t.Errorf("rejection-only row driver = %q, want key_suspended rather than its hits", r.PrimaryDriver)
-	}
-	if got := decodeResponse[store.Dashboard](t, f.get("/v1/dashboard?q="+url.QueryEscape("key suspended"))); got.Total != 1 {
-		t.Errorf(`search "key suspended" matched %d accounts, want 1`, got.Total)
-	}
-
-	keys := map[string]store.DashboardAccount{}
-	for _, item := range decodeResponse[store.Dashboard](t, f.get("/v1/dashboard?view=keys")).Items {
-		keys[*item.APIKeyID] = item
-	}
-	if k := keys["key_o1"]; k.DecisionID == nil || *k.DecisionID != scored {
-		t.Errorf("owner-suspended key row = %v, want the scored block %s, not the later rejection", k.DecisionID, scored)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := decodeResponse[store.Dashboard](t, f.get("/v1/dashboard?"+tt.query))
+			if tt.wantTotal >= 0 && got.Total != tt.wantTotal {
+				t.Errorf("total = %d, want %d", got.Total, tt.wantTotal)
+			}
+			if tt.row == "" {
+				return
+			}
+			var row *store.DashboardAccount
+			for i, item := range got.Items {
+				if item.AccountID == tt.row || (item.APIKeyID != nil && *item.APIKeyID == tt.row) {
+					row = &got.Items[i]
+				}
+			}
+			if row == nil {
+				t.Fatalf("no row for %s", tt.row)
+			}
+			if tt.wantDecision != "" && (row.DecisionID == nil || *row.DecisionID != tt.wantDecision) {
+				t.Errorf("decision = %v, want %s", row.DecisionID, tt.wantDecision)
+			}
+			if tt.wantDriver != "" && row.PrimaryDriver != tt.wantDriver {
+				t.Errorf("driver = %q, want %q", row.PrimaryDriver, tt.wantDriver)
+			}
+		})
 	}
 }
 
@@ -968,19 +1004,24 @@ func TestDashboardLegitimateAfterRestoreIgnoresRejections(t *testing.T) {
 	if _, err := f.server.Store.Pool.Exec(context.Background(), `insert into key_status(api_key_id,account_id,status,reason,decision_id) values('key_rs','restored','active','analyst',$1)`, trigger); err != nil {
 		t.Fatal(err)
 	}
-	queue := decodeResponse[store.Dashboard](t, f.get("/v1/dashboard"))
-	for _, item := range queue.Items {
-		if item.AccountID == "restored" {
-			t.Errorf("restored account is still in the review queue: %+v", item)
-		}
+	tests := []struct {
+		name   string
+		query  string
+		listed bool
+	}{
+		{name: "it leaves the review queue", query: "", listed: false},
+		{name: "it is listed among the legitimate baselines", query: "segment=baseline", listed: true},
 	}
-	baseline := decodeResponse[store.Dashboard](t, f.get("/v1/dashboard?segment=baseline"))
-	found := false
-	for _, item := range baseline.Items {
-		found = found || item.AccountID == "restored"
-	}
-	if !found {
-		t.Error("restored account with a legitimate trigger is missing from the legitimate baselines")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			found := false
+			for _, item := range decodeResponse[store.Dashboard](t, f.get("/v1/dashboard?"+tt.query)).Items {
+				found = found || item.AccountID == "restored"
+			}
+			if found != tt.listed {
+				t.Errorf("restored account listed = %v, want %v", found, tt.listed)
+			}
+		})
 	}
 }
 
@@ -1030,6 +1071,8 @@ func TestDashboardRestorePending(t *testing.T) {
 		{"by_analyst", []key{{"legitimate", "analyst"}}, nil, false, nil},
 		// Another key suspended for a confirmed takeover: restoring this one finishes nothing.
 		{"mixed", []key{legit, {"takeover", "analyst"}}, nil, false, nil},
+		// Another key an analyst suspended by hand (no takeover): restoring this one finishes nothing.
+		{"hand_suspended", []key{legit, {"legitimate", "analyst"}}, nil, false, nil},
 		// A takeover earlier in this key's history, then restored and auto-suspended again.
 		{"takeover_history", []key{legit}, func(a string) {
 			dashboardDecision(t, f, dashboardDecisionInput{account: a, key: "key_" + a + "_0", action: "block", score: 95, at: testNow.Add(-time.Hour), review: "resolved", label: strp("takeover")})

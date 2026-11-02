@@ -375,6 +375,9 @@ type OpenCounts struct {
 	SuspendedKeyIDs  []string     `json:"suspended_key_ids"`
 	RestorableKeyIDs []string     `json:"restorable_key_ids"`
 	ReviewKeyIDs     []string     `json:"review_key_ids"`
+	// The deadline: when the first pending hold among the open reviews is dropped
+	// automatically. Nil when nothing is held.
+	HoldsExpireAt *time.Time `json:"holds_expire_at"`
 }
 
 // OpenReview is one decision an account resolution would close.
@@ -384,9 +387,11 @@ type OpenReview struct {
 	Action     string    `json:"action"`
 	Score      int       `json:"score"`
 	HoldStatus *string   `json:"hold_status"`
-	APIKeyID   *string   `json:"api_key_id"`
-	Driver     string    `json:"primary_driver"`
-	Detail     string    `json:"detail"`
+	// When a pending hold is dropped automatically if nobody decides (hold.expire_action).
+	HoldExpiresAt *time.Time `json:"hold_expires_at"`
+	APIKeyID      *string    `json:"api_key_id"`
+	Driver        string     `json:"primary_driver"`
+	Detail        string     `json:"detail"`
 }
 
 func AccountOpenCounts(ctx context.Context, db DBTX, accountID string) (OpenCounts, error) {
@@ -423,6 +428,12 @@ func AccountOpenCounts(ctx context.Context, db DBTX, accountID string) (OpenCoun
 	for _, d := range open {
 		r := OpenReview{DecisionID: d.DecisionID, OccurredAt: d.OccurredAt, Action: d.Action, Score: d.Score,
 			HoldStatus: d.HoldStatus, APIKeyID: d.APIKeyID, Driver: "No scored signals"}
+		if d.HoldStatus != nil && *d.HoldStatus == "pending" && d.HoldExpiresAt != nil {
+			r.HoldExpiresAt = d.HoldExpiresAt
+			if c.HoldsExpireAt == nil || d.HoldExpiresAt.Before(*c.HoldsExpireAt) {
+				c.HoldsExpireAt = d.HoldExpiresAt
+			}
+		}
 		if d.Reason != nil {
 			r.Driver = *d.Reason
 		} else if len(d.Hits) > 0 {
