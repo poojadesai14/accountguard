@@ -31,15 +31,6 @@ export type Stats = {
   top_signals: { name: string; count: number }[] | null;
   review_queue: ReviewItem[] | null;
 };
-export type AccountSummary = {
-  account_id: string;
-  first_seen_at: string;
-  events_seen: number;
-  decisions: number;
-  open_reviews: number;
-  last_at: string | null;
-  last_action: Action | null;
-};
 export type Profile = {
   account_id: string;
   first_seen_at: string;

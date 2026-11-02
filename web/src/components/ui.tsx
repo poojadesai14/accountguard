@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowLeft, ArrowUpRight, Inbox, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Inbox, TriangleAlert } from "lucide-react";
 import type { Action } from "@/lib/types";
 import { humanize } from "@/lib/format";
 import { ACTION_LABELS } from "@/lib/decisions";
@@ -107,21 +107,6 @@ export function CardHeader({
       </div>
       {children}
     </div>
-  );
-}
-
-export function TextLink({
-  href,
-  children,
-}: {
-  href: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Link className="text-link" href={href}>
-      {children}
-      <ArrowUpRight size={14} />
-    </Link>
   );
 }
 

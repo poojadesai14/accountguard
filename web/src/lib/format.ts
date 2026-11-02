@@ -15,9 +15,6 @@ export function dateTime(value: string | null | undefined) {
 }
 export const humanize = (value: string) =>
   value.replaceAll("_", " ").replaceAll(".", " · ");
-export const shortId = (value: string) =>
-  value.length > 22 ? `${value.slice(0, 12)}…${value.slice(-6)}` : value;
-
 export const PERIODS = ["24h", "7d", "30d", "all"] as const;
 export type Period = (typeof PERIODS)[number];
 export function periodQuery(value: unknown, now = new Date()) {
