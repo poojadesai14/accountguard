@@ -364,6 +364,8 @@ export function DecidePanel({
         accountId={decision.account_id}
         open={open}
         onSuccess={onSuccess}
+        onDirtyChange={onDirtyChange}
+        onPendingChange={onPendingChange}
       />
       <details
         className="just-this"
@@ -502,19 +504,35 @@ export function ResolveAccountForm({
   accountId,
   open,
   onSuccess,
+  onDirtyChange,
+  onPendingChange,
 }: {
   accountId: string;
   open: OpenCounts;
   onSuccess?: (message: string, next?: NextStep[]) => void;
+  /** Like ReviewForm: a draft in progress pauses the dashboard's polling. */
+  onDirtyChange?: (dirty: boolean) => void;
+  onPendingChange?: (pending: boolean) => void;
 }) {
   const [state, action, pending] = useActionState(resolveAccount, {});
   const handled = useRef<FormState | undefined>(undefined);
   useEffect(() => {
+    onPendingChange?.(pending);
+  }, [pending, onPendingChange]);
+  useEffect(() => {
     if (state.success && handled.current !== state) {
       handled.current = state;
+      onDirtyChange?.(false);
       onSuccess?.(state.success, state.next);
     }
-  }, [state, onSuccess]);
+  }, [state, onSuccess, onDirtyChange]);
+  useEffect(
+    () => () => {
+      onDirtyChange?.(false);
+      onPendingChange?.(false);
+    },
+    [onDirtyChange, onPendingChange],
+  );
   const [outcome, setOutcome] = useState<"" | "legitimate" | "takeover">("");
   const [confirm, setConfirm] = useState("");
   const plural = (n: number, word: string) =>
@@ -565,7 +583,11 @@ export function ResolveAccountForm({
       );
   }
   return (
-    <form action={action} className="review-form resolve-form">
+    <form
+      action={action}
+      className="review-form resolve-form"
+      onChange={() => onDirtyChange?.(true)}
+    >
       <input type="hidden" name="account_id" value={accountId} />
       {open.decision_ids.map((id) => (
         <input key={id} type="hidden" name="decision_id" value={id} />

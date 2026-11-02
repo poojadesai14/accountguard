@@ -1032,6 +1032,8 @@ test("polling pauses for review drafts and hidden pages, and keeps the last snap
     .fill("Evidence still being reviewed.");
   const before = await count();
   await page.clock.runFor(31_000);
+  // Real time for a refresh, had one started, to reach the API before counting.
+  await page.waitForTimeout(1_000);
   expect(await count()).toBe(before);
   await expect(drawer.getByLabel("Reason", { exact: true })).toHaveValue(
     "Evidence still being reviewed.",
@@ -1047,6 +1049,7 @@ test("polling pauses for review drafts and hidden pages, and keeps the last snap
   );
   const hiddenCount = await count();
   await page.clock.runFor(31_000);
+  await page.waitForTimeout(1_000);
   expect(await count()).toBe(hiddenCount);
   await page.evaluate(() => {
     Object.defineProperty(document, "visibilityState", {
