@@ -156,6 +156,8 @@ export function ReviewForm({
             This event is labeled {decision.label}. The full history is recorded
             below.
           </p>
+          {/* The review that just labelled it: what's left, with links. */}
+          <Feedback state={state} />
         </div>
       </div>
     );

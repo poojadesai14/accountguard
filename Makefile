@@ -1,7 +1,7 @@
 -include .env
 export
 
-.PHONY: db-up db-down db-reset migrate run test psql seed sim prom-up prom-down
+.PHONY: db-up db-down db-reset migrate run test e2e psql seed sim prom-up prom-down
 
 db-up:
 	docker compose up -d --wait db
@@ -29,6 +29,10 @@ test: db-up
 	@docker compose exec -T db psql -U ato -d ato -tAc "select 1 from pg_database where datname = 'ato_test'" | grep -q 1 \
 		|| docker compose exec -T db createdb -U ato ato_test
 	TEST_DATABASE_URL="$(TEST_DATABASE_URL)" go test $(GO_TEST_FLAGS) ./...
+
+# Full-stack browser scenarios: real API + UI on a throwaway ato_e2e database.
+e2e: db-up
+	cd web && npm run build && npm run test:fullstack
 
 # Needs `make run` in another terminal. Use `make db-reset` first for a fresh demo.
 seed:
