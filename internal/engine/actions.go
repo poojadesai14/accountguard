@@ -68,20 +68,23 @@ func (s *Service) apply(ctx context.Context, decisionID, action, confirm, actor,
 			if d.Label != nil {
 				return conflict("decision already labeled %s", *d.Label)
 			}
-			if d.APIKeyID == nil {
-				return conflict("event has no API key to suspend")
-			}
 			keyReason := "analyst"
 			if byOwner {
 				keyReason, logged = "owner", "owner_not_me"
 			}
-			if err := store.SuspendKey(ctx, tx, *d.APIKeyID, d.AccountID, keyReason, d.DecisionID); err != nil {
-				return err
+			var hold *string
+			if d.APIKeyID != nil {
+				if err := store.SuspendKey(ctx, tx, *d.APIKeyID, d.AccountID, keyReason, d.DecisionID); err != nil {
+					return err
+				}
+				if _, err := store.DropPendingHolds(ctx, tx, *d.APIKeyID); err != nil {
+					return err
+				}
+			} else if pending {
+				// A dashboard send has no key to suspend; dropping its own hold is all there is.
+				hold = ptr("dropped")
 			}
-			if _, err := store.DropPendingHolds(ctx, tx, *d.APIKeyID); err != nil {
-				return err
-			}
-			if err := store.ResolveDecision(ctx, tx, d.DecisionID, nil, ptr("takeover")); err != nil {
+			if err := store.ResolveDecision(ctx, tx, d.DecisionID, hold, ptr("takeover")); err != nil {
 				return err
 			}
 

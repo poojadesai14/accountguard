@@ -20,7 +20,7 @@ import (
 var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$`)
 
 func (s *Server) analystRoutes(mux *http.ServeMux) {
-	auth := func(h http.HandlerFunc) http.Handler { return bearer(s.AnalystToken, h) }
+	auth := func(h http.HandlerFunc) http.Handler { return bearer(s.AnalystToken, withTimeout(analystTimeout, h)) }
 	mux.Handle("GET /v1/config", auth(s.getConfig))
 	mux.Handle("GET /v1/dashboard", auth(s.getDashboard))
 	mux.Handle("GET /v1/analyst-actions", auth(s.listAnalystActions))

@@ -66,7 +66,9 @@ func (s *Service) Handle(ctx context.Context, ev *event.Event) (*store.Decision,
 		// Compare first...
 		res := Evaluate(&signal.Input{Event: ev, Features: feats, Profile: p, WindowRecipients: window, Config: cfg}, suspended)
 
-		enforced := cfg.Mode == "enforce"
+		// A suspended key is an analyst's or owner's decision, not a rule under
+		// evaluation, so shadow mode doesn't let it send.
+		enforced := cfg.Mode == "enforce" || res.Reason == ReasonKeySuspended
 		dec = &store.Decision{
 			EventID:       ev.EventID,
 			AccountID:     ev.AccountID,
