@@ -1,10 +1,10 @@
 # Backend testing and deployment
 
 The intended stack is a Go API on Render, Supabase Postgres, and the Next.js
-analyst UI on Vercel. Render replaces the earlier Railway setup. This repository
-contains the Go backend, migrations, seed, simulator, and the Next.js analyst
-dashboard in `/web`. Prometheus metrics described in the spec are still
-outstanding. Dashboard setup and Vercel settings are in [web/README.md](web/README.md).
+analyst UI on Vercel. This repository contains the Go backend, migrations, seed,
+simulator, and the Next.js analyst dashboard in `/web`. The API exposes
+Prometheus metrics at `GET /metrics` (`make prom-up` runs a local Prometheus UI).
+Dashboard setup and Vercel settings are in [web/README.md](web/README.md).
 
 ## Run the complete backend tests
 

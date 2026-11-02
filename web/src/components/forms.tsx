@@ -36,7 +36,7 @@ function Feedback({ state }: { state: FormState }) {
 }
 
 // NextSteps links to whatever an action left to do, opened and ready.
-export function NextSteps({ next }: { next?: NextStep[] }) {
+function NextSteps({ next }: { next?: NextStep[] }) {
   if (!next?.length) return null;
   return (
     <p className="next-steps">
@@ -428,7 +428,7 @@ export function OwnerForm({ decision }: { decision: Decision }) {
 // ResolveAccountForm closes an account's whole incident with one audited outcome.
 // Restoring keys is a separate, unticked choice: a wrong call there lets an
 // attacker send again.
-export function ResolveAccountForm({
+function ResolveAccountForm({
   accountId,
   open,
   initialOutcome = "",

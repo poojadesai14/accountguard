@@ -1,15 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useTransition } from "react";
-import {
-  Activity,
-  LayoutDashboard,
-  LogOut,
-  RefreshCw,
-  ShieldCheck,
-} from "lucide-react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { Activity, LayoutDashboard, LogOut, ShieldCheck } from "lucide-react";
 import { logout } from "@/app/actions";
 import { ModeChip } from "./ui";
 
@@ -66,20 +59,5 @@ export function Navigation({ mode }: { mode?: "shadow" | "enforce" }) {
         </form>
       </div>
     </aside>
-  );
-}
-
-export function RefreshButton() {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
-  return (
-    <button
-      className="button button-secondary"
-      onClick={() => startTransition(() => router.refresh())}
-      disabled={pending}
-    >
-      <RefreshCw size={14} className={pending ? "spin" : ""} />
-      {pending ? "Refreshing…" : "Refresh"}
-    </button>
   );
 }
