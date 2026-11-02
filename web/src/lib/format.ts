@@ -1,3 +1,5 @@
+// The account page loads at most this many timeline events per period.
+export const TIMELINE_LIMIT = 1000;
 export const number = (value: number) =>
   new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 }).format(value);
 export function dateTime(value: string | null | undefined) {

@@ -1,6 +1,12 @@
 import { notFound } from "next/navigation";
 import { analystApi } from "@/lib/api";
-import { dateTime, humanize, number, periodQuery } from "@/lib/format";
+import {
+  dateTime,
+  humanize,
+  number,
+  periodQuery,
+  TIMELINE_LIMIT,
+} from "@/lib/format";
 import type { AccountSeries, ProfileResponse, TimelineRow } from "@/lib/types";
 import { ApiError, CardHeader, DetailList, PageHeader } from "@/components/ui";
 import { AccountCharts } from "@/components/charts";
@@ -30,7 +36,7 @@ export default async function AccountPage({
     analystApi<ProfileResponse>(`${accountPath}/profile`),
     analystApi<AccountSeries>(`${accountPath}/series?${query}`),
     analystApi<TimelineRow[] | null>(
-      `${accountPath}/timeline?${query}&limit=1000`,
+      `${accountPath}/timeline?${query}&limit=${TIMELINE_LIMIT}`,
     ),
   ]);
   if (profile.status === 404) notFound();

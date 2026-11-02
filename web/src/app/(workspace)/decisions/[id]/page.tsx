@@ -105,7 +105,7 @@ export default async function DecisionPage({
           </p>
         </div>
       </header>
-      {!d.enforced && (
+      {!d.enforced && d.action !== "allow" && (
         <p className="mode-banner">
           Shadow mode: computed {ACTION_LABELS[d.action]}. The API returned
           ALLOW, so no mail was held and no key was suspended.

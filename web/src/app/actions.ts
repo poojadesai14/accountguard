@@ -180,7 +180,12 @@ export async function resolveAccount(
       reason: fields.reason,
     },
   );
-  if (result.error) return { error: result.error };
+  if (result.error) {
+    // 409: the open reviews changed since the page loaded. Reload them so the
+    // next submit names the current set.
+    if (result.status === 409) revalidatePath("/", "layout");
+    return { error: result.error };
+  }
   revalidatePath("/", "layout");
   const r = result.data!;
   const plural = (n: number, word: string) =>

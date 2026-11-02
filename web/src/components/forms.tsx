@@ -91,9 +91,15 @@ function Required() {
 // action; the reason is always written fresh, since it is the audit trail.
 const ANALYST_NAME = "ato.analyst-name";
 
-function ReviewIdentity() {
+// The reason is controlled so a failed submit keeps it: React resets uncontrolled
+// fields after every form action, including one that returns an error.
+function ReviewIdentity({ state }: { state: FormState }) {
   const id = useId();
   const [name, setName] = useState("");
+  const [reason, setReason] = useState("");
+  useEffect(() => {
+    if (state.success) setReason("");
+  }, [state]);
   useEffect(() => {
     try {
       setName(window.localStorage.getItem(ANALYST_NAME) ?? "");
@@ -135,6 +141,8 @@ function ReviewIdentity() {
         required
         maxLength={2000}
         rows={3}
+        value={reason}
+        onChange={(event) => setReason(event.target.value)}
       />
     </>
   );
@@ -200,7 +208,7 @@ export function UnblockForm({
           </label>
         </div>
       )}
-      <ReviewIdentity />
+      <ReviewIdentity state={state} />
       <p className="form-help">
         Restoring access allows this key to send again. Confirm the credential
         has been secured before proceeding.
@@ -221,7 +229,7 @@ export function SuspendKeyForm({ keyId }: { keyId: string }) {
   return (
     <form action={action} className="review-form">
       <input type="hidden" name="key_id" value={keyId} />
-      <ReviewIdentity />
+      <ReviewIdentity state={state} />
       <p className="form-help">
         Suspending stops this key from sending and drops its held emails. The
         account's other keys keep working.
@@ -376,7 +384,7 @@ function CorrectionForm({
         keys they were sent with and drops those keys' held emails. Emails
         already released stay sent.
       </p>
-      <ReviewIdentity />
+      <ReviewIdentity state={state} />
       <Feedback state={state} />
       <button className="button button-danger" disabled={pending}>
         {pending ? "Correcting…" : "Correct to takeover"}
@@ -637,7 +645,7 @@ function ResolveAccountForm({
           </label>
         </div>
       )}
-      <ReviewIdentity />
+      <ReviewIdentity state={state} />
       <Feedback state={state} />
       <button
         className="button button-primary"

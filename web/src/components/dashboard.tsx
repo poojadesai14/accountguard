@@ -704,7 +704,7 @@ export function Dashboard({
                   ? "Refresh to try again."
                   : tableSnapshot && tableSnapshot.total > 0
                     ? "This page is past the end of the list. Go back to page 1."
-                    : "Try another filter or open Accounts to inspect all stored history."}
+                    : "Try another filter or period."}
               </EmptyState>
             )}
             <div className="dashboard-pagination">

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { ArrowUpRight, Check, Copy, Search, ShieldCheck } from "lucide-react";
 import { ACTION_LABELS, defaultEvent } from "@/lib/decisions";
-import { dateTime, humanize, number } from "@/lib/format";
+import { dateTime, humanize, number, TIMELINE_LIMIT } from "@/lib/format";
 import type { TimelineRow } from "@/lib/types";
 import { Badge, CardHeader, EmptyState } from "./ui";
 
@@ -110,7 +110,12 @@ export function InvestigationWorkspace({ rows }: { rows: TimelineRow[] }) {
         <div className="stream-panel-header">
           <div>
             <h2 id="event-stream-title">Event stream</h2>
-            <p>{number(rows.length)} events · Newest first · UTC</p>
+            <p>
+              {rows.length >= TIMELINE_LIMIT
+                ? `Latest ${number(TIMELINE_LIMIT)} events in this period; choose a shorter period to see older ones`
+                : `${number(rows.length)} events`}{" "}
+              · Newest first · UTC
+            </p>
           </div>
         </div>
         <div className="stream-filters">
