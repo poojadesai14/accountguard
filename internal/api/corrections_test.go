@@ -17,6 +17,9 @@ func TestSuspendKey(t *testing.T) {
 	// A key never suspended before, with a pending hold.
 	held := dashboardDecision(t, f, dashboardDecisionInput{account: "acct", key: "key_live", action: "hold", score: 70, at: testNow, review: "open", hold: strp("pending")})
 	const path = "/v1/keys/key_live/suspend"
+	// An attacker's backup: created by an account change, never used to send.
+	execSQL(t, f, `insert into events(event_id,type,occurred_at,account_id,api_key_id,source,ip,change_kind,change_target_id)
+		values('backup_created','account.change',$1,'acct','key_live','api','198.51.100.9','api_key.created','key_backup')`, testNow)
 	runSteps(t, f, []step{
 		{
 			name: "a never-suspended key is suspended by the analyst, its held email dropped",
@@ -34,6 +37,13 @@ func TestSuspendKey(t *testing.T) {
 		{name: "suspending it again is refused", path: path, body: map[string]any{"actor": "r", "reason": "x"}, want: http.StatusConflict},
 		{name: "an unknown key is not found", path: "/v1/keys/key_nobody/suspend", body: map[string]any{"actor": "r", "reason": "x"}, want: http.StatusNotFound},
 		{name: "a reason is required", path: path, body: map[string]any{"actor": "r"}, want: http.StatusBadRequest},
+		{
+			name: "a created key that never sent is suspended under the account that created it",
+			path: "/v1/keys/key_backup/suspend", body: map[string]any{"actor": "r", "reason": "created during the takeover"}, want: http.StatusOK,
+			check: func(t *testing.T, w *httptest.ResponseRecorder) {
+				wantText(t, f, "key_backup", "acct/suspended/analyst", `select account_id || '/' || status || '/' || reason from key_status where api_key_id = 'key_backup'`)
+			},
+		},
 		{name: "the ordinary restore undoes it", path: "/v1/keys/key_live/unblock", body: map[string]any{"actor": "r", "reason": "owner rotated"}, want: http.StatusOK},
 	})
 }

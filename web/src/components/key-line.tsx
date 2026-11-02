@@ -12,10 +12,16 @@ import { SuspendKeyForm, UnblockForm } from "./forms";
 export function KeyLine({
   keyStatus: key,
   hint,
+  createdAt,
+  untrusted = false,
   initiallyOpen = false,
 }: {
   keyStatus: KeyStatus;
   hint?: string;
+  /** When an account change created this key, if one did. */
+  createdAt?: string;
+  /** The key has no allowed send yet. */
+  untrusted?: boolean;
   /** Opened by a "Restore access" link from a review. */
   initiallyOpen?: boolean;
 }) {
@@ -53,6 +59,12 @@ export function KeyLine({
       {key.updated_at && (
         <span className="muted">
           {humanize(key.reason)} · {dateTime(key.updated_at)}
+        </span>
+      )}
+      {createdAt && (
+        <span className={untrusted && !suspended ? "key-new" : "muted"}>
+          Created {dateTime(createdAt)}
+          {untrusted && " · no allowed sends yet"}
         </span>
       )}
       {hint && suspended && <strong className="key-hint">{hint}</strong>}

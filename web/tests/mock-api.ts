@@ -64,6 +64,8 @@ const event: TimelineRow = {
 };
 let detail: DecisionDetail;
 let suspended = true;
+// The attacker's backup key: created by an account change, never sent.
+let backupSuspended = false;
 let newerReview = false; // a review the page hasn't seen yet
 // Mirrors store.RiskySignals: "legitimate" over these needs the account ID typed.
 const risky = () =>
@@ -145,6 +147,7 @@ function reset() {
     ],
   };
   suspended = true;
+  backupSuspended = false;
   newerReview = false;
   requests = [];
   empty = false;
@@ -467,6 +470,14 @@ createServer(async (req, res) => {
       reason: body.reason ?? "Owner response",
       created_at: new Date().toISOString(),
     });
+    if (url.pathname === "/v1/keys/key_backup_2/suspend") {
+      backupSuspended = true;
+      return reply(200, {
+        api_key_id: "key_backup_2",
+        status: "suspended",
+        holds_dropped: 0,
+      });
+    }
     if (url.pathname.endsWith("/suspend")) {
       if (suspended) return reply(409, { error: "key is already suspended" });
       suspended = true;
@@ -839,7 +850,20 @@ createServer(async (req, res) => {
           decision_id: decisionId,
           updated_at: hours[11],
         },
+        ...(backupSuspended
+          ? [
+              {
+                api_key_id: "key_backup_2",
+                account_id: "acc_acme",
+                status: "suspended",
+                reason: "analyst",
+                decision_id: null,
+                updated_at: hours[11],
+              },
+            ]
+          : []),
       ],
+      created_keys: [{ api_key_id: "key_backup_2", created_at: hours[8] }],
     });
   }
   if (url.pathname.endsWith("/series")) return reply(200, series);

@@ -3221,6 +3221,11 @@ td strong {
   font-weight: 500;
 }
 
+/* A created key nothing has vouched for yet: possibly an attacker's backup. */
+.key-new {
+  color: var(--hold);
+}
+
 /* Account page: resolve the whole incident with one outcome. */
 .resolve-card {
   margin: 0 0 20px;

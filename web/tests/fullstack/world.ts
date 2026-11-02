@@ -54,7 +54,7 @@ function send(
   };
 }
 
-async function post(event: ReturnType<typeof send>) {
+async function post(event: { event_id: string } & Record<string, unknown>) {
   const res = await fetch(`${API}/v1/events`, {
     method: "POST",
     headers: { ...INGEST, "Content-Type": "application/json" },
@@ -144,4 +144,20 @@ export default async function world() {
     if (rejected.reason !== "key_suspended")
       throw new Error(`${account}: not rejected after the block`);
   }
+
+  // Persistence: the attacker creates a backup key on the taken-over account and
+  // hasn't used it yet.
+  await post({
+    event_id: `${ATTACKED.takeover}_backup_created`,
+    type: "account.change",
+    occurred_at: new Date(at(0, 120).getTime() + 42 * 20_000).toISOString(),
+    account_id: ATTACKED.takeover,
+    api_key_id: `${ATTACKED.takeover}_key`,
+    source: "api",
+    network: digitalOcean,
+    change: {
+      kind: "api_key.created",
+      target_id: `${ATTACKED.takeover}_backup`,
+    },
+  });
 }
