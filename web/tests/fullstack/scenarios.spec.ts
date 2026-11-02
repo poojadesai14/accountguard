@@ -157,9 +157,9 @@ test("a false positive over takeover evidence needs the account typed, then reac
   );
 
   expect(await keyOf(request, account)).toMatchObject({ status: "active" });
-  const healthy = (await rows(request, `view=healthy&segment=baseline&q=${account}`)).map(
-    (r) => r.account_id,
-  );
+  const healthy = (
+    await rows(request, `view=healthy&segment=baseline&q=${account}`)
+  ).map((r) => r.account_id);
   expect(healthy).toContain(account);
   await page.goto(`/?tab=baseline&view=healthy&q=${account}`);
   await expect(
@@ -241,9 +241,9 @@ test("one decision at a time: the review says what's left and links to it", asyn
   await expect(card.getByRole("status")).toContainText(
     `restored ${account}_key`,
   );
-  const healthy = (await rows(request, `view=healthy&segment=baseline&q=${account}`)).map(
-    (r) => r.account_id,
-  );
+  const healthy = (
+    await rows(request, `view=healthy&segment=baseline&q=${account}`)
+  ).map((r) => r.account_id);
   expect(healthy).toContain(account);
 });
 
@@ -269,6 +269,8 @@ test("any key can be suspended and restored by hand", async ({
   await line.getByRole("button", { name: "Restore key access" }).click();
   await expect(line).toContainText(`${account}_key active`);
   expect(
-    (await rows(request, `view=healthy&segment=baseline&q=${account}`)).map((r) => r.account_id),
+    (await rows(request, `view=healthy&segment=baseline&q=${account}`)).map(
+      (r) => r.account_id,
+    ),
   ).toContain(account);
 });
