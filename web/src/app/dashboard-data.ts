@@ -11,8 +11,6 @@ import type {
   AuditPage,
   DashboardData,
   DashboardSnapshot,
-  DecisionDetail,
-  ProfileResponse,
   Stats,
 } from "@/lib/types";
 
@@ -30,7 +28,7 @@ export async function loadDashboard(
     page: query.page,
   });
   const period = periodQuery(query.period).query;
-  const [snapshot, stats, audit, profile, detail] = await Promise.all([
+  const [snapshot, stats, audit] = await Promise.all([
     analystApi<DashboardSnapshot>(`/v1/dashboard?${params}`),
     query.tab === "telemetry"
       ? analystApi<Stats>(`/v1/stats?${period}`)
@@ -40,30 +38,7 @@ export async function loadDashboard(
           `/v1/analyst-actions?${period}${query.before_id ? `&before_id=${query.before_id}` : ""}`,
         )
       : undefined,
-    query.inspect
-      ? analystApi<ProfileResponse>(
-          `/v1/accounts/${encodeURIComponent(query.inspect)}/profile`,
-        )
-      : undefined,
-    query.inspect && query.decision
-      ? analystApi<DecisionDetail>(`/v1/decisions/${query.decision}`)
-      : undefined,
   ]);
-  const inspection = query.inspect
-    ? {
-        profile: profile?.data,
-        detail:
-          detail?.data?.decision.account_id === query.inspect
-            ? detail.data
-            : undefined,
-        error:
-          profile?.error ??
-          detail?.error ??
-          (detail?.data && detail.data.decision.account_id !== query.inspect
-            ? "This decision belongs to a different account."
-            : undefined),
-      }
-    : undefined;
   const snapshotError = snapshot.data
     ? dashboardSnapshotError(query, snapshot.data)
     : undefined;
@@ -77,6 +52,5 @@ export async function loadDashboard(
     audit: audit?.data,
     error: snapshotError ?? snapshot.error,
     telemetry_error: stats?.error ?? audit?.error,
-    inspection,
   };
 }

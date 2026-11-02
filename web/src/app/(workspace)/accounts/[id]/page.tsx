@@ -73,7 +73,8 @@ export default async function AccountPage({
           with an audited suspension while active. */}
       {keys.map((key) => (
         <KeyLine
-          key={key.api_key_id}
+          // A Restore link to this page remounts its key line, opened.
+          key={`${key.api_key_id}${search.restore === key.api_key_id ? ":restore" : ""}`}
           keyStatus={key}
           initiallyOpen={search.restore === key.api_key_id}
         />
