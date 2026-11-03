@@ -5,13 +5,13 @@ export const COLORS = {
   hold: "var(--hold)",
   block: "var(--block)",
 };
-export const tick = { fontSize: 11, fill: "var(--chart-text)" };
+export const tick = { fontSize: 13, fill: "var(--chart-text)" };
 export const grid = "var(--chart-grid)";
 export const tooltipStyle = {
   border: "1px solid var(--line)",
   backgroundColor: "var(--surface)",
   color: "var(--ink)",
   borderRadius: 6,
-  fontSize: 12,
+  fontSize: 14,
   boxShadow: "0 6px 24px #00000066",
 };
