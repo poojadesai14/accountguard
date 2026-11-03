@@ -9,7 +9,7 @@ apart from a legitimate change, and stops the damage **without locking out the r
 |---|---|
 | Analyst UI | https://resend-ato.vercel.app (password shared in Slack) |
 | API | `https://resend-ato-api.onrender.com` (`GET /healthz`; free tier, the first request may take ~1 min to wake) |
-| Video | `TODO: Loom link` |
+| Video | [Loom walkthrough](https://www.loom.com/share/829bb47c84e140b0bb1cc0c7247837e9) |
 | Build spec | [SPEC.md](SPEC.md): event format, schema, every rule and endpoint |
 | Deployment | [DEPLOYMENT.md](DEPLOYMENT.md), [web/README.md](web/README.md) |
 
