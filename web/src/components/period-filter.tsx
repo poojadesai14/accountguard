@@ -1,4 +1,4 @@
-import { PERIODS, type Period } from "@/lib/format";
+import { PERIOD_LABELS, PERIODS, type Period } from "@/lib/format";
 
 export function PeriodFilter({ period }: { period: Period }) {
   return (
@@ -11,13 +11,7 @@ export function PeriodFilter({ period }: { period: Period }) {
           value={value}
           className={period === value ? "selected" : ""}
         >
-          {value === "all"
-            ? "All time"
-            : value === "24h"
-              ? "24 hours"
-              : value === "7d"
-                ? "7 days"
-                : "30 days"}
+          {PERIOD_LABELS[value]}
         </button>
       ))}
     </form>

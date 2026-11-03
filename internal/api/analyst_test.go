@@ -73,7 +73,7 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	if err := store.Migrate(ctx, db.Pool, migrations.FS); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := config.Load("../../config.yaml")
+	cfg, err := config.LoadAt("../../config.yaml", testNow)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -572,7 +572,7 @@ func TestAnalystMarkLegitimate(t *testing.T) {
 func TestOwnerResponsesAndExpiredHold(t *testing.T) {
 	tests := []struct {
 		name, response, wantHold, wantLabel, wantReview, wantAudit string
-		expired, wantSuspended                                     bool
+		expired, noKey, wantSuspended                              bool
 		wantStatus, wantLearned, wantDomainUses                    int
 	}{
 		{
@@ -598,6 +598,17 @@ func TestOwnerResponsesAndExpiredHold(t *testing.T) {
 			wantSuspended: true,
 		},
 		{
+			name:        "owner reports takeover of a dashboard send with no key",
+			response:    "not_me",
+			noKey:       true,
+			wantStatus:  200,
+			wantHold:    "dropped",
+			wantLabel:   "takeover",
+			wantReview:  "resolved",
+			wantAudit:   "owner_not_me",
+			wantLearned: 60,
+		},
+		{
 			name:        "expired hold rejects owner and analyst release",
 			response:    "this_was_me",
 			expired:     true,
@@ -611,7 +622,13 @@ func TestOwnerResponsesAndExpiredHold(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f := newAPIFixture(t)
 			f.history()
-			hold := f.ingest(f.email(testNow, 14061, "invoice-portal.net"), "hold")
+			held := f.email(testNow, 14061, "invoice-portal.net")
+			if tt.noKey {
+				// Network history is per key, so a keyless send needs content alone to reach hold.
+				held = f.email(testNow, 14061, "acrne.com")
+				held.APIKeyID, held.Source = "", "dashboard"
+			}
+			hold := f.ingest(held, "hold")
 			if tt.expired {
 				if _, err := f.server.Store.Pool.Exec(context.Background(), `update decisions set hold_expires_at = now() - interval '1 minute' where decision_id = $1::uuid`, hold.DecisionID); err != nil {
 					t.Fatal(err)
@@ -819,6 +836,52 @@ func TestDatabaseOutageFailsOpenOnlyForIngest(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestSuspendedKeyStaysStopped(t *testing.T) {
+	tests := []struct {
+		name, mode   string
+		scoringFails bool
+		wantUnscored bool
+	}{
+		{name: "shadow mode still rejects a suspended key", mode: "shadow"},
+		{name: "scoring timeout still rejects a suspended key", mode: "enforce", scoringFails: true, wantUnscored: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newAPIFixture(t)
+			f.server.Config.Mode = tt.mode
+			f.ingest(f.email(testNow, 16509, "stripe.com"), "allow")
+			if err := store.SuspendKey(context.Background(), f.server.Store.Pool, "key", "account", "analyst", ""); err != nil {
+				t.Fatal(err)
+			}
+			if tt.scoringFails {
+				tx, err := f.server.Store.Pool.Begin(context.Background())
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer tx.Rollback(context.Background())
+				if _, err := tx.Exec(context.Background(), `lock table events in access exclusive mode`); err != nil {
+					t.Fatal(err)
+				}
+				f.server.Config.Scoring.TimeoutMS = 30
+			}
+			ev := f.email(testNow.Add(time.Minute), 16509, "stripe.com")
+			got := decodeResponse[DecisionResponse](t, request(t, f.handler, "POST", "/v1/events", testIngestToken, ev))
+			if got.Action != "block" || !got.Enforced || got.Unscored != tt.wantUnscored || got.Reason == nil || *got.Reason != engine.ReasonKeySuspended {
+				t.Errorf("response = %+v, want enforced block for key_suspended with unscored:%v", got, tt.wantUnscored)
+			}
+		})
+	}
+}
+
+func TestScoringPanicFailsOpen(t *testing.T) {
+	f := newAPIFixture(t)
+	f.server.Service = &engine.Service{Store: f.server.Store}
+	got := decodeResponse[DecisionResponse](t, request(t, f.handler, "POST", "/v1/events", testIngestToken, f.email(testNow, 16509, "stripe.com")))
+	if got.Action != "allow" || !got.Unscored || got.Enforced {
+		t.Errorf("response = %+v, want unscored allow", got)
 	}
 }
 

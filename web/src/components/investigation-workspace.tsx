@@ -4,11 +4,12 @@ import Link from "next/link";
 import { useState } from "react";
 import { ArrowUpRight, Check, Copy, Search, ShieldCheck } from "lucide-react";
 import { ACTION_LABELS, defaultEvent } from "@/lib/decisions";
-import { dateTime, humanize, number } from "@/lib/format";
+import { dateTime, humanize, number, TIMELINE_LIMIT } from "@/lib/format";
 import type { TimelineRow } from "@/lib/types";
+import { HitList } from "./hit-list";
 import { Badge, CardHeader, EmptyState } from "./ui";
 
-export function MetadataBlock({
+function MetadataBlock({
   title,
   value,
 }: {
@@ -110,7 +111,12 @@ export function InvestigationWorkspace({ rows }: { rows: TimelineRow[] }) {
         <div className="stream-panel-header">
           <div>
             <h2 id="event-stream-title">Event stream</h2>
-            <p>{number(rows.length)} events · Newest first · UTC</p>
+            <p>
+              {rows.length >= TIMELINE_LIMIT
+                ? `Latest ${number(TIMELINE_LIMIT)} events in this period; choose a shorter period to see older ones`
+                : `${number(rows.length)} events`}{" "}
+              · Newest first · UTC
+            </p>
           </div>
         </div>
         <div className="stream-filters">
@@ -259,26 +265,7 @@ export function InvestigationWorkspace({ rows }: { rows: TimelineRow[] }) {
                 </p>
               )}
               {selected.hits.length ? (
-                <ul className="hit-list" aria-label="Selected event signals">
-                  {selected.hits.map((hit) => (
-                    <li className="hit-row" key={hit.name}>
-                      <span
-                        className={`category-marker category-${hit.category}`}
-                      />
-                      <div className="hit-evidence">
-                        <div className="hit-heading">
-                          <strong>{humanize(hit.name)}</strong>
-                          <span className="hit-category">{hit.category}</span>
-                        </div>
-                        <p>{hit.detail}</p>
-                      </div>
-                      <span className="hit-points">
-                        +{hit.points}
-                        <small>pts</small>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                <HitList hits={selected.hits} label="Selected event signals" />
               ) : (
                 <EmptyState
                   compact

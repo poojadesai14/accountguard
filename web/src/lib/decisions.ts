@@ -1,3 +1,4 @@
+import { plural } from "./format";
 import type {
   Action,
   Hit,
@@ -169,8 +170,6 @@ export const INDICATOR_LABELS: Record<RelatedIndicator["kind"], string> = {
   ip: "Source IP",
 };
 
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-
 export function relatedSummary(r: RelatedIndicator) {
   return [
     plural(r.accounts, "other account"),
@@ -187,8 +186,9 @@ export function relatedVerdict(related: RelatedIndicator[]): {
   tone: "block" | "hold" | "neutral";
   text: string;
 } {
-  // Accounts can repeat across indicators, and only the top five are listed, so
-  // take the larger of the distinct listed accounts and any one indicator's count.
+  // Accounts can repeat across indicators, and the API lists at most 50 per
+  // indicator, so take the larger of the distinct listed accounts and any one
+  // indicator's count.
   const confirmed = Math.max(
     new Set(
       related.flatMap((r) =>
@@ -258,7 +258,7 @@ export function heldEventLabel(
   changeKind?: string | null,
 ) {
   if (type === "account.change")
-    return (changeKind && CHANGE_LABELS[changeKind]) ?? "Account change";
+    return (changeKind && CHANGE_LABELS[changeKind]) || "Account change";
   if (type === "api.read") return "Data read";
   return "Email";
 }

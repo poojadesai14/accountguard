@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { analystApi } from "@/lib/api";
 import { requireSession } from "@/lib/auth";
+import { plural } from "@/lib/format";
 import {
   createSession,
   passwordsMatch,
@@ -92,7 +93,7 @@ export async function suspendKey(
   revalidatePath("/", "layout");
   const dropped = result.data?.holds_dropped ?? 0;
   return {
-    success: `Key suspended${dropped ? ` and ${dropped} held email${dropped === 1 ? "" : "s"} dropped` : ""}. This action has been recorded.`,
+    success: `Key suspended${dropped ? ` and ${plural(dropped, "held email")} dropped` : ""}. This action has been recorded.`,
   };
 }
 
@@ -119,10 +120,9 @@ export async function correctToTakeover(
   revalidatePath("/", "layout");
   const r = result.data!;
   const parts = [
-    `${r.corrected} decision${r.corrected === 1 ? "" : "s"} relabelled takeover`,
+    `${plural(r.corrected, "decision")} relabelled takeover`,
     r.keys_suspended.length && `suspended ${r.keys_suspended.join(", ")}`,
-    r.holds_dropped &&
-      `${r.holds_dropped} held email${r.holds_dropped === 1 ? "" : "s"} dropped`,
+    r.holds_dropped && `${plural(r.holds_dropped, "held email")} dropped`,
   ].filter(Boolean);
   return {
     success: `Corrected: ${parts.join(", ")}. The baseline no longer counts those events.`,
@@ -180,11 +180,14 @@ export async function resolveAccount(
       reason: fields.reason,
     },
   );
-  if (result.error) return { error: result.error };
+  if (result.error) {
+    // 409: the open reviews changed since the page loaded. Reload them so the
+    // next submit names the current set.
+    if (result.status === 409) revalidatePath("/", "layout");
+    return { error: result.error };
+  }
   revalidatePath("/", "layout");
   const r = result.data!;
-  const plural = (n: number, word: string) =>
-    `${n} ${word}${n === 1 ? "" : "s"}`;
   const parts = [
     r.resolved && `${plural(r.resolved, "review")} closed`,
     r.holds_released && `${plural(r.holds_released, "hold")} released`,

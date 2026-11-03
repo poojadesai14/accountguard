@@ -119,9 +119,10 @@ credentials or Supabase table access.
    expected hold/block sequence, use a separate disposable environment in
    enforcement mode: the seed deliberately asserts those actions. Run the
    simulator there to inspect false positives, missed takeovers, and latency.
-4. Finish the spec's `/metrics` endpoint and counters before relying on shadow
-   traffic for operational evaluation. Health alone does not reveal fail-open
-   scoring failures. Validate the 200 ms scoring budget against hosted Postgres.
+4. Before relying on shadow traffic for operational evaluation, scrape
+   `/metrics` (analyst token) and watch `ato_unscored_total{reason}`: health
+   alone does not reveal fail-open scoring failures. Validate the 200 ms scoring
+   budget against hosted Postgres.
 5. Deploy the Next.js analyst UI from the `web` root to Vercel with `API_BASE_URL`,
    server-only `ANALYST_TOKEN`, and `UI_PASSWORD`. Keep the demo owner-response
    endpoint behind analyst authentication until signed owner links exist.

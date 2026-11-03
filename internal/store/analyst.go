@@ -2,12 +2,12 @@ package store
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 
+	"github.com/poojadesai14/resend-ato/internal/action"
 	"github.com/poojadesai14/resend-ato/internal/signal"
 )
 
@@ -19,8 +19,7 @@ type Range struct {
 // rangeSQL filters on col with $n (from) and $n+1 (to).
 const rangeSQL = ` (%[1]s >= $%[2]d or $%[2]d::timestamptz is null) and (%[1]s < $%[3]d or $%[3]d::timestamptz is null) `
 
-var severity = []string{"allow", "flag", "hold", "block"}
-
+// Totals counts decisions by action.
 type Totals struct {
 	Events int `json:"events"`
 	Allow  int `json:"allow"`
@@ -29,6 +28,7 @@ type Totals struct {
 	Block  int `json:"block"`
 }
 
+// StatsPoint counts the stopping and flagging decisions in one time bucket.
 type StatsPoint struct {
 	T     time.Time `json:"t"`
 	Flag  int       `json:"flag"`
@@ -36,11 +36,13 @@ type StatsPoint struct {
 	Block int       `json:"block"`
 }
 
+// SignalCount is how many decisions a signal fired on.
 type SignalCount struct {
 	Name  string `json:"name"`
 	Count int    `json:"count"`
 }
 
+// ReviewItem is an account with open reviews and the most severe open action.
 type ReviewItem struct {
 	AccountID string    `json:"account_id"`
 	OpenCount int       `json:"open_count"`
@@ -48,6 +50,7 @@ type ReviewItem struct {
 	LastAt    time.Time `json:"last_at"`
 }
 
+// Stats is the overview page: totals, decisions over time, top signals and the review queue.
 type Stats struct {
 	Totals      Totals        `json:"totals"`
 	Series      []StatsPoint  `json:"series"`
@@ -96,7 +99,7 @@ func GetStats(ctx context.Context, db DBTX, r Range, bucket string) (*Stats, err
 
 	rows, err = db.Query(ctx, `
 		select account_id, count(*) as open_count,
-		       max(array_position(array['allow','flag','hold','block'], action)) - 1 as sev,
+		       max(array_position(`+action.SeveritySQL+`, action)) - 1 as sev,
 		       max(occurred_at) as last_at
 		from decisions where review_status = 'open' and`+fmt.Sprintf(rangeSQL, "occurred_at", 1, 2)+`
 		group by account_id order by 3 desc, 4 desc limit 50`, r.From, r.To)
@@ -107,12 +110,13 @@ func GetStats(ctx context.Context, db DBTX, r Range, bucket string) (*Stats, err
 		var it ReviewItem
 		var sev int
 		err := row.Scan(&it.AccountID, &it.OpenCount, &sev, &it.LastAt)
-		it.MaxAction = severity[sev]
+		it.MaxAction = action.Action(sev).String()
 		return it, err
 	})
 	return s, err
 }
 
+// AccountSummary is one row of the account list.
 type AccountSummary struct {
 	AccountID   string     `json:"account_id" db:"account_id"`
 	FirstSeenAt time.Time  `json:"first_seen_at" db:"first_seen_at"`
@@ -123,6 +127,7 @@ type AccountSummary struct {
 	LastAction  *string    `json:"last_action" db:"last_action"`
 }
 
+// ListAccounts lists up to 200 accounts whose ID contains q, most open reviews first.
 func ListAccounts(ctx context.Context, db DBTX, q string, needsReview bool) ([]AccountSummary, error) {
 	rows, err := db.Query(ctx, `
 		select p.account_id, p.first_seen_at, p.events_seen,
@@ -199,6 +204,7 @@ func Timeline(ctx context.Context, db DBTX, accountID string, r Range, limit int
 	return pgx.CollectRows(rows, pgx.RowToStructByName[TimelineRow])
 }
 
+// EventRow loads one event with its decision, as Timeline shows it.
 func EventRow(ctx context.Context, db DBTX, eventID string) (*TimelineRow, error) {
 	rows, err := db.Query(ctx, timelineSelect+` where e.event_id = $1`, eventID)
 	if err != nil {
@@ -235,129 +241,4 @@ func SeriesEvents(ctx context.Context, db DBTX, accountID string, r Range) ([]Se
 		return nil, err
 	}
 	return pgx.CollectRows(rows, pgx.RowToStructByName[SeriesEvent])
-}
-
-type KeyStatus struct {
-	APIKeyID   string    `json:"api_key_id" db:"api_key_id"`
-	AccountID  string    `json:"account_id" db:"account_id"`
-	Status     string    `json:"status" db:"status"`
-	Reason     string    `json:"reason" db:"reason"`
-	DecisionID *string   `json:"decision_id" db:"decision_id"`
-	UpdatedAt  time.Time `json:"updated_at" db:"updated_at"`
-	// The account has a confirmed takeover: restoring needs the account ID typed.
-	Takeover bool `json:"takeover" db:"takeover"`
-	// Risky signals on the emails a suspended key was stopped for (KeyWarnings):
-	// restoring it also needs the account ID typed, with this evidence shown.
-	Warnings []Warning `json:"warnings" db:"-"`
-}
-
-// takeoverOnAccount: any decision on the key_status row's account is labelled takeover.
-const takeoverOnAccount = `exists (select 1 from decisions t where t.account_id = key_status.account_id and t.label = 'takeover')`
-
-// KeyTakeover finds a key's account and whether that account has a confirmed takeover.
-func KeyTakeover(ctx context.Context, db DBTX, apiKeyID string) (accountID string, takeover, found bool, err error) {
-	err = db.QueryRow(ctx, `select account_id, `+takeoverOnAccount+` from key_status where api_key_id = $1`, apiKeyID).
-		Scan(&accountID, &takeover)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return "", false, false, nil
-	}
-	return accountID, takeover, err == nil, err
-}
-
-func KeyStatuses(ctx context.Context, db DBTX, accountID string) ([]KeyStatus, error) {
-	rows, err := db.Query(ctx, `
-		select api_key_id, account_id, status, reason, decision_id::text as decision_id, updated_at,
-			`+takeoverOnAccount+` as takeover
-		from key_status where account_id = $1 order by updated_at desc`, accountID)
-	if err != nil {
-		return nil, err
-	}
-	keys, err := pgx.CollectRows(rows, pgx.RowToStructByName[KeyStatus])
-	if err != nil {
-		return nil, err
-	}
-	for i := range keys {
-		keys[i].Warnings = []Warning{}
-		if keys[i].Status == "suspended" {
-			if keys[i].Warnings, err = KeyWarnings(ctx, db, keys[i].APIKeyID); err != nil {
-				return nil, err
-			}
-		}
-	}
-	return keys, nil
-}
-
-// KeyWarnings lists the risky signals (RiskySignals) on the holds and blocks a key
-// was stopped for: scored stops on the key from 24 hours before the decision that
-// suspended it, whatever they were labelled. A takeover label is handled by the
-// account-level lock instead. Restoring such a key lets that sender send again.
-func KeyWarnings(ctx context.Context, db DBTX, apiKeyID string) ([]Warning, error) {
-	rows, err := db.Query(ctx, `select `+decisionCols+` from decisions d
-		where d.api_key_id = $1 and d.action in ('hold','block') and d.reason is null
-		and d.occurred_at >= coalesce((select s.occurred_at from key_status k join decisions s on s.decision_id = k.decision_id
-			where k.api_key_id = $1), now()) - interval '24 hours'
-		order by d.occurred_at`, apiKeyID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var stops []*Decision
-	for rows.Next() {
-		d, err := scanDecision(rows)
-		if err != nil {
-			return nil, err
-		}
-		stops = append(stops, d)
-	}
-	return Warnings(stops), rows.Err()
-}
-
-type AnalystAction struct {
-	ID         int64     `json:"id" db:"id"`
-	DecisionID *string   `json:"decision_id" db:"decision_id"`
-	APIKeyID   *string   `json:"api_key_id" db:"api_key_id"`
-	Action     string    `json:"action" db:"action"`
-	Actor      string    `json:"actor" db:"actor"`
-	Reason     string    `json:"reason" db:"reason"`
-	CreatedAt  time.Time `json:"created_at" db:"created_at"`
-}
-
-func ActionsForDecision(ctx context.Context, db DBTX, decisionID string) ([]AnalystAction, error) {
-	rows, err := db.Query(ctx, `
-		select id, decision_id::text as decision_id, api_key_id, action, actor, reason, created_at
-		from analyst_actions where decision_id = $1::uuid order by created_at`, decisionID)
-	if err != nil {
-		return nil, err
-	}
-	return pgx.CollectRows(rows, pgx.RowToStructByName[AnalystAction])
-}
-
-func InsertAnalystAction(ctx context.Context, db DBTX, decisionID, apiKeyID *string, action, actor, reason string) error {
-	_, err := db.Exec(ctx, `
-		insert into analyst_actions (decision_id, api_key_id, action, actor, reason)
-		values ($1::uuid, $2, $3, $4, $5)`, decisionID, apiKeyID, action, actor, reason)
-	return err
-}
-
-// DecisionByID loads a decision; forUpdate locks it for the rest of the transaction.
-func DecisionByID(ctx context.Context, db DBTX, decisionID string, forUpdate bool) (*Decision, error) {
-	q := `select ` + decisionCols + ` from decisions where decision_id = $1::uuid`
-	if forUpdate {
-		q += ` for update`
-	}
-	return scanDecision(db.QueryRow(ctx, q, decisionID))
-}
-
-// ExpireHolds marks pending holds past their expiry as expired. They stay open for review.
-func ExpireHolds(ctx context.Context, db DBTX) (int64, error) {
-	tag, err := db.Exec(ctx, `
-		update decisions set hold_status = 'expired'
-		where hold_status = 'pending' and hold_expires_at < now()`)
-	return tag.RowsAffected(), err
-}
-
-func PendingHolds(ctx context.Context, db DBTX) (int, error) {
-	var n int
-	err := db.QueryRow(ctx, `select count(*) from decisions where hold_status = 'pending'`).Scan(&n)
-	return n, err
 }

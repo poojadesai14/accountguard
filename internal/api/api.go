@@ -2,12 +2,15 @@
 package api
 
 import (
+	"context"
 	"crypto/subtle"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/poojadesai14/resend-ato/internal/config"
 	"github.com/poojadesai14/resend-ato/internal/engine"
@@ -17,8 +20,15 @@ import (
 	"github.com/poojadesai14/resend-ato/internal/store"
 )
 
-const maxEventBytes = 1 << 20
+const (
+	maxEventBytes         = 1 << 20
+	suspendedCheckTimeout = 50 * time.Millisecond
+	// Below the server's WriteTimeout, so a slow analyst query is cancelled and
+	// answered instead of left running on a closed connection.
+	analystTimeout = 20 * time.Second
+)
 
+// Server serves the ingest, analyst and metrics endpoints.
 type Server struct {
 	Store        *store.Store
 	Service      *engine.Service
@@ -28,6 +38,7 @@ type Server struct {
 	Metrics      *metrics.Metrics // optional; serves GET /metrics when set
 }
 
+// Routes returns the handler for every endpoint.
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.healthz)
@@ -80,15 +91,9 @@ func (s *Server) postEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	d, err := s.Service.Handle(r.Context(), &ev)
+	d, err := s.score(r.Context(), &ev)
 	if err != nil {
-		// Fail open: a detector outage must not stop every customer's email.
-		slog.Error("scoring failed, failing open", "event_id", ev.EventID, "account_id", ev.AccountID, "err", err)
-		s.Metrics.Unscored()
-		writeJSON(w, http.StatusOK, DecisionResponse{
-			EventID: ev.EventID, Action: "allow", Hits: []signal.Hit{},
-			Unscored: true, ConfigVersion: s.Config.Version,
-		})
+		s.failOpen(w, r, &ev, err)
 		return
 	}
 
@@ -103,6 +108,55 @@ func (s *Server) postEvent(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+var errScoringPanic = errors.New("panic while scoring")
+
+// score runs the engine and turns a panic into an error, so a bug in a signal
+// fails open like a database outage instead of dropping the connection.
+func (s *Server) score(ctx context.Context, ev *event.Event) (d *store.Decision, err error) {
+	defer func() {
+		if p := recover(); p != nil {
+			err = fmt.Errorf("%w: %v", errScoringPanic, p)
+		}
+	}()
+	return s.Service.Handle(ctx, ev)
+}
+
+// failOpen answers allow when an event couldn't be scored: a detector outage must
+// not stop every customer's email. A key that is already suspended stays
+// stopped, because that needs one indexed read, not the whole scoring path.
+func (s *Server) failOpen(w http.ResponseWriter, r *http.Request, ev *event.Event, err error) {
+	slog.Error("scoring failed, failing open", "event_id", ev.EventID, "account_id", ev.AccountID, "err", err)
+	s.Metrics.Unscored(unscoredReason(err))
+	resp := DecisionResponse{
+		EventID: ev.EventID, Action: "allow", Hits: []signal.Hit{},
+		Unscored: true, ConfigVersion: s.Config.Version,
+	}
+	if ev.APIKeyID != "" {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), suspendedCheckTimeout)
+		defer cancel()
+		suspended, kerr := store.KeySuspended(ctx, s.Store.Pool, ev.APIKeyID)
+		if kerr != nil {
+			slog.Error("suspended-key check failed", "event_id", ev.EventID, "err", kerr)
+		}
+		if suspended {
+			reason := engine.ReasonKeySuspended
+			resp.Action, resp.Enforced, resp.Reason = "block", true, &reason
+		}
+	}
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func unscoredReason(err error) string {
+	switch {
+	case errors.Is(err, errScoringPanic):
+		return metrics.UnscoredPanic
+	case errors.Is(err, context.DeadlineExceeded):
+		return metrics.UnscoredTimeout
+	default:
+		return metrics.UnscoredError
+	}
+}
+
 func bearer(token string, next http.Handler) http.Handler {
 	want := []byte("Bearer " + token)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -112,6 +166,14 @@ func bearer(token string, next http.Handler) http.Handler {
 			return
 		}
 		next.ServeHTTP(w, r)
+	})
+}
+
+func withTimeout(d time.Duration, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), d)
+		defer cancel()
+		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 

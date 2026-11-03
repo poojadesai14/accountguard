@@ -15,7 +15,7 @@ var now = time.Date(2026, 10, 30, 14, 0, 0, 0, time.UTC)
 
 func testConfig(t *testing.T) *config.Config {
 	t.Helper()
-	cfg, err := config.Load("../../config.yaml")
+	cfg, err := config.LoadAt("../../config.yaml", now)
 	if err != nil {
 		t.Fatal(err)
 	}

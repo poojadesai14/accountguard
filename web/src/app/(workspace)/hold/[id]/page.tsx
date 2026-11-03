@@ -6,7 +6,7 @@ import type { DecisionDetail } from "@/lib/types";
 import { UUID } from "@/lib/review";
 import { heldEventLabel } from "@/lib/decisions";
 import { ApiError, DetailList, PageHeader } from "@/components/ui";
-import { OwnerForm } from "@/components/forms";
+import { OwnerForm } from "@/components/forms/owner";
 
 export const metadata = { title: "Held activity" };
 export default async function HoldPage({

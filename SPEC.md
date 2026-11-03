@@ -3,7 +3,8 @@
 Companion to [README.md](README.md). The README says **why**; this file says **exactly what to build**.
 If the two disagree, the README's decisions win; fix this file.
 
-Status on 2026-10-30: spec written, nothing built.
+This is the build plan written before the code, kept as the reference for event formats, the schema,
+the rules and the endpoints. Where the code has moved on, the README describes what was built.
 
 ---
 
@@ -13,7 +14,7 @@ In scope:
 - Go service: `POST /v1/events` returns a decision synchronously; analyst JSON API; hold-expiry ticker; logs + metrics.
 - Postgres (Supabase) schema.
 - Next.js analyst UI (overview, account page, decision detail, owner hold view).
-- Seed script, simulator, evaluation script.
+- Seed script, and a simulator that also scores detection quality.
 
 Out of scope (README §7 "kept out on purpose"): Temporal, Redis/Kafka, live RDAP, redirect following,
 phishing feeds, TLS fingerprinting, auto-suspension circuit breaker, actually sending held emails.
@@ -32,7 +33,6 @@ Assumptions (state in the final README):
 /cmd/server        main: HTTP server, ticker
 /cmd/seed          seed script (demo scenarios)
 /cmd/sim           simulator: labeled scenarios -> events -> server
-/cmd/eval          evaluation: reads decisions + labels, prints precision/recall
 /internal/config   config.yaml loading + validation
 /internal/event    event types, validation, feature extraction
 /internal/signal   the four signals (one file each)
@@ -239,6 +239,8 @@ domain is checked against `profile.sender_domains`. (Verify against Resend's doc
 add domains through the API.)
 
 Domain age: `content.domain_ages` in config stands in for RDAP. Domains not listed are treated as **not young**.
+Each entry is a registration date (`2026-10-26`) or an age in days before the service started (`4d`); the
+shipped config uses ages so the seed and simulator work on any date.
 
 ### 3.4 Account changes (category `account`, no history)
 
@@ -629,7 +631,8 @@ Metrics:
 - `ato_decisions_total{action, enforced}` counter
 - `ato_signal_hits_total{name}` counter
 - `ato_scoring_latency_seconds` histogram
-- `ato_unscored_total` counter
+- `ato_unscored_total{reason}` counter (`error`, `timeout`, `panic`)
+- `ato_key_suspensions_total{reason}` counter (`auto`, `analyst`, `owner`)
 - `ato_holds_pending` gauge (updated by the ticker)
 
 ---
@@ -681,7 +684,7 @@ prints the report. Labels stay in memory, so no `sim_labels` table is needed.
     new member then campaign, owner uses gmail Reply-To
   - takeover: fast, slow, same cloud, compromised server (aged domain), BEC gmail Reply-To (new network and
     same cloud), recon then send, brand lookalike, known-domain abuse (expected miss)
-- Young domains come from `content.domain_ages` in the config, so they must be young relative to today.
+- Young domains come from `content.domain_ages` in the config; written as ages (`4d`), they stay young on any date.
 
 Report: precision and recall per action threshold (historical / clean / all); per takeover scenario the share
 flagged and stopped and attacker emails delivered; per legit scenario the share flagged, held, blocked;

@@ -32,8 +32,9 @@ func (s *Service) Handle(ctx context.Context, ev *event.Event) (*store.Decision,
 
 	feats := event.Extract(ev)
 	var (
-		dec       *store.Decision
-		duplicate bool
+		dec         *store.Decision
+		duplicate   bool
+		autoSuspend bool
 	)
 	err := pgx.BeginFunc(ctx, s.Store.Pool, func(tx pgx.Tx) error {
 		inserted, err := store.InsertEvent(ctx, tx, ev, feats)
@@ -66,25 +67,24 @@ func (s *Service) Handle(ctx context.Context, ev *event.Event) (*store.Decision,
 		// Compare first...
 		res := Evaluate(&signal.Input{Event: ev, Features: feats, Profile: p, WindowRecipients: window, Config: cfg}, suspended)
 
-		enforced := cfg.Mode == "enforce"
+		// A suspended key is an analyst's or owner's decision, not a rule under
+		// evaluation, so shadow mode doesn't let it send.
+		enforced := cfg.Mode == "enforce" || res.Reason == ReasonKeySuspended
 		dec = &store.Decision{
 			EventID:       ev.EventID,
 			AccountID:     ev.AccountID,
-			APIKeyID:      nullable(ev.APIKeyID),
+			APIKeyID:      store.Nullable(ev.APIKeyID),
 			OccurredAt:    ev.OccurredAt,
 			Action:        res.Action.String(),
 			Enforced:      enforced,
 			Score:         res.Score,
 			Hits:          res.Hits,
-			Reason:        nullable(res.Reason),
+			Reason:        store.Nullable(res.Reason),
 			ConfigVersion: cfg.Version,
 			ReviewStatus:  "none",
 		}
-		// Flags stay in the log and timeline; only actions that stop mail need a
-		// person, so a lone new ASN doesn't fill the queue. A send rejected because
-		// its key is already suspended needs no review of its own: the suspension
-		// and the decision that caused it are the case. Otherwise one incident
-		// leaves a review per rejected send behind.
+		// Only stopped mail needs a person. A send rejected for an already suspended
+		// key is part of the case its suspension opened, not a review of its own.
 		if res.Action >= Hold && res.Reason != ReasonKeySuspended {
 			dec.ReviewStatus = "open"
 		}
@@ -99,13 +99,14 @@ func (s *Service) Handle(ctx context.Context, ev *event.Event) (*store.Decision,
 			return err
 		}
 		if enforced && res.Action == Block && res.Reason != ReasonKeySuspended && ev.APIKeyID != "" {
-			if err := store.SuspendKey(ctx, tx, ev.APIKeyID, ev.AccountID, "auto", dec.DecisionID); err != nil {
+			if err := store.SuspendKey(ctx, tx, ev.APIKeyID, ev.AccountID, store.SuspendedByEngine, dec.DecisionID); err != nil {
 				return err
 			}
+			autoSuspend = true
 		}
 
 		// ...then update. Only allowed events teach the baseline.
-		p.RecordAlways(ev, cfg)
+		p.Observe(ev, cfg)
 		if res.Action == Allow {
 			p.Learn(ev, feats, cfg)
 		}
@@ -126,13 +127,9 @@ func (s *Service) Handle(ctx context.Context, ev *event.Event) (*store.Decision,
 			"config_version", dec.ConfigVersion, "latency_us", dec.LatencyUS)
 		// Includes the commit, unlike latency_us, which is stored inside the transaction.
 		s.Metrics.Decision(dec.Action, dec.Enforced, names, time.Since(start))
+		if autoSuspend {
+			s.Metrics.KeysSuspended(store.SuspendedByEngine, 1)
+		}
 	}
 	return dec, nil
-}
-
-func nullable(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
 }

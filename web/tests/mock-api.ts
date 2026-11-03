@@ -1,82 +1,29 @@
-// Local-only API fixture. Browser tests never write to the deployed API or Supabase.
+// Local-only API for the browser tests: the route table and the state the tests
+// drive through /__ control routes. Fixture data lives in mock-fixtures.ts.
 import { createServer } from "node:http";
 import type {
-  AccountSeries,
   DashboardAccount,
-  GlobalAuditAction,
   DecisionDetail,
-  Stats,
-  TimelineRow,
+  GlobalAuditAction,
 } from "../src/lib/types";
-
-const decisionId = "11111111-1111-4111-8111-111111111111";
-const hours = Array.from({ length: 12 }, (_, i) =>
-  new Date(Date.now() - (12 - i) * 3_600_000).toISOString(),
-);
-const hits = [
-  {
-    name: "new_asn",
-    category: "network",
-    points: 30,
-    detail: "AS14061 DIGITALOCEAN-ASN first seen for key key_prod_1",
-  },
-  {
-    name: "new_domain",
-    category: "content",
-    points: 25,
-    detail: "invoice-portal.net has not appeared in allowed account history",
-  },
-  {
-    name: "young_domain",
-    category: "content",
-    points: 20,
-    detail: "invoice-portal.net was registered 4 days ago",
-  },
-];
-const event: TimelineRow = {
-  event_id: "evt_investigation_001",
-  type: "email.send",
-  occurred_at: hours[10],
-  api_key_id: "key_prod_1",
-  source: "api",
-  ip: "203.0.113.9",
-  asn: 14061,
-  asn_org: "DIGITALOCEAN-ASN",
-  user_agent: "resend-node:4.0.0",
-  sender_domain: "acme.com",
-  recipient_count: 5,
-  link_domains: ["invoice-portal.net"],
-  reply_to_domains: [],
-  body_email_domains: [],
-  change_kind: null,
-  change_target_id: null,
-  read_resource: null,
-  read_status: null,
-  decision_id: decisionId,
-  action: "hold",
-  enforced: true,
-  score: 75,
+import {
+  config,
+  decisionId,
+  event,
   hits,
-  reason: null,
-  hold_status: "pending",
-  review_status: "open",
-  label: null,
-};
+  hours,
+  initialDetail,
+  series,
+  stats,
+  telemetryStats,
+  timeline,
+} from "./mock-fixtures";
+
 let detail: DecisionDetail;
 let suspended = true;
 // The attacker's backup key: created by an account change, never sent.
 let backupSuspended = false;
 let newerReview = false; // a review the page hasn't seen yet
-// Mirrors store.RiskySignals: "legitimate" over these needs the account ID typed.
-const risky = () =>
-  detail.decision.hits.some((h) =>
-    [
-      "young_domain",
-      "lookalike_domain",
-      "recipient_spike",
-      "freemail_reply_to",
-    ].includes(h.name),
-  );
 let requests: { path: string; body?: Record<string, string> }[] = [];
 let empty = false;
 let unavailable = false;
@@ -86,66 +33,7 @@ let manyAccounts = false;
 let legacyDashboard = false;
 let auditRecords: GlobalAuditAction[] = [];
 function reset() {
-  detail = {
-    decision: {
-      decision_id: decisionId,
-      event_id: event.event_id,
-      account_id: "acc_acme",
-      api_key_id: "key_prod_1",
-      occurred_at: event.occurred_at,
-      decided_at: event.occurred_at,
-      action: "hold",
-      enforced: true,
-      score: 75,
-      hits,
-      reason: null,
-      config_version: "2026-10-30.1",
-      latency_us: 1800,
-      hold_status: "pending",
-      hold_expires_at: new Date(Date.now() + 86_400_000).toISOString(),
-      review_status: "open",
-      label: null,
-    },
-    event: { ...event },
-    actions: [],
-    related: [
-      {
-        kind: "link_domain",
-        value: "invoice-portal.net",
-        accounts: 9,
-        events: 37,
-        stopped: 5,
-        confirmed: 2,
-        top: [
-          {
-            account_id: "acc_beta",
-            events: 6,
-            worst_action: "block",
-            confirmed: true,
-            decision_id: null,
-            last_at: hours[9],
-          },
-          {
-            account_id: "acc_gamma",
-            events: 4,
-            worst_action: "hold",
-            confirmed: false,
-            decision_id: null,
-            last_at: hours[8],
-          },
-          // Seven listed of nine: five show first, two expand, two are unlisted.
-          ...["delta", "epsilon", "zeta", "eta", "theta"].map((name, i) => ({
-            account_id: `acc_${name}`,
-            events: 3,
-            worst_action: (i < 3 ? "hold" : "flag") as "hold" | "flag",
-            confirmed: false,
-            decision_id: null,
-            last_at: hours[7],
-          })),
-        ],
-      },
-    ],
-  };
+  detail = initialDetail();
   suspended = true;
   backupSuspended = false;
   newerReview = false;
@@ -159,112 +47,44 @@ function reset() {
   auditRecords = [];
 }
 reset();
-const series: AccountSeries = {
-  account_id: "acc_acme",
-  baseline_hourly: 41.5,
-  spike_threshold: 124.5,
-  points: hours.map((t, i) => ({
-    t,
-    recipients: i < 9 ? 25 + i * 4 : 140 + i * 6,
-    asns: [
-      {
-        asn: i < 9 ? 16509 : 14061,
-        org: i < 9 ? "AMAZON-02" : "DIGITALOCEAN-ASN",
-        first_seen: i === 9,
-      },
-    ],
-    content_hits: i > 8 ? ["new_domain", "young_domain"] : [],
-    account_changes: i === 8 ? 1 : 0,
-    actions: {
-      allow: 20 + i,
-      flag: i > 8 ? 4 : 0,
-      hold: i > 9 ? 2 : 0,
-      block: i === 11 ? 1 : 0,
-    },
-  })),
-};
-const stats: Stats = {
-  totals: { events: 23847, allow: 23780, flag: 46, hold: 16, block: 5 },
-  series: hours.map((t, i) => ({
-    t,
-    flag: (i % 3) + 1,
-    hold: i > 7 ? 3 : 0,
-    block: i > 9 ? 2 : 0,
-  })),
-  top_signals: [
-    { name: "new_domain", count: 46 },
-    { name: "new_asn", count: 38 },
-    { name: "young_domain", count: 21 },
-    { name: "recipient_spike", count: 12 },
-  ],
-  review_queue: [
-    {
-      account_id: "acc_acme",
-      open_count: 12,
-      max_action: "block",
-      last_at: hours[11],
-    },
-    {
-      account_id: "acc_beta",
-      open_count: 3,
-      max_action: "hold",
-      last_at: hours[10],
-    },
-    {
-      account_id: "acc_northstar",
-      open_count: 2,
-      max_action: "flag",
-      last_at: hours[9],
-    },
-  ],
-};
 
-function telemetryStats(url: URL): Stats {
-  const from = url.searchParams.get("from");
-  const to = url.searchParams.get("to");
-  const interval =
-    url.searchParams.get("bucket") === "1d" ? 86_400_000 : 3_600_000;
-  const history = [
-    { hoursAgo: 1, flag: 65, hold: 2, block: 1 },
-    { hoursAgo: 48, flag: 259, hold: 3, block: 2 },
-    { hoursAgo: 240, flag: 30, hold: 5, block: 4 },
-    { hoursAgo: 960, flag: 10, hold: 7, block: 8 },
-  ];
-  const buckets = new Map<
-    number,
-    { t: string; flag: number; hold: number; block: number }
-  >();
-  for (const point of history) {
-    const time = Date.now() - point.hoursAgo * 3_600_000;
-    if ((from && time < Date.parse(from)) || (to && time >= Date.parse(to)))
-      continue;
-    const bucket = Math.floor(time / interval) * interval;
-    const previous = buckets.get(bucket);
-    buckets.set(bucket, {
-      t: new Date(bucket).toISOString(),
-      flag: (previous?.flag ?? 0) + point.flag,
-      hold: (previous?.hold ?? 0) + point.hold,
-      block: (previous?.block ?? 0) + point.block,
-    });
-  }
-  const series = [...buckets.values()].sort((a, b) => a.t.localeCompare(b.t));
-  const totals = series.reduce(
-    (sum, point) => ({
-      events: sum.events + point.flag + point.hold + point.block,
-      allow: 0,
-      flag: sum.flag + point.flag,
-      hold: sum.hold + point.hold,
-      block: sum.block + point.block,
-    }),
-    { events: 0, allow: 0, flag: 0, hold: 0, block: 0 },
+// Mirrors store.RiskySignals: "legitimate" over these needs the account ID typed.
+const risky = () =>
+  detail.decision.hits.some((h) =>
+    [
+      "young_domain",
+      "lookalike_domain",
+      "recipient_spike",
+      "freemail_reply_to",
+    ].includes(h.name),
   );
-  return {
-    totals,
-    series,
-    top_signals: [{ name: "new_asn", count: totals.flag }],
-    review_queue: [],
-  };
-}
+
+// Test controls: each switches the API into one scenario until the next reset.
+const CONTROLS: Record<string, () => void> = {
+  "/__reset": reset,
+  "/__risky-review": () => {
+    detail.decision.hits = [
+      ...detail.decision.hits,
+      {
+        name: "young_domain",
+        category: "content",
+        points: 20,
+        detail: "docs-share-portal.com registered 6 days ago",
+      },
+    ];
+  },
+  "/__newer-review": () => (newerReview = true),
+  "/__empty": () => (empty = true),
+  "/__unavailable": () => (unavailable = true),
+  "/__single-bucket": () => (singleBucket = true),
+  "/__telemetry-history": () => (telemetryHistory = true),
+  "/__many-accounts": () => (manyAccounts = true),
+  "/__legacy-dashboard": () => (legacyDashboard = true),
+  "/__recover": () => {
+    unavailable = false;
+    legacyDashboard = false;
+  },
+};
 
 function dashboardAccounts(): DashboardAccount[] {
   const base: DashboardAccount = {
@@ -368,7 +188,7 @@ function dashboardAccounts(): DashboardAccount[] {
               ...base,
               account_id: `acc_bulk_${String(index).padStart(3, "0")}`,
               api_key_id: `key_bulk_${String(index).padStart(3, "0")}`,
-              action: index === 54 ? "flag" : base.action,
+              action: index === 54 ? "block" : base.action,
               score: index === 54 ? 99 : base.score,
               occurred_at: index === 54 ? hours[11] : base.occurred_at,
               decision_id: null,
@@ -384,65 +204,10 @@ createServer(async (req, res) => {
     res.end(JSON.stringify(value));
   };
   if (url.pathname === "/healthz") return reply(200, { ok: true });
-  if (url.pathname === "/v1/config")
-    return reply(200, {
-      mode: "shadow",
-      config_version: "test",
-      thresholds: {
-        flag: 30,
-        hold: 60,
-        block: 80,
-        block_min_categories: 2,
-        single_category_exempt: ["content"],
-      },
-    });
-  if (url.pathname === "/__reset" && req.method === "POST") {
-    reset();
-    return reply(200, {});
-  }
-  if (url.pathname === "/__risky-review" && req.method === "POST") {
-    detail.decision.hits = [
-      ...detail.decision.hits,
-      {
-        name: "young_domain",
-        category: "content",
-        points: 20,
-        detail: "docs-share-portal.com registered 6 days ago",
-      },
-    ];
-    return reply(200, {});
-  }
-  if (url.pathname === "/__newer-review" && req.method === "POST") {
-    newerReview = true;
-    return reply(200, {});
-  }
-  if (url.pathname === "/__empty" && req.method === "POST") {
-    empty = true;
-    return reply(200, {});
-  }
-  if (url.pathname === "/__unavailable" && req.method === "POST") {
-    unavailable = true;
-    return reply(200, {});
-  }
-  if (url.pathname === "/__single-bucket" && req.method === "POST") {
-    singleBucket = true;
-    return reply(200, {});
-  }
-  if (url.pathname === "/__telemetry-history" && req.method === "POST") {
-    telemetryHistory = true;
-    return reply(200, {});
-  }
-  if (url.pathname === "/__many-accounts" && req.method === "POST") {
-    manyAccounts = true;
-    return reply(200, {});
-  }
-  if (url.pathname === "/__legacy-dashboard" && req.method === "POST") {
-    legacyDashboard = true;
-    return reply(200, {});
-  }
-  if (url.pathname === "/__recover" && req.method === "POST") {
-    unavailable = false;
-    legacyDashboard = false;
+  if (url.pathname === "/v1/config") return reply(200, config);
+  const control = CONTROLS[url.pathname];
+  if (control && req.method === "POST") {
+    control();
     return reply(200, {});
   }
   if (url.pathname === "/__requests") return reply(200, requests);
@@ -459,13 +224,11 @@ createServer(async (req, res) => {
       account_id: "acc_acme",
       api_key_id: "key_prod_1",
       decision_id: decisionId,
-      action:
-        body.action ??
-        (url.pathname.endsWith("/suspend")
-          ? "suspend_key"
-          : url.pathname.endsWith("/correct")
-            ? "correct_to_takeover"
-            : "unblock_key"),
+      action: url.pathname.endsWith("/suspend")
+        ? "suspend_key"
+        : url.pathname.endsWith("/correct")
+          ? "correct_to_takeover"
+          : "unblock_key",
       actor: body.actor ?? "owner",
       reason: body.reason ?? "Owner response",
       created_at: new Date().toISOString(),
@@ -579,37 +342,6 @@ createServer(async (req, res) => {
       detail.decision.review_status = "resolved";
       return reply(200, detail.decision);
     }
-    if (url.pathname.endsWith("/actions")) {
-      if (
-        risky() &&
-        body.action === "mark_legitimate" &&
-        body.confirm !== "acc_acme"
-      )
-        return reply(409, {
-          error:
-            "the evidence shows young_domain: type the account ID to confirm this is legitimate",
-        });
-      detail.decision.review_status = "resolved";
-      if (body.action === "confirm_takeover") {
-        suspended = true;
-        detail.decision.label = "takeover";
-        detail.decision.hold_status = "dropped";
-      }
-      if (body.action === "mark_legitimate") {
-        detail.decision.label = "legitimate";
-        detail.decision.hold_status = "released";
-      }
-      if (body.action === "release_hold")
-        detail.decision.hold_status = "released";
-      detail.actions!.push({
-        id: 1,
-        action: body.action,
-        actor: body.actor,
-        reason: body.reason,
-        created_at: new Date().toISOString(),
-      });
-      return reply(200, detail.decision);
-    }
     return reply(404, {});
   }
   requests.push({ path: url.pathname + url.search });
@@ -628,14 +360,19 @@ createServer(async (req, res) => {
         if (view === "holds")
           return item.hold_status === "pending" && item.decision_id != null;
         if (view === "keys") return item.key_status === "suspended";
+        if (view === "flagged")
+          return (
+            !item.open_reviews &&
+            !item.suspended_keys &&
+            item.action === "flag" &&
+            item.label !== "legitimate"
+          );
         if (url.searchParams.get("segment") === "baseline")
           return baseline(item) && (view !== "healthy" || item.baseline_ready);
         return !!(item.open_reviews || item.suspended_keys);
       })
       .filter((item) =>
-        ["flag", "hold", "block"].includes(
-          url.searchParams.get("severity") ?? "",
-        )
+        ["hold", "block"].includes(url.searchParams.get("severity") ?? "")
           ? item.action === url.searchParams.get("severity")
           : true,
       )
@@ -682,6 +419,13 @@ createServer(async (req, res) => {
           (total, item) => total + item.suspended_keys,
           0,
         ),
+        flagged_accounts: all.filter(
+          (item) =>
+            !item.open_reviews &&
+            !item.suspended_keys &&
+            item.action === "flag" &&
+            item.label !== "legitimate",
+        ).length,
         healthy_baselines: all.filter(
           (item) => baseline(item) && item.baseline_ready,
         ).length,
@@ -722,30 +466,6 @@ createServer(async (req, res) => {
             ? telemetryStats(url)
             : stats,
     );
-  if (url.pathname === "/v1/accounts") {
-    const openReviews: Record<string, number> = {
-      acc_acme: 12,
-      acc_beta: 9,
-      acc_northstar: 0,
-    };
-    const accounts = ["acc_acme", "acc_beta", "acc_northstar"].filter((id) =>
-      id.includes(url.searchParams.get("q") ?? ""),
-    );
-    return reply(
-      200,
-      empty
-        ? null
-        : accounts.map((account_id, i) => ({
-            account_id,
-            first_seen_at: "2026-09-01T10:00:00Z",
-            events_seen: 6200 - i * 1000,
-            decisions: 8000 - i * 1000,
-            open_reviews: openReviews[account_id],
-            last_at: hours[11],
-            last_action: i === 0 ? "block" : "flag",
-          })),
-    );
-  }
   if (url.pathname.endsWith("/profile")) {
     if (!url.pathname.includes("acc_acme"))
       return reply(404, { error: "not found" });
@@ -867,37 +587,7 @@ createServer(async (req, res) => {
     });
   }
   if (url.pathname.endsWith("/series")) return reply(200, series);
-  if (url.pathname.endsWith("/timeline"))
-    return reply(200, [
-      {
-        ...event,
-        event_id: "evt_unscored_001",
-        occurred_at: hours[8],
-        action: null,
-        score: null,
-        hits: null,
-        enforced: null,
-        decision_id: null,
-        hold_status: null,
-        review_status: null,
-      },
-      {
-        ...event,
-        event_id: "evt_normal_001",
-        occurred_at: hours[9],
-        api_key_id: "key_safe_1",
-        ip: "198.51.100.20",
-        asn: 16509,
-        asn_org: "AMAZON-02",
-        action: "allow",
-        score: 0,
-        hits: [],
-        decision_id: null,
-        hold_status: null,
-        review_status: "none",
-      },
-      event,
-    ]);
+  if (url.pathname.endsWith("/timeline")) return reply(200, timeline);
   if (url.pathname === `/v1/decisions/${decisionId}`)
     return reply(200, {
       ...detail,

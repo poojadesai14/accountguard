@@ -1,6 +1,6 @@
 import { loadDashboard } from "@/app/dashboard-data";
 import { dashboardQuery } from "@/lib/dashboard";
-import { Dashboard } from "@/components/dashboard";
+import { Dashboard } from "@/components/dashboard/dashboard";
 
 export default async function Overview({
   searchParams,

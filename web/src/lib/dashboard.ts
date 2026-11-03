@@ -2,9 +2,9 @@ import { PERIODS, type Period } from "./format";
 import type { DashboardSnapshot } from "./types";
 export type DashboardQuery = {
   tab: "attention" | "baseline" | "telemetry";
-  view: "accounts" | "holds" | "keys" | "healthy";
+  view: "accounts" | "holds" | "keys" | "flagged" | "healthy";
   q: string;
-  severity: "all" | "flag" | "hold" | "block";
+  severity: "all" | "hold" | "block";
   sort: "priority" | "recent";
   page: string;
   period: Period;
@@ -25,15 +25,16 @@ export function dashboardQuery(raw: Record<string, unknown>): DashboardQuery {
     view:
       tab === "baseline" && raw.view === "healthy"
         ? "healthy"
-        : tab === "attention" && (raw.view === "holds" || raw.view === "keys")
+        : tab === "attention" &&
+            (raw.view === "holds" ||
+              raw.view === "keys" ||
+              raw.view === "flagged")
           ? raw.view
           : "accounts",
     q: typeof raw.q === "string" ? raw.q.trim().slice(0, 200) : "",
     severity:
       tab === "attention" &&
-      (raw.severity === "flag" ||
-        raw.severity === "hold" ||
-        raw.severity === "block")
+      (raw.severity === "hold" || raw.severity === "block")
         ? raw.severity
         : "all",
     sort: raw.sort === "recent" ? "recent" : "priority",
@@ -100,11 +101,13 @@ export function dashboardSnapshotError(
         ? metrics.pending_quarantines
         : query.view === "keys"
           ? metrics.suspended_keys
-          : query.view === "healthy"
-            ? metrics.healthy_baselines
-            : query.tab === "attention"
-              ? metrics.attention_accounts
-              : undefined;
+          : query.view === "flagged"
+            ? metrics.flagged_accounts
+            : query.view === "healthy"
+              ? metrics.healthy_baselines
+              : query.tab === "attention"
+                ? metrics.attention_accounts
+                : undefined;
     if (expected !== undefined && total !== expected)
       return "The list total does not match its summary card. Refresh to try again.";
   }

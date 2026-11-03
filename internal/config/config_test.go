@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoad(t *testing.T) {
@@ -77,6 +78,39 @@ func TestLoad(t *testing.T) {
 			}
 			if !cfg.Content.Freemail["gmail.com"] {
 				t.Error("configured freemail set was not built")
+			}
+		})
+	}
+}
+
+func TestParseDomainAge(t *testing.T) {
+	today := time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)
+	tests := []struct {
+		name, in  string
+		want      time.Time
+		wantError bool
+	}{
+		{name: "absolute date", in: "2026-10-26", want: time.Date(2026, 10, 26, 0, 0, 0, 0, time.UTC)},
+		{name: "days before today", in: "4d", want: time.Date(2026, 10, 26, 0, 0, 0, 0, time.UTC)},
+		{name: "registered today", in: "0d", want: today},
+		{name: "negative days", in: "-3d", wantError: true},
+		{name: "not a number", in: "fourd", wantError: true},
+		{name: "not a date", in: "2026/10/26", wantError: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := parseDomainAge(tt.in, today)
+			if tt.wantError {
+				if err == nil {
+					t.Fatalf("parseDomainAge(%q) = %v, want error", tt.in, got)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !got.Equal(tt.want) {
+				t.Errorf("parseDomainAge(%q) = %v, want %v", tt.in, got, tt.want)
 			}
 		})
 	}

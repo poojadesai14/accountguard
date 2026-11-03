@@ -48,6 +48,7 @@
   --chart-line: #eeeeee;
   --chart-baseline: #777777;
   --chart-band: #333333;
+  --account-change: #aaa3c2;
 }
 * {
   box-sizing: border-box;
@@ -969,7 +970,9 @@ td strong {
 }
 
 .hit-list {
+  margin: 0;
   padding: 0 22px;
+  list-style: none;
 }
 .hit-row {
   display: grid;
@@ -1003,7 +1006,7 @@ td strong {
   background: var(--hold);
 }
 .category-account {
-  background: #aaa3c2;
+  background: var(--account-change);
 }
 .hit-row strong {
   font-size: 12px;
@@ -2848,6 +2851,9 @@ td strong {
   font-weight: 600;
   color: var(--ink);
 }
+.view-count.count-review {
+  color: var(--ink);
+}
 .view-count.count-flag {
   color: var(--flag);
 }
@@ -3002,11 +3008,6 @@ td strong {
 }
 .key-line details[open] {
   flex-basis: 100%;
-}
-
-.key-hint {
-  color: var(--ink);
-  font-weight: 500;
 }
 
 /* A created key nothing has vouched for yet: possibly an attacker's backup. */

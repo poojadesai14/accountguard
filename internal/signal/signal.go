@@ -15,6 +15,7 @@ const (
 	CatAccount  = "account"
 )
 
+// Hit is one signal that fired, with the points it adds and a human-readable detail.
 type Hit struct {
 	Name     string `json:"name"`
 	Category string `json:"category"`
@@ -34,18 +35,9 @@ type Input struct {
 // EvalFunc checks one event against the account's baseline and returns its hits.
 type EvalFunc func(in *Input) []Hit
 
-type Signal struct {
-	Name     string
-	Category string
-	Eval     EvalFunc
-}
-
-var All = []Signal{
-	{"network", CatNetwork, evalNetwork},
-	{"velocity", CatVelocity, evalVelocity},
-	{"content", CatContent, evalContent},
-	{"account", CatAccount, evalAccount},
-}
+// All is every signal, in the order the engine runs them. Each hit names its own
+// category, so one signal may report hits in more than one.
+var All = []EvalFunc{evalNetwork, evalVelocity, evalContent, evalAccount}
 
 // hit builds a Hit with points from config. Signals configured at 0 points produce no hit.
 func hit(in *Input, name, category, detail string) []Hit {

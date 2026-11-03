@@ -1,13 +1,24 @@
 import { notFound } from "next/navigation";
 import { analystApi } from "@/lib/api";
-import { dateTime, humanize, number, periodQuery } from "@/lib/format";
-import type { AccountSeries, ProfileResponse, TimelineRow } from "@/lib/types";
+import {
+  dateTime,
+  number,
+  periodQuery,
+  plural,
+  TIMELINE_LIMIT,
+} from "@/lib/format";
+import type {
+  AccountSeries,
+  KeyStatus,
+  ProfileResponse,
+  TimelineRow,
+} from "@/lib/types";
 import { ApiError, CardHeader, DetailList, PageHeader } from "@/components/ui";
-import { AccountCharts } from "@/components/charts";
+import { AccountCharts } from "@/components/account-charts";
 import { PeriodFilter } from "@/components/period-filter";
 import { KeyLine } from "@/components/key-line";
-import { CorrectionCard, ResolveCard } from "@/components/forms";
-import type { KeyStatus } from "@/lib/types";
+import { CorrectionCard } from "@/components/forms/correction";
+import { ResolveCard } from "@/components/forms/resolve";
 import { InvestigationWorkspace } from "@/components/investigation-workspace";
 
 export const metadata = { title: "Account investigation" };
@@ -30,7 +41,7 @@ export default async function AccountPage({
     analystApi<ProfileResponse>(`${accountPath}/profile`),
     analystApi<AccountSeries>(`${accountPath}/series?${query}`),
     analystApi<TimelineRow[] | null>(
-      `${accountPath}/timeline?${query}&limit=1000`,
+      `${accountPath}/timeline?${query}&limit=${TIMELINE_LIMIT}`,
     ),
   ]);
   if (profile.status === 404) notFound();
@@ -93,12 +104,9 @@ export default async function AccountPage({
           // The incident is the unit of work: open while anything is.
           initiallyOpen={search.resolve === "1" || open.reviews > 0}
           summary={[
-            open.reviews &&
-              `${open.reviews} open review${open.reviews === 1 ? "" : "s"}`,
-            open.pending_holds &&
-              `${open.pending_holds} held email${open.pending_holds === 1 ? "" : "s"}`,
-            open.suspended_keys &&
-              `${open.suspended_keys} suspended key${open.suspended_keys === 1 ? "" : "s"}`,
+            open.reviews && plural(open.reviews, "open review"),
+            open.pending_holds && plural(open.pending_holds, "held email"),
+            open.suspended_keys && plural(open.suspended_keys, "suspended key"),
           ]
             .filter(Boolean)
             .join(" · ")}
