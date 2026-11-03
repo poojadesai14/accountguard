@@ -12,6 +12,7 @@ test("dashboard metrics and telemetry charts use real API data and date filters"
     "3",
     "1",
     "2",
+    "0",
     "1",
   ]);
   await page.getByRole("link", { name: "Telemetry", exact: true }).click();

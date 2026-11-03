@@ -188,7 +188,7 @@ function dashboardAccounts(): DashboardAccount[] {
               ...base,
               account_id: `acc_bulk_${String(index).padStart(3, "0")}`,
               api_key_id: `key_bulk_${String(index).padStart(3, "0")}`,
-              action: index === 54 ? "flag" : base.action,
+              action: index === 54 ? "block" : base.action,
               score: index === 54 ? 99 : base.score,
               occurred_at: index === 54 ? hours[11] : base.occurred_at,
               decision_id: null,

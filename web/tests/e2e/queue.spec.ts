@@ -359,8 +359,8 @@ test("newest-first sorts across pages, preserves filters, and explains monitorin
   await expect(
     table.locator("tbody tr").first().locator(".score-number"),
   ).toHaveText("99");
-  await page.getByRole("button", { name: "Hold", exact: true }).click();
-  await expect(page).toHaveURL(/severity=hold/);
+  await page.getByRole("button", { name: "Block", exact: true }).click();
+  await expect(page).toHaveURL(/severity=block/);
   await expect(newest).toHaveAttribute("aria-pressed", "true");
   await expect(table.locator("tbody tr")).toHaveCount(2);
   await page.reload();
@@ -374,7 +374,7 @@ test("newest-first sorts across pages, preserves filters, and explains monitorin
       return (
         url.pathname === "/v1/dashboard" &&
         url.searchParams.get("sort") === "recent" &&
-        url.searchParams.get("severity") === "hold" &&
+        url.searchParams.get("severity") === "block" &&
         url.searchParams.get("q") === "acc_"
       );
     }),
@@ -382,8 +382,8 @@ test("newest-first sorts across pages, preserves filters, and explains monitorin
 
   await severe.click();
   await expect(page).not.toHaveURL(/sort=/);
-  // The Flag filter is still applied, so severity order starts with the
-  // highest-scoring flag.
+  // The Block filter is still applied, so severity order starts with the
+  // highest-scoring block.
   await expect(table.locator("tbody tr").first()).toContainText("acc_bulk_054");
   for (const width of [320, 390, 768, 1440]) {
     await page.setViewportSize({ width, height: 1000 });
