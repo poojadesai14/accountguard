@@ -273,6 +273,58 @@ Resend send pipeline ──POST /v1/events──▶ Go service ──▶ Postgre
 Analyst UI (Next.js) ──server-side, analyst token──▶ analyst API ─────────┘
 ```
 
+### One event, step by step
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant P as Send pipeline<br/>(seed / sim stand in)
+    participant API as Go API<br/>POST /v1/events
+    participant E as Engine<br/>(Service.Handle)
+    participant DB as Postgres<br/>(Supabase)
+    participant UI as Analyst console<br/>(Next.js)
+
+    P->>API: POST /v1/events (ingest token, event JSON)
+    API->>API: validate (400 if invalid)
+    API->>E: score event (200 ms deadline)
+
+    rect rgb(240,240,240)
+    note over E,DB: one transaction
+    E->>DB: insert event (on conflict do nothing)
+    alt event_id already seen
+        DB-->>E: original decision
+    else new event
+        E->>DB: lock account baseline (select … for update)
+        E->>DB: is this key suspended?
+        E->>DB: recipients in the last hour
+        E->>E: run 8 signals → points → allow / flag / hold / block
+        E->>DB: insert decision (hold: pending, 24 h expiry · hold or block: open review)
+        opt block (and enforce mode)
+            E->>DB: suspend this API key
+        end
+        E->>DB: update baseline (learn only if allowed)
+    end
+    end
+
+    E-->>API: decision
+    API->>API: log one JSON line, update metrics
+    API-->>P: {action, score, hits} (shadow mode: always allow)
+
+    alt error, timeout or panic
+        API->>DB: is the key suspended? (50 ms)
+        API-->>P: allow, unscored (block if the key is suspended)
+    end
+
+    note over DB: every minute: pending holds past 24 h → expired
+
+    UI->>API: GET /v1/dashboard, /v1/decisions/{id}, /v1/accounts/{id}/… (analyst token)
+    API->>DB: read queue, evidence, timeline, related accounts
+    API-->>UI: data
+    UI->>API: POST /v1/accounts/{id}/resolve (outcome, name, reason)
+    API->>DB: one transaction: label reviews, drop or release holds, suspend or restore keys, write audit rows
+    API-->>UI: what changed
+```
+
 - **Inline, before queueing.** You can only hold an email that hasn't gone out; delivered phishing can't be
   recalled. Scoring takes about 9 database round trips. Locally (Postgres on the same machine) `make seed`
   measured server-side scoring at p50 0.6 ms / p95 0.8 ms (HTTP round trip p50 1.4 ms) one event at a time,
