@@ -334,7 +334,8 @@ config version, latency), and every decision is stored with its signals for audi
 (totals, decisions over time, top signals, review queue) are served by `GET /v1/stats`; the UI charts them.
 `GET /metrics` (analyst token) exposes Prometheus metrics for operating the service:
 `ato_decisions_total{action,enforced}`, `ato_signal_hits_total{name}`, `ato_scoring_latency_seconds`,
-`ato_unscored_total` and `ato_holds_pending`. Labels are bounded (never account or key ids), so any
+`ato_unscored_total{reason}` (error, timeout or panic), `ato_key_suspensions_total{reason}` (who suspended the key:
+auto, analyst or owner) and `ato_holds_pending`. Labels are bounded (never account or key ids), so any
 Prometheus-compatible scraper (Prometheus, Grafana Agent, Datadog) can collect them. Alerts worth having:
 unscored rate above zero (detection is silently off), p99 latency near the 200 ms deadline, and a jump in
 blocks per hour (a bad rule mass-suspending keys).

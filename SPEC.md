@@ -631,7 +631,8 @@ Metrics:
 - `ato_decisions_total{action, enforced}` counter
 - `ato_signal_hits_total{name}` counter
 - `ato_scoring_latency_seconds` histogram
-- `ato_unscored_total` counter
+- `ato_unscored_total{reason}` counter (`error`, `timeout`, `panic`)
+- `ato_key_suspensions_total{reason}` counter (`auto`, `analyst`, `owner`)
 - `ato_holds_pending` gauge (updated by the ticker)
 
 ---

@@ -12,6 +12,7 @@ import (
 	"github.com/poojadesai14/resend-ato/internal/event"
 )
 
+// Profile is what the account normally does, learned from its allowed events.
 type Profile struct {
 	AccountID            string                    `json:"account_id"`
 	FirstSeenAt          time.Time                 `json:"first_seen_at"`
@@ -29,6 +30,7 @@ type Profile struct {
 	LastFirstReadAt      *time.Time                `json:"last_first_read_at"` // set on every first-ever recon read, whatever the decision
 }
 
+// New returns an empty profile for an account first seen at firstSeen.
 func New(accountID string, firstSeen time.Time) *Profile {
 	p := &Profile{AccountID: accountID, FirstSeenAt: firstSeen}
 	p.Normalize()
@@ -89,9 +91,9 @@ func (p *Profile) IsFirstRead(ev *event.Event, cfg *config.Config) bool {
 		!slices.Contains(p.ReadResources, ev.Read.Resource)
 }
 
-// RecordAlways applies updates that happen whatever the decision, so an attacker
+// Observe applies the updates that happen whatever the decision, so an attacker
 // can't hide account changes or recon by getting held.
-func (p *Profile) RecordAlways(ev *event.Event, cfg *config.Config) {
+func (p *Profile) Observe(ev *event.Event, cfg *config.Config) {
 	t := ev.OccurredAt
 	switch ev.Type {
 	case event.TypeAccountChange:

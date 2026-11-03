@@ -14,6 +14,8 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/poojadesai14/resend-ato/internal/engine"
+	"github.com/poojadesai14/resend-ato/internal/event"
+	"github.com/poojadesai14/resend-ato/internal/signal"
 	"github.com/poojadesai14/resend-ato/internal/store"
 )
 
@@ -58,13 +60,13 @@ func (s *Server) getStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	stats, err := store.GetStats(r.Context(), s.Store.Pool, rng, bucket)
-	respond(w, stats, err)
+	respond(w, r, stats, err)
 }
 
 func (s *Server) listAccounts(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	accounts, err := store.ListAccounts(r.Context(), s.Store.Pool, q.Get("q"), q.Get("needs_review") == "true")
-	respond(w, accounts, err)
+	respond(w, r, accounts, err)
 }
 
 func (s *Server) getTimeline(w http.ResponseWriter, r *http.Request) {
@@ -82,7 +84,7 @@ func (s *Server) getTimeline(w http.ResponseWriter, r *http.Request) {
 		limit = n
 	}
 	rows, err := store.Timeline(r.Context(), s.Store.Pool, r.PathValue("id"), rng, limit)
-	respond(w, rows, err)
+	respond(w, r, rows, err)
 }
 
 type seriesASN struct {
@@ -110,15 +112,26 @@ func (s *Server) getSeries(w http.ResponseWriter, r *http.Request) {
 	ctx, id := r.Context(), r.PathValue("id")
 	p, err := store.GetProfile(ctx, s.Store.Pool, id)
 	if err != nil {
-		respond(w, nil, err)
+		respond(w, r, nil, err)
 		return
 	}
 	evs, err := store.SeriesEvents(ctx, s.Store.Pool, id, rng)
 	if err != nil {
-		respond(w, nil, err)
+		respond(w, r, nil, err)
 		return
 	}
+	v := s.Config.Velocity
+	writeJSON(w, http.StatusOK, map[string]any{
+		"account_id":      id,
+		"baseline_hourly": p.HourlyEWMA,
+		"spike_threshold": v.Multiplier * max(p.HourlyEWMA, v.MinHourlyBaseline),
+		"points":          seriesPoints(evs),
+	})
+}
 
+// seriesPoints buckets events (in time order) by UTC hour. An ASN is listed once
+// per hour, marked first_seen in the hour the account first used it.
+func seriesPoints(evs []store.SeriesEvent) []seriesPoint {
 	points := []seriesPoint{}
 	for _, e := range evs {
 		h := e.OccurredAt.UTC().Truncate(time.Hour)
@@ -127,64 +140,49 @@ func (s *Server) getSeries(w http.ResponseWriter, r *http.Request) {
 		}
 		pt := &points[len(points)-1]
 		pt.Recipients += e.RecipientCount
-		if e.Type == "account.change" {
+		if e.Type == event.TypeAccountChange {
 			pt.AccountChanges++
 		}
 		if e.Action != "" {
 			pt.Actions[e.Action]++
 		}
-		if e.ASN != nil {
+		if e.ASN != nil && !slices.ContainsFunc(pt.ASNs, func(a seriesASN) bool { return a.ASN == *e.ASN }) {
 			first := e.ASNFirstSeen.UTC().Truncate(time.Hour).Equal(h)
-			found := false
-			for i := range pt.ASNs {
-				if pt.ASNs[i].ASN == *e.ASN {
-					found = true
-				}
-			}
-			if !found {
-				pt.ASNs = append(pt.ASNs, seriesASN{ASN: *e.ASN, Org: e.ASNOrg, FirstSeen: first})
-			}
+			pt.ASNs = append(pt.ASNs, seriesASN{ASN: *e.ASN, Org: e.ASNOrg, FirstSeen: first})
 		}
 		for _, hit := range e.Hits {
-			if hit.Category == "content" && !slices.Contains(pt.ContentHits, hit.Name) {
+			if hit.Category == signal.CatContent && !slices.Contains(pt.ContentHits, hit.Name) {
 				pt.ContentHits = append(pt.ContentHits, hit.Name)
 			}
 		}
 	}
-
-	v := s.Config.Velocity
-	writeJSON(w, http.StatusOK, map[string]any{
-		"account_id":      id,
-		"baseline_hourly": p.HourlyEWMA,
-		"spike_threshold": v.Multiplier * max(p.HourlyEWMA, v.MinHourlyBaseline),
-		"points":          points,
-	})
+	return points
 }
 
 func (s *Server) getProfile(w http.ResponseWriter, r *http.Request) {
 	ctx, id := r.Context(), r.PathValue("id")
 	p, err := store.GetProfile(ctx, s.Store.Pool, id)
 	if err != nil {
-		respond(w, nil, err)
+		respond(w, r, nil, err)
 		return
 	}
 	keys, err := store.KeyStatuses(ctx, s.Store.Pool, id)
 	if err != nil {
-		respond(w, nil, err)
+		respond(w, r, nil, err)
 		return
 	}
 	open, err := store.AccountOpenCounts(ctx, s.Store.Pool, id)
 	if err != nil {
-		respond(w, nil, err)
+		respond(w, r, nil, err)
 		return
 	}
 	legitimate, err := store.LegitimateDecisions(ctx, s.Store.Pool, id)
 	if err != nil {
-		respond(w, nil, err)
+		respond(w, r, nil, err)
 		return
 	}
 	created, err := store.CreatedKeys(ctx, s.Store.Pool, id)
-	respond(w, map[string]any{"profile": p, "key_status": keys, "open": open, "legitimate_decisions": legitimate,
+	respond(w, r, map[string]any{"profile": p, "key_status": keys, "open": open, "legitimate_decisions": legitimate,
 		"created_keys": created}, err)
 }
 
@@ -196,40 +194,34 @@ func (s *Server) getDecision(w http.ResponseWriter, r *http.Request) {
 	}
 	d, err := store.DecisionByID(ctx, s.Store.Pool, id, false)
 	if err != nil {
-		respond(w, nil, err)
+		respond(w, r, nil, err)
 		return
 	}
 	ev, err := store.EventRow(ctx, s.Store.Pool, d.EventID)
 	if err != nil {
-		respond(w, nil, err)
+		respond(w, r, nil, err)
 		return
 	}
 	actions, err := store.ActionsForDecision(ctx, s.Store.Pool, id)
 	if err != nil {
-		respond(w, nil, err)
+		respond(w, r, nil, err)
 		return
 	}
 	related, err := store.RelatedIndicators(ctx, s.Store.Pool, d.AccountID, ev, s.Config.Content.Freemail, relatedWindow)
 	if err != nil {
-		respond(w, nil, err)
+		respond(w, r, nil, err)
 		return
 	}
 	// The event's key as it is now, so a review can show what is left to do
 	// (a suspended key is restored by a separate, audited action).
 	var key *store.KeyStatus
 	if d.APIKeyID != nil {
-		keys, err := store.KeyStatuses(ctx, s.Store.Pool, d.AccountID)
-		if err != nil {
-			respond(w, nil, err)
+		if key, err = store.KeyStatusOf(ctx, s.Store.Pool, d.AccountID, *d.APIKeyID); err != nil {
+			respond(w, r, nil, err)
 			return
 		}
-		for i := range keys {
-			if keys[i].APIKeyID == *d.APIKeyID {
-				key = &keys[i]
-			}
-		}
 	}
-	respond(w, map[string]any{"decision": d, "event": ev, "actions": actions, "thresholds": s.thresholds(), "related": related, "key": key}, nil)
+	respond(w, r, map[string]any{"decision": d, "event": ev, "actions": actions, "thresholds": s.thresholds(), "related": related, "key": key}, nil)
 }
 
 // relatedWindow is how far either side of an event to look for the same indicators
@@ -261,6 +253,8 @@ type actionRequest struct {
 	Reason  string `json:"reason"`
 }
 
+func (req actionRequest) who() engine.Who { return engine.Who{Actor: req.Actor, Reason: req.Reason} }
+
 func (s *Server) postAction(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if !uuidRe.MatchString(id) {
@@ -268,20 +262,11 @@ func (s *Server) postAction(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req actionRequest
-	if !decodeBody(w, r, &req) {
+	if !decodeBody(w, r, &req) || !requireActor(w, req) {
 		return
 	}
-	switch req.Action {
-	case engine.ActConfirmTakeover, engine.ActMarkLegitimate, engine.ActReleaseHold:
-	default:
-		writeError(w, http.StatusBadRequest, "action must be confirm_takeover, mark_legitimate or release_hold")
-		return
-	}
-	if !requireActor(w, req) {
-		return
-	}
-	d, err := s.Service.ApplyAction(r.Context(), id, req.Action, req.Confirm, req.Actor, req.Reason)
-	respond(w, d, err)
+	d, err := s.Service.ApplyAction(r.Context(), id, req.Action, req.Confirm, req.who())
+	respond(w, r, d, err)
 }
 
 func (s *Server) postUnblock(w http.ResponseWriter, r *http.Request) {
@@ -289,8 +274,8 @@ func (s *Server) postUnblock(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &req) || !requireActor(w, req) {
 		return
 	}
-	err := s.Service.UnblockKey(r.Context(), r.PathValue("key_id"), req.Confirm, req.Actor, req.Reason)
-	respond(w, map[string]string{"api_key_id": r.PathValue("key_id"), "status": "active"}, err)
+	err := s.Service.UnblockKey(r.Context(), r.PathValue("key_id"), req.Confirm, req.who())
+	respond(w, r, map[string]string{"api_key_id": r.PathValue("key_id"), "status": "active"}, err)
 }
 
 // postSuspendKey suspends a key on an analyst's authority.
@@ -299,8 +284,8 @@ func (s *Server) postSuspendKey(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &req) || !requireActor(w, req) {
 		return
 	}
-	dropped, err := s.Service.SuspendKey(r.Context(), r.PathValue("key_id"), req.Actor, req.Reason)
-	respond(w, map[string]any{"api_key_id": r.PathValue("key_id"), "status": "suspended", "holds_dropped": dropped}, err)
+	dropped, err := s.Service.SuspendKey(r.Context(), r.PathValue("key_id"), req.who())
+	respond(w, r, map[string]any{"api_key_id": r.PathValue("key_id"), "status": "suspended", "holds_dropped": dropped}, err)
 }
 
 // postCorrectToTakeover relabels decisions wrongly marked legitimate as takeover.
@@ -317,8 +302,8 @@ func (s *Server) postCorrectToTakeover(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "decision_ids must list 1 to 200 decision IDs")
 		return
 	}
-	res, err := s.Service.CorrectToTakeover(r.Context(), r.PathValue("id"), req.DecisionIDs, req.Actor, req.Reason)
-	respond(w, res, err)
+	res, err := s.Service.CorrectToTakeover(r.Context(), r.PathValue("id"), req.DecisionIDs, engine.Who{Actor: req.Actor, Reason: req.Reason})
+	respond(w, r, res, err)
 }
 
 // postResolveAccount closes every open review on an account with one outcome.
@@ -334,20 +319,11 @@ func (s *Server) postResolveAccount(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &req) || !requireActor(w, actionRequest{Actor: req.Actor, Reason: req.Reason}) {
 		return
 	}
-	if req.Outcome != engine.ResolveLegitimate && req.Outcome != engine.ResolveTakeover {
-		writeError(w, http.StatusBadRequest, "outcome must be legitimate or takeover")
-		return
-	}
-	if len(req.DecisionIDs) == 0 {
-		writeError(w, http.StatusBadRequest, "decision_ids must list the open reviews being resolved")
-		return
-	}
-	if req.Outcome == engine.ResolveTakeover && req.RestoreKeys {
-		writeError(w, http.StatusBadRequest, "keys can only be restored when resolving as legitimate")
-		return
-	}
-	res, err := s.Service.ResolveAccount(r.Context(), r.PathValue("id"), req.DecisionIDs, req.Outcome, req.RestoreKeys, req.Confirm, req.Actor, req.Reason)
-	respond(w, res, err)
+	res, err := s.Service.ResolveAccount(r.Context(), r.PathValue("id"), engine.ResolveRequest{
+		Seen: req.DecisionIDs, Outcome: req.Outcome, RestoreKeys: req.RestoreKeys, Confirm: req.Confirm,
+		Who: engine.Who{Actor: req.Actor, Reason: req.Reason},
+	})
+	respond(w, r, res, err)
 }
 
 func (s *Server) postOwnerResponse(w http.ResponseWriter, r *http.Request) {
@@ -362,12 +338,8 @@ func (s *Server) postOwnerResponse(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	if req.Response != "this_was_me" && req.Response != "not_me" {
-		writeError(w, http.StatusBadRequest, "response must be this_was_me or not_me")
-		return
-	}
 	d, err := s.Service.OwnerRespond(r.Context(), id, req.Response)
-	respond(w, d, err)
+	respond(w, r, d, err)
 }
 
 func requireActor(w http.ResponseWriter, req actionRequest) bool {
@@ -406,17 +378,22 @@ func parseRange(w http.ResponseWriter, r *http.Request) (store.Range, bool) {
 }
 
 // respond writes v, or maps err to a status code.
-func respond(w http.ResponseWriter, v any, err error) {
-	var c *engine.ConflictError
+func respond(w http.ResponseWriter, r *http.Request, v any, err error) {
+	var (
+		conflict *engine.ConflictError
+		invalid  *engine.ValidationError
+	)
 	switch {
 	case err == nil:
 		writeJSON(w, http.StatusOK, v)
 	case errors.Is(err, engine.ErrNotFound), errors.Is(err, pgx.ErrNoRows):
 		writeError(w, http.StatusNotFound, "not found")
-	case errors.As(err, &c):
-		writeError(w, http.StatusConflict, c.Msg)
+	case errors.As(err, &invalid):
+		writeError(w, http.StatusBadRequest, invalid.Msg)
+	case errors.As(err, &conflict):
+		writeError(w, http.StatusConflict, conflict.Msg)
 	default:
-		slog.Error("analyst api error", "err", err)
+		slog.Error("analyst api error", "route", r.Pattern, "err", err)
 		writeError(w, http.StatusInternalServerError, "internal error")
 	}
 }

@@ -114,7 +114,7 @@ func TestHourlyEWMA(t *testing.T) {
 		})
 	}
 }
-func TestRecordAlwaysTracksChangesAndFirstReads(t *testing.T) {
+func TestObserveTracksChangesAndFirstReads(t *testing.T) {
 	at := time.Date(2026, 10, 30, 12, 0, 0, 0, time.UTC)
 	contacts := event.Event{Type: event.TypeAPIRead, OccurredAt: at, Read: &event.Read{Resource: "contacts", Status: 403}}
 	emails := event.Event{Type: event.TypeAPIRead, OccurredAt: at.Add(time.Hour), Read: &event.Read{Resource: "emails", Status: 200}}
@@ -159,7 +159,7 @@ func TestRecordAlwaysTracksChangesAndFirstReads(t *testing.T) {
 				if got := p.IsFirstRead(&ev, cfg); got != tt.wantFirstRead[i] {
 					t.Errorf("event %d first-read = %v, want %v", i, got, tt.wantFirstRead[i])
 				}
-				p.RecordAlways(&ev, cfg)
+				p.Observe(&ev, cfg)
 				if p.IsFirstRead(&ev, cfg) {
 					t.Errorf("event %d remains a first read after recording", i)
 				}
@@ -171,7 +171,7 @@ func TestRecordAlwaysTracksChangesAndFirstReads(t *testing.T) {
 				t.Errorf("last change = %v, want %v", p.LastChangeAt, tt.wantLastChange)
 			}
 			if p.EventsSeen != 0 {
-				t.Errorf("RecordAlways learned %d events, want zero", p.EventsSeen)
+				t.Errorf("Observe learned %d events, want zero", p.EventsSeen)
 			}
 		})
 	}

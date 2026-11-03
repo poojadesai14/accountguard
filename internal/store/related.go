@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+
+	"github.com/poojadesai14/resend-ato/internal/action"
 )
 
 // RelatedAccount is another account that used the same indicator.
@@ -62,8 +64,8 @@ func RelatedIndicators(ctx context.Context, db DBTX, accountID string, ev *Timel
     and e.account_id <> $4 and e.occurred_at between $5::timestamptz - $6::interval and $5::timestamptz + $6::interval
 ), per_account as (
   select h.kind, h.value, h.account_id, count(*)::int as events, max(h.occurred_at) as last_at,
-    coalesce((array_agg(d.action order by array_position(array['allow','flag','hold','block'], d.action) desc nulls last, d.score desc nulls last))[1], 'allow') as worst_action,
-    (array_agg(d.decision_id::text order by array_position(array['allow','flag','hold','block'], d.action) desc nulls last, d.rejected asc nulls first, d.score desc nulls last, h.occurred_at desc))[1] as decision_id,
+    coalesce((array_agg(d.action order by array_position(` + action.SeveritySQL + `, d.action) desc nulls last, d.score desc nulls last))[1], 'allow') as worst_action,
+    (array_agg(d.decision_id::text order by array_position(` + action.SeveritySQL + `, d.action) desc nulls last, d.rejected asc nulls first, d.score desc nulls last, h.occurred_at desc))[1] as decision_id,
     exists(select 1 from decisions c where c.account_id = h.account_id and c.label = 'takeover') as confirmed
   -- A key_suspended rejection says the key was already suspended for something
   -- else, not that this indicator was stopped; count those events as allowed.
@@ -75,7 +77,7 @@ func RelatedIndicators(ctx context.Context, db DBTX, accountID string, ev *Timel
   group by h.kind, h.value, h.account_id
 ), ranked as (
   select *, row_number() over (partition by kind, value order by confirmed desc,
-    array_position(array['allow','flag','hold','block'], worst_action) desc, last_at desc, account_id) as position
+    array_position(` + action.SeveritySQL + `, worst_action) desc, last_at desc, account_id) as position
   from per_account
 )
 select coalesce(jsonb_agg(i order by i.stopped desc, i.accounts desc, i.kind, i.value), '[]') from (

@@ -42,7 +42,7 @@ func TestMetrics(t *testing.T) {
 			want: []string{
 				`ato_decisions_total{action="allow",enforced="true"} 2`,
 				`ato_scoring_latency_seconds_count 2`,
-				`ato_unscored_total 0`,
+				`ato_unscored_total{reason="timeout"} 0`,
 			},
 		},
 		{
@@ -63,7 +63,15 @@ func TestMetrics(t *testing.T) {
 					t.Fatalf("response = %+v, want unscored", d)
 				}
 			},
-			want: []string{"ato_unscored_total 1"},
+			want: []string{`ato_unscored_total{reason="timeout"} 1`, `ato_unscored_total{reason="error"} 0`},
+		},
+		{
+			name: "an analyst suspension is counted",
+			run: func(t *testing.T) {
+				w := f.post("/v1/keys/key/suspend", map[string]string{"actor": "reviewer", "reason": "phishing"})
+				requireStatus(t, w, http.StatusOK)
+			},
+			want: []string{`ato_key_suspensions_total{reason="analyst"} 1`},
 		},
 	}
 	for _, step := range steps {

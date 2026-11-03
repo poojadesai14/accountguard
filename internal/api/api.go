@@ -28,6 +28,7 @@ const (
 	analystTimeout = 20 * time.Second
 )
 
+// Server serves the ingest, analyst and metrics endpoints.
 type Server struct {
 	Store        *store.Store
 	Service      *engine.Service
@@ -37,6 +38,7 @@ type Server struct {
 	Metrics      *metrics.Metrics // optional; serves GET /metrics when set
 }
 
+// Routes returns the handler for every endpoint.
 func (s *Server) Routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.healthz)
@@ -106,12 +108,14 @@ func (s *Server) postEvent(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+var errScoringPanic = errors.New("panic while scoring")
+
 // score runs the engine and turns a panic into an error, so a bug in a signal
 // fails open like a database outage instead of dropping the connection.
 func (s *Server) score(ctx context.Context, ev *event.Event) (d *store.Decision, err error) {
 	defer func() {
 		if p := recover(); p != nil {
-			err = fmt.Errorf("panic while scoring: %v", p)
+			err = fmt.Errorf("%w: %v", errScoringPanic, p)
 		}
 	}()
 	return s.Service.Handle(ctx, ev)
@@ -122,7 +126,7 @@ func (s *Server) score(ctx context.Context, ev *event.Event) (d *store.Decision,
 // stopped, because that needs one indexed read, not the whole scoring path.
 func (s *Server) failOpen(w http.ResponseWriter, r *http.Request, ev *event.Event, err error) {
 	slog.Error("scoring failed, failing open", "event_id", ev.EventID, "account_id", ev.AccountID, "err", err)
-	s.Metrics.Unscored()
+	s.Metrics.Unscored(unscoredReason(err))
 	resp := DecisionResponse{
 		EventID: ev.EventID, Action: "allow", Hits: []signal.Hit{},
 		Unscored: true, ConfigVersion: s.Config.Version,
@@ -140,6 +144,17 @@ func (s *Server) failOpen(w http.ResponseWriter, r *http.Request, ev *event.Even
 		}
 	}
 	writeJSON(w, http.StatusOK, resp)
+}
+
+func unscoredReason(err error) string {
+	switch {
+	case errors.Is(err, errScoringPanic):
+		return metrics.UnscoredPanic
+	case errors.Is(err, context.DeadlineExceeded):
+		return metrics.UnscoredTimeout
+	default:
+		return metrics.UnscoredError
+	}
 }
 
 func bearer(token string, next http.Handler) http.Handler {
