@@ -111,9 +111,19 @@ type KeyStatus struct {
 	UpdatedAt  time.Time `json:"updated_at" db:"updated_at"`
 	// The account has a confirmed takeover: restoring needs the account ID typed.
 	Takeover bool `json:"takeover" db:"takeover"`
+	// The decision that set this status, when there is one: why the key was suspended.
+	Cause *KeyCause `json:"cause" db:"cause"`
 	// Risky signals on the emails a suspended key was stopped for (KeyWarnings):
 	// restoring it also needs the account ID typed, with this evidence shown.
 	Warnings []Warning `json:"warnings" db:"-"`
+}
+
+// KeyCause summarizes the decision behind a key's status: its action, score and
+// every signal that fired, highest points first.
+type KeyCause struct {
+	Action  string   `json:"action"`
+	Score   int      `json:"score"`
+	Signals []string `json:"signals"`
 }
 
 // takeoverOnAccount: any decision on the key_status row's account is labelled takeover.
@@ -131,7 +141,10 @@ func KeyTakeover(ctx context.Context, db DBTX, apiKeyID string) (accountID strin
 
 const keyStatusSelect = `
 	select api_key_id, account_id, status, reason, decision_id::text as decision_id, updated_at,
-		` + takeoverOnAccount + ` as takeover
+		` + takeoverOnAccount + ` as takeover,
+		(select jsonb_build_object('action', d.action, 'score', d.score, 'signals',
+			coalesce((select jsonb_agg(h->>'name' order by (h->>'points')::int desc, h->>'name') from jsonb_array_elements(d.hits) h), '[]'))
+		 from decisions d where d.decision_id = key_status.decision_id) as cause
 	from key_status`
 
 // KeyStatuses lists an account's keys that have a status row, most recently changed first.

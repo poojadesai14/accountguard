@@ -167,7 +167,7 @@ export function QueueView({
               ? "Refresh to try again."
               : snapshot && snapshot.total > 0
                 ? "This page is past the end of the list. Go back to page 1."
-                : "Try another filter or period."}
+                : "Try another filter."}
           </EmptyState>
         )}
         <div className="dashboard-pagination">

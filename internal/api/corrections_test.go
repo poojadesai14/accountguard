@@ -3,6 +3,7 @@ package api
 import (
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -201,6 +202,10 @@ func TestRestoreNeedsConfirmOverRiskyEvidence(t *testing.T) {
 				}](t, w).Keys
 				if len(keys) != 1 || len(keys[0].Warnings) != 1 || keys[0].Warnings[0].Signal != "young_domain" {
 					t.Errorf("key warnings = %+v, want young_domain only", keys)
+				}
+				want := store.KeyCause{Action: "block", Score: 90, Signals: []string{"new_asn", "young_domain"}}
+				if len(keys) == 1 && (keys[0].Cause == nil || !reflect.DeepEqual(*keys[0].Cause, want)) {
+					t.Errorf("key cause = %+v, want %+v", keys[0].Cause, want)
 				}
 			},
 		},

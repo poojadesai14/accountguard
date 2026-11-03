@@ -568,6 +568,15 @@ createServer(async (req, res) => {
                 ]
               : [],
           decision_id: decisionId,
+          cause: {
+            action: detail.decision.action,
+            score: detail.decision.score,
+            signals: [...detail.decision.hits]
+              .sort(
+                (a, b) => b.points - a.points || a.name.localeCompare(b.name),
+              )
+              .map((hit) => hit.name),
+          },
           updated_at: hours[11],
         },
         ...(backupSuspended

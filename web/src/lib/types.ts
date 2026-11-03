@@ -53,6 +53,8 @@ export type KeyStatus = {
   updated_at: string;
   /** The account has a confirmed takeover: restoring needs the account ID typed. */
   takeover?: boolean;
+  /** The decision that set this status: why the key was suspended. */
+  cause?: { action: Action; score: number; signals: string[] } | null;
   /** Risky signals on the emails this key was stopped for: restoring needs the account ID typed. */
   warnings?: { signal: string; detail: string }[];
 };

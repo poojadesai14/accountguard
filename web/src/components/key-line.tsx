@@ -50,8 +50,8 @@ export function KeyLine({
       <span className={suspended ? "suspended-state" : "muted"}>
         <span className="mono">{key.api_key_id}</span> {key.status}
         {locked && " · confirmed takeover"}
-        {suspended && !locked && key.warnings?.length
-          ? ` · stopped for ${key.warnings.map((w) => humanize(w.signal)).join(", ")}`
+        {suspended && !locked && key.cause
+          ? ` · ${key.cause.action} ${key.cause.score}${key.cause.signals.length ? `: ${key.cause.signals.map(humanize).join(", ")}` : ""}`
           : ""}
       </span>
       {key.updated_at && (
