@@ -81,7 +81,7 @@ export function AccountCharts({ series }: { series: AccountSeries }) {
                 value: "first hold / block",
                 position: "insideTopLeft",
                 fill: "var(--status-blocked-text)",
-                fontSize: 11,
+                fontSize: 13,
               }
             : undefined
         }
@@ -316,7 +316,7 @@ export function AccountCharts({ series }: { series: AccountSeries }) {
               contentStyle={tooltipStyle}
               labelFormatter={(value) => hourLabel(Number(value)) + " UTC"}
             />
-            <Legend iconSize={10} wrapperStyle={{ fontSize: 11 }} />
+            <Legend iconSize={10} wrapperStyle={{ fontSize: 13 }} />
           </ComposedChart>
         </ResponsiveContainer>
       </div>
