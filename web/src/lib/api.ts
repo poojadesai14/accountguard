@@ -2,6 +2,9 @@ import "server-only";
 import { requireSession } from "./auth";
 import type { ApiResult } from "./types";
 
+// analystApi is the only holder of the analyst token, so it checks the session
+// itself: a page or action that forgot requireSession() still cannot use the
+// token. Server actions also check first, before validating any input.
 export async function analystApi<T>(
   path: string,
   body?: unknown,

@@ -47,7 +47,6 @@ export async function loadDashboard(
     telemetry_period: query.period,
     audit_before_id: query.before_id,
     snapshot: snapshotError ? undefined : snapshot.data,
-    database_ok: !!snapshot.data,
     stats: stats?.data,
     audit: audit?.data,
     error: snapshotError ?? snapshot.error,

@@ -1,5 +1,5 @@
 import { ShieldCheck } from "lucide-react";
-import { LoginForm } from "@/components/forms";
+import { LoginForm } from "@/components/forms/login";
 import { safeReturnPath } from "@/lib/session";
 
 export const metadata = { title: "Sign in" };

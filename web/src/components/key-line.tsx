@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { dateTime, humanize } from "@/lib/format";
 import type { KeyStatus } from "@/lib/types";
-import { SuspendKeyForm, UnblockForm } from "./forms";
+import { SuspendKeyForm, UnblockForm } from "./forms/key-forms";
 
 // KeyLine is one line per key on the account: red with an audited restore while
 // suspended, muted with an audited suspension while active. Marking an event
@@ -11,13 +11,11 @@ import { SuspendKeyForm, UnblockForm } from "./forms";
 // and suspending here is the way back from a wrong legitimate call.
 export function KeyLine({
   keyStatus: key,
-  hint,
   createdAt,
   untrusted = false,
   initiallyOpen = false,
 }: {
   keyStatus: KeyStatus;
-  hint?: string;
   /** When an account change created this key, if one did. */
   createdAt?: string;
   /** The key has no allowed send yet. */
@@ -67,7 +65,6 @@ export function KeyLine({
           {untrusted && " · no allowed sends yet"}
         </span>
       )}
-      {hint && suspended && <strong className="key-hint">{hint}</strong>}
       <details
         open={mode !== null}
         onToggle={(event) =>

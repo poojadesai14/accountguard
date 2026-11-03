@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "next typegen && tsc --noEmit",
+    "lint": "eslint .",
     "test": "node --import tsx --test tests/*.test.ts",
     "test:e2e": "playwright test",
     "format": "prettier --write .",
@@ -33,6 +34,9 @@
     "@types/node": "^24.0.0",
     "@types/react": "19.3.0",
     "@types/react-dom": "19.3.0",
+    "@typescript/typescript6": "6.0.2",
+    "eslint": "10.14.0",
+    "eslint-config-next": "16.4.3",
     "prettier": "3.9.10",
     "tsx": "4.23.15",
     "typescript": "7.0.2"

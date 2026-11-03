@@ -65,6 +65,8 @@ jobs:
         run: npm ci
       - name: Check TypeScript
         run: npm run typecheck
+      - name: Lint dashboard
+        run: npm run lint
       - name: Check dashboard formatting
         run: npm run format:check
       - name: Test sessions and review validation

@@ -280,6 +280,8 @@ test("held events are named by what was paused, not assumed to be emails", () =>
     heldEventLabel("account.change", "something.new"),
     "Account change",
   );
+  assert.equal(heldEventLabel("account.change", ""), "Account change");
+  assert.equal(heldEventLabel("account.change", null), "Account change");
   assert.equal(heldEventLabel("api.read"), "Data read");
 });
 

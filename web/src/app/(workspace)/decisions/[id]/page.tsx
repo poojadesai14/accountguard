@@ -3,20 +3,12 @@ import { notFound } from "next/navigation";
 import { Check } from "lucide-react";
 import { analystApi } from "@/lib/api";
 import { dateTime, humanize, number } from "@/lib/format";
-import type {
-  DecisionDetail,
-  ProfileResponse,
-  RelatedIndicator,
-  Thresholds,
-} from "@/lib/types";
+import type { DecisionDetail, ProfileResponse } from "@/lib/types";
 import { UUID } from "@/lib/review";
 import {
   ACTION_LABELS,
-  INDICATOR_LABELS,
   explainDecision,
   heldEventLabel,
-  relatedSummary,
-  relatedVerdict,
   scoreClassName,
 } from "@/lib/decisions";
 import {
@@ -26,8 +18,10 @@ import {
   DetailList,
   PageHeader,
 } from "@/components/ui";
-import { IncidentPanel } from "@/components/forms";
-import { RelatedAccounts } from "@/components/related-accounts";
+import { IncidentPanel } from "@/components/incident-panel";
+import { HitList } from "@/components/hit-list";
+import { RelatedPanel } from "@/components/related-panel";
+import { ScoreScale } from "@/components/score-scale";
 
 export const metadata = { title: "Decision review" };
 export default async function DecisionPage({
@@ -46,14 +40,7 @@ export default async function DecisionPage({
         <ApiError message={result.error} />
       </>
     );
-  const {
-    decision: d,
-    event,
-    actions,
-    thresholds,
-    related,
-    key,
-  } = result.data!;
+  const { decision: d, event, actions, thresholds, related } = result.data!;
   // What else is open on the account: the incident this decision belongs to.
   const profile = await analystApi<ProfileResponse>(
     `/v1/accounts/${encodeURIComponent(d.account_id)}/profile`,
@@ -123,26 +110,7 @@ export default async function DecisionPage({
           )}
           {explanation && <p className="decision-explanation">{explanation}</p>}
           {d.hits.length ? (
-            <div className="hit-list">
-              {d.hits.map((hit) => (
-                <div className="hit-row" key={hit.name}>
-                  <span
-                    className={`category-marker category-${hit.category}`}
-                  />
-                  <div className="hit-evidence">
-                    <div className="hit-heading">
-                      <strong>{humanize(hit.name)}</strong>
-                      <span className="hit-category">{hit.category}</span>
-                    </div>
-                    <p>{hit.detail}</p>
-                  </div>
-                  <span className="hit-points">
-                    +{hit.points}
-                    <small>pts</small>
-                  </span>
-                </div>
-              ))}
-            </div>
+            <HitList hits={d.hits} />
           ) : (
             <p className="aside-note">
               No scoring signals fired for this event.
@@ -263,93 +231,5 @@ export default async function DecisionPage({
         </details>
       </div>
     </>
-  );
-}
-
-// ScoreScale draws 0–100 with the engine's action lines, so an analyst can see
-// how close a decision was to the next action.
-function ScoreScale({
-  score,
-  action,
-  thresholds: t,
-}: {
-  score: number;
-  action: DecisionDetail["decision"]["action"];
-  thresholds: Thresholds;
-}) {
-  const bands = [
-    { action: "allow", from: 0, to: t.flag },
-    { action: "flag", from: t.flag, to: t.hold },
-    { action: "hold", from: t.hold, to: t.block },
-    { action: "block", from: t.block, to: 100 },
-  ] as const;
-  const position = Math.min(100, Math.max(0, score));
-  return (
-    <figure
-      className="score-scale"
-      aria-label={`Score ${score} of 100. Flag from ${t.flag}, hold from ${t.hold}, block from ${t.block}.`}
-    >
-      <div className="score-scale-track">
-        {bands.map((band) => (
-          <span
-            key={band.action}
-            className={`score-scale-band band-${band.action}`}
-            style={{ width: `${band.to - band.from}%` }}
-          />
-        ))}
-        <span
-          className={`score-scale-marker marker-${action}`}
-          style={{ left: `${position}%` }}
-        >
-          <span>{score}</span>
-        </span>
-      </div>
-      <div className="score-scale-labels" aria-hidden="true">
-        {bands.map((band) => (
-          <span
-            key={band.action}
-            style={{ left: `${band.from}%` }}
-            className={band.from === 0 ? "first" : undefined}
-          >
-            {band.from > 0 && <b>{band.from}</b>} {ACTION_LABELS[band.action]}
-          </span>
-        ))}
-      </div>
-    </figure>
-  );
-}
-
-// RelatedPanel shows other accounts that used this event's link domains, Reply-To
-// domains or IP. A match with a confirmed takeover turns a judgment call into a fact.
-function RelatedPanel({ related }: { related: RelatedIndicator[] }) {
-  const verdict = relatedVerdict(related);
-  return (
-    <section
-      className="card"
-      aria-label="Same infrastructure on other accounts"
-    >
-      <CardHeader title="Same infrastructure on other accounts" />
-      <p className={`related-verdict related-${verdict.tone}`}>
-        {verdict.text}
-      </p>
-      <details className="method-note related-method">
-        <summary>What counts as shared</summary>
-        <p>
-          Link domains, non-freemail Reply-To domains and the source IP, within
-          7 days either side. Cloud ASNs are left out: thousands of legitimate
-          senders share them.
-        </p>
-      </details>
-      {related.map((r) => (
-        <div className="related-indicator" key={`${r.kind} ${r.value}`}>
-          <div className="related-heading">
-            <span>{INDICATOR_LABELS[r.kind]}</span>
-            <strong className="mono">{r.value}</strong>
-            <small>{relatedSummary(r)}</small>
-          </div>
-          <RelatedAccounts indicator={r} />
-        </div>
-      ))}
-    </section>
   );
 }

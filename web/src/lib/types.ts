@@ -282,7 +282,6 @@ export type DashboardData = {
   telemetry_period: Period;
   audit_before_id: string;
   snapshot?: DashboardSnapshot;
-  database_ok: boolean;
   stats?: Stats;
   audit?: AuditPage;
   error?: string;
