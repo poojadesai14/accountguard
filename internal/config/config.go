@@ -204,10 +204,17 @@ func (c *Config) Validate() error {
 
 // Points returns the configured points for a hit name, searching all sections.
 func (c *Config) Points(name string) int {
-	for _, m := range []map[string]int{c.Network.Points, c.Velocity.Points, c.Content.Points, c.Account.Points} {
-		if p, ok := m[name]; ok {
-			return p
-		}
+	if p, ok := c.Network.Points[name]; ok {
+		return p
+	}
+	if p, ok := c.Velocity.Points[name]; ok {
+		return p
+	}
+	if p, ok := c.Content.Points[name]; ok {
+		return p
+	}
+	if p, ok := c.Account.Points[name]; ok {
+		return p
 	}
 	return 0
 }
