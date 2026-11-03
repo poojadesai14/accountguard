@@ -10,7 +10,7 @@ const CARDS = [
     name: "accounts to review",
     metric: "attention_accounts",
     description: "Accounts with open reviews or suspended keys",
-    tone: "flag",
+    tone: "review",
   },
   {
     tab: "attention",
@@ -29,6 +29,16 @@ const CARDS = [
     metric: "suspended_keys",
     description: "Keys with access currently suspended",
     tone: "block",
+  },
+  {
+    tab: "attention",
+    view: "flagged",
+    label: "Flagged",
+    name: "flagged accounts",
+    metric: "flagged_accounts",
+    description:
+      "Accounts whose latest decision was a flag, with nothing to review",
+    tone: "flag",
   },
   {
     tab: "baseline",

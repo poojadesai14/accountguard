@@ -8,8 +8,9 @@ import (
 	"github.com/poojadesai14/resend-ato/internal/store"
 )
 
-// getDashboard serves the triage list: accounts needing attention or with
-// healthy baselines, pending holds, or suspended keys, filtered and paged.
+// getDashboard serves the triage list: accounts needing attention, flagged
+// accounts or accounts with healthy baselines, pending holds, or suspended keys,
+// filtered and paged.
 func (s *Server) getDashboard(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
 	segment := q.Get("segment")
@@ -24,9 +25,9 @@ func (s *Server) getDashboard(w http.ResponseWriter, r *http.Request) {
 	if view == "" {
 		view = "accounts"
 	}
-	if (view != "accounts" && view != "holds" && view != "keys" && view != "healthy") ||
+	if (view != "accounts" && view != "holds" && view != "keys" && view != "flagged" && view != "healthy") ||
 		(view == "healthy" && segment != "baseline") ||
-		((view == "holds" || view == "keys") && segment != "attention") {
+		((view == "holds" || view == "keys" || view == "flagged") && segment != "attention") {
 		writeError(w, http.StatusBadRequest, "invalid dashboard view")
 		return
 	}

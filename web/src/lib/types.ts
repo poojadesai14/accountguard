@@ -254,11 +254,12 @@ export type DashboardAccount = {
   hits: Hit[];
 };
 export type DashboardSnapshot = {
-  view?: "accounts" | "holds" | "keys" | "healthy";
+  view?: "accounts" | "holds" | "keys" | "flagged" | "healthy";
   metrics: {
     attention_accounts: number;
     pending_quarantines: number;
     suspended_keys: number;
+    flagged_accounts: number;
     healthy_baselines: number;
   };
   items: DashboardAccount[];

@@ -1,7 +1,8 @@
 import type { DashboardQuery } from "@/lib/dashboard";
 import type { DashboardAccount } from "@/lib/types";
 
-export type ViewKey = "accounts" | "baseline" | "holds" | "keys" | "healthy";
+export type ViewKey =
+  "accounts" | "baseline" | "holds" | "keys" | "flagged" | "healthy";
 
 type ViewCopy = {
   title: string;
@@ -50,6 +51,15 @@ export const VIEW_COPY: Record<ViewKey, ViewCopy> = {
     columns: ["API key", "Triggered by", "Suspension"],
     empty: "No suspended API keys",
     rowKey: (item) => item.api_key_id,
+  },
+  flagged: {
+    title: "Flagged accounts",
+    description:
+      "Latest decision was a flag: the email was sent and no review was opened.",
+    unit: "accounts",
+    columns: ACCOUNT_COLUMNS,
+    empty: "No flagged accounts",
+    rowKey: byAccount,
   },
   healthy: {
     title: "Healthy accounts",

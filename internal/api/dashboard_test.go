@@ -98,6 +98,22 @@ func dashboardHistory(t *testing.T) (*apiFixture, map[string]string) {
 			at:      testNow,
 			review:  "none",
 		},
+		{
+			account: "flagged",
+			key:     "key_flagged",
+			action:  "allow",
+			score:   0,
+			at:      testNow,
+			review:  "none",
+		},
+		{
+			account: "flagged",
+			key:     "key_flagged",
+			action:  "flag",
+			score:   45,
+			at:      testNow.Add(time.Minute),
+			review:  "none",
+		},
 	}
 	ids := make(map[string]string)
 	for _, input := range decisions {
@@ -178,6 +194,22 @@ func TestDashboardClassification(t *testing.T) {
 			},
 		},
 		{
+			name:      "a flag with nothing to review is listed as flagged",
+			path:      "/v1/dashboard?view=flagged",
+			wantTotal: 1,
+			wantCount: 1,
+			wantAccounts: []expectedAccount{
+				{
+					account:       "flagged",
+					decision:      ids["flagged/flag"],
+					action:        "flag",
+					score:         45,
+					keyStatus:     "active",
+					baselineReady: true,
+				},
+			},
+		},
+		{
 			name:      "empty page retains the matching account count",
 			path:      "/v1/dashboard?page=99",
 			wantTotal: 5,
@@ -190,7 +222,7 @@ func TestDashboardClassification(t *testing.T) {
 			wantCount: 0,
 		},
 	}
-	wantMetrics := store.DashboardMetrics{AttentionAccounts: 5, PendingQuarantines: 1, SuspendedKeys: 2, HealthyBaselines: 1}
+	wantMetrics := store.DashboardMetrics{AttentionAccounts: 5, PendingQuarantines: 1, SuspendedKeys: 2, FlaggedAccounts: 1, HealthyBaselines: 1}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := decodeResponse[store.Dashboard](t, request(t, f.handler, "GET", tt.path, testAnalystToken, nil))
@@ -328,6 +360,14 @@ func TestDashboardMetricViews(t *testing.T) {
 			wantDecisions: []string{secondHold, ids["multi/hold"]},
 		},
 		{
+			name:          "flagged view lists accounts whose latest decision is a flag",
+			query:         "view=flagged",
+			wantView:      "flagged",
+			wantTotal:     1,
+			wantKeys:      []string{"key_flagged"},
+			wantDecisions: []string{ids["flagged/flag"]},
+		},
+		{
 			name:          "held events paginate individually within one account",
 			query:         "view=holds&limit=1&page=2",
 			wantView:      "holds",
@@ -388,7 +428,7 @@ func TestDashboardMetricViews(t *testing.T) {
 			wantTotal: 2,
 		},
 	}
-	wantMetrics := store.DashboardMetrics{AttentionAccounts: 5, PendingQuarantines: 2, SuspendedKeys: 3, HealthyBaselines: 1}
+	wantMetrics := store.DashboardMetrics{AttentionAccounts: 5, PendingQuarantines: 2, SuspendedKeys: 3, FlaggedAccounts: 1, HealthyBaselines: 1}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := decodeResponse[store.Dashboard](t, request(t, f.handler, "GET", "/v1/dashboard?"+tt.query, testAnalystToken, nil))
@@ -703,6 +743,10 @@ func TestDashboardRequestValidation(t *testing.T) {
 		{
 			name: "suspended keys cannot use the baseline segment",
 			path: "/v1/dashboard?segment=baseline&view=keys",
+		},
+		{
+			name: "flagged accounts cannot use the baseline segment",
+			path: "/v1/dashboard?segment=baseline&view=flagged",
 		},
 		{
 			name: "healthy accounts need the baseline segment",

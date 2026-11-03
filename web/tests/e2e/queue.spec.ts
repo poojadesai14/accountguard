@@ -359,8 +359,8 @@ test("newest-first sorts across pages, preserves filters, and explains monitorin
   await expect(
     table.locator("tbody tr").first().locator(".score-number"),
   ).toHaveText("99");
-  await page.getByRole("button", { name: "Flag", exact: true }).click();
-  await expect(page).toHaveURL(/severity=flag/);
+  await page.getByRole("button", { name: "Hold", exact: true }).click();
+  await expect(page).toHaveURL(/severity=hold/);
   await expect(newest).toHaveAttribute("aria-pressed", "true");
   await expect(table.locator("tbody tr")).toHaveCount(2);
   await page.reload();
@@ -374,7 +374,7 @@ test("newest-first sorts across pages, preserves filters, and explains monitorin
       return (
         url.pathname === "/v1/dashboard" &&
         url.searchParams.get("sort") === "recent" &&
-        url.searchParams.get("severity") === "flag" &&
+        url.searchParams.get("severity") === "hold" &&
         url.searchParams.get("q") === "acc_"
       );
     }),

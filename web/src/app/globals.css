@@ -2851,6 +2851,9 @@ td strong {
   font-weight: 600;
   color: var(--ink);
 }
+.view-count.count-review {
+  color: var(--ink);
+}
 .view-count.count-flag {
   color: var(--flag);
 }

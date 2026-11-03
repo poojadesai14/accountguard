@@ -153,6 +153,7 @@ function snapshot(
       attention_accounts: total,
       pending_quarantines: 1,
       suspended_keys: 2,
+      flagged_accounts: 4,
       healthy_baselines: 1,
     },
     generated_at: "2026-10-31T00:00:00Z",
@@ -184,6 +185,18 @@ test("dashboard refuses mismatched API views and verifies card totals before sho
       name: "legacy API returned learning baselines for healthy card",
       query: { tab: "baseline", view: "healthy" },
       data: snapshot(110),
+      error: true,
+    },
+    {
+      name: "flagged count agrees with its card",
+      query: { view: "flagged" },
+      data: snapshot(4, "flagged"),
+      error: false,
+    },
+    {
+      name: "flagged view with the wrong total",
+      query: { view: "flagged" },
+      data: snapshot(3, "flagged"),
       error: true,
     },
     {

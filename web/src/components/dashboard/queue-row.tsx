@@ -157,6 +157,9 @@ function CurrentState({ item, query, generatedAt }: Row) {
           )}
         </span>
       )}
+      {query.view === "flagged" && (
+        <span className="muted">Email sent · no review</span>
+      )}
       {query.tab === "baseline" && (
         <span className={item.baseline_ready ? "baseline-ready" : "muted"}>
           {item.baseline_ready ? "Baseline ready" : "Learning baseline"}

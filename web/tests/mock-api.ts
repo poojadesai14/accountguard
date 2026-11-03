@@ -360,14 +360,19 @@ createServer(async (req, res) => {
         if (view === "holds")
           return item.hold_status === "pending" && item.decision_id != null;
         if (view === "keys") return item.key_status === "suspended";
+        if (view === "flagged")
+          return (
+            !item.open_reviews &&
+            !item.suspended_keys &&
+            item.action === "flag" &&
+            item.label !== "legitimate"
+          );
         if (url.searchParams.get("segment") === "baseline")
           return baseline(item) && (view !== "healthy" || item.baseline_ready);
         return !!(item.open_reviews || item.suspended_keys);
       })
       .filter((item) =>
-        ["flag", "hold", "block"].includes(
-          url.searchParams.get("severity") ?? "",
-        )
+        ["hold", "block"].includes(url.searchParams.get("severity") ?? "")
           ? item.action === url.searchParams.get("severity")
           : true,
       )
@@ -414,6 +419,13 @@ createServer(async (req, res) => {
           (total, item) => total + item.suspended_keys,
           0,
         ),
+        flagged_accounts: all.filter(
+          (item) =>
+            !item.open_reviews &&
+            !item.suspended_keys &&
+            item.action === "flag" &&
+            item.label !== "legitimate",
+        ).length,
         healthy_baselines: all.filter(
           (item) => baseline(item) && item.baseline_ready,
         ).length,

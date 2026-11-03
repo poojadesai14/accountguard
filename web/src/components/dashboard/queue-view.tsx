@@ -11,7 +11,6 @@ const SEVERITIES = [
   { value: "all", label: "All" },
   { value: "block", label: "Block" },
   { value: "hold", label: "Hold" },
-  { value: "flag", label: "Flag" },
 ] as const;
 const SORTS = [
   { value: "priority", label: "Most severe" },
@@ -48,7 +47,7 @@ export function QueueView({
   return (
     <>
       <div className="dashboard-filters">
-        {query.tab === "attention" && (
+        {query.tab === "attention" && query.view !== "flagged" && (
           <div
             className="severity-pills"
             role="group"

@@ -22,6 +22,7 @@ type DashboardMetrics struct {
 	AttentionAccounts  int `json:"attention_accounts"`
 	PendingQuarantines int `json:"pending_quarantines"`
 	SuspendedKeys      int `json:"suspended_keys"`
+	FlaggedAccounts    int `json:"flagged_accounts"`
 	HealthyBaselines   int `json:"healthy_baselines"`
 }
 
@@ -190,7 +191,8 @@ const dashboardCases = `
   host(e.ip) as ip, e.asn, e.asn_org, e.type as event_type, e.change_kind, coalesce(d.hits,'[]') as hits,
   coalesce(d.reason, (select h->>'name' from jsonb_array_elements(coalesce(d.hits,'[]')) h order by (h->>'points')::int desc, h->>'name' limit 1), 'No scored signals') as primary_driver,
   (coalesce(a.open_reviews,0) > 0 or coalesce(s.suspended_keys,0) > 0) as attention,
-  coalesce(a.latest_action = 'allow' or a.latest_label = 'legitimate',false) as legitimate
+  coalesce(a.latest_action = 'allow' or a.latest_label = 'legitimate',false) as legitimate,
+  coalesce(a.latest_action = 'flag' and a.latest_label is distinct from 'legitimate',false) as flagged
  from entities ent
  left join profiles p on p.account_id = ent.account_id
  left join ranked a on a.account_id = ent.account_id and a.position = 1
@@ -207,12 +209,15 @@ const dashboardCases = `
 `
 
 // dashboardFiltered: the healthy view is the accounts view's baseline segment,
-// limited to accounts with a ready baseline. Search matches IDs, network, driver
+// limited to accounts with a ready baseline. The flagged view lists accounts whose
+// latest decision was a flag and that have nothing to review: flags send the
+// email and open no review, so these accounts are in no other view. Search matches IDs, network, driver
 // and hit names and details, case-insensitively.
 const dashboardFiltered = `
  select * from cases where
-  entity_kind = (case when @view = 'healthy' then 'accounts' else @view end)
-  and (case when @view in ('holds','keys') then true when @segment = 'attention' then attention else not attention and legitimate end)
+  entity_kind = (case when @view in ('healthy','flagged') then 'accounts' else @view end)
+  and (case when @view in ('holds','keys') then true when @view = 'flagged' then not attention and flagged
+   when @segment = 'attention' then attention else not attention and legitimate end)
   and (@view <> 'healthy' or baseline_ready)
   and (@severity = 'all' or action = @severity)
   and (@search = '' or strpos(lower(concat_ws(' ', account_id, api_key_id, ip, asn::text, 'AS' || asn::text, asn_org,
@@ -234,6 +239,7 @@ const dashboardResult = `
   'attention_accounts', (select count(*) from cases where entity_kind = 'accounts' and attention),
   'pending_quarantines', (select count(*) from decisions where hold_status = 'pending'),
   'suspended_keys', (select count(*) from key_status where status = 'suspended'),
+  'flagged_accounts', (select count(*) from cases where entity_kind = 'accounts' and not attention and flagged),
   'healthy_baselines', (select count(*) from cases where entity_kind = 'accounts' and not attention and legitimate and baseline_ready)),
- 'items', coalesce((select jsonb_agg(to_jsonb(page) - 'attention' - 'legitimate' - 'entity_kind') from page),'[]'),
+ 'items', coalesce((select jsonb_agg(to_jsonb(page) - 'attention' - 'legitimate' - 'flagged' - 'entity_kind') from page),'[]'),
  'total', (select count(*) from filtered), 'page', @page::int, 'limit', @limit::int, 'generated_at', statement_timestamp())`
