@@ -94,29 +94,31 @@ func (l *StringList) UnmarshalJSON(b []byte) error {
 // Validate checks required fields. The error message is safe to return to the caller.
 func (e *Event) Validate() error {
 	var errs []error
-	req := func(ok bool, field string) {
-		if !ok {
-			errs = append(errs, fmt.Errorf("%s is required", field))
-		}
-	}
-	oneOf := func(v string, allowed []string, field string) {
-		if !slices.Contains(allowed, v) {
-			errs = append(errs, fmt.Errorf("%s must be one of %v", field, allowed))
-		}
-	}
 
-	req(e.EventID != "", "event_id")
-	oneOf(e.Type, types, "type")
-	req(!e.OccurredAt.IsZero(), "occurred_at")
-	req(e.AccountID != "", "account_id")
-	oneOf(e.Source, sources, "source")
-	if e.Source == "api" || e.Source == "smtp" {
-		req(e.APIKeyID != "", "api_key_id")
+	if e.EventID == "" {
+		errs = append(errs, errors.New("event_id is required"))
+	}
+	if !slices.Contains(types, e.Type) {
+		errs = append(errs, fmt.Errorf("type must be one of %v", types))
+	}
+	if e.OccurredAt.IsZero() {
+		errs = append(errs, errors.New("occurred_at is required"))
+	}
+	if e.AccountID == "" {
+		errs = append(errs, errors.New("account_id is required"))
+	}
+	if !slices.Contains(sources, e.Source) {
+		errs = append(errs, fmt.Errorf("source must be one of %v", sources))
+	}
+	if (e.Source == "api" || e.Source == "smtp") && e.APIKeyID == "" {
+		errs = append(errs, errors.New("api_key_id is required"))
 	}
 	if net.ParseIP(e.Network.IP) == nil {
 		errs = append(errs, errors.New("network.ip must be a valid IP address"))
 	}
-	req(e.Network.ASN > 0, "network.asn")
+	if e.Network.ASN <= 0 {
+		errs = append(errs, errors.New("network.asn is required"))
+	}
 
 	switch e.Type {
 	case TypeEmailSend:
@@ -124,20 +126,28 @@ func (e *Event) Validate() error {
 			errs = append(errs, errors.New("email is required for email.send"))
 			break
 		}
-		req(e.Email.From != "", "email.from")
-		req(len(e.Email.To)+len(e.Email.CC)+len(e.Email.BCC) > 0, "at least one recipient")
+		if e.Email.From == "" {
+			errs = append(errs, errors.New("email.from is required"))
+		}
+		if len(e.Email.To)+len(e.Email.CC)+len(e.Email.BCC) == 0 {
+			errs = append(errs, errors.New("at least one recipient is required"))
+		}
 	case TypeAccountChange:
 		if e.Change == nil {
 			errs = append(errs, errors.New("change is required for account.change"))
 			break
 		}
-		oneOf(e.Change.Kind, changeKinds, "change.kind")
+		if !slices.Contains(changeKinds, e.Change.Kind) {
+			errs = append(errs, fmt.Errorf("change.kind must be one of %v", changeKinds))
+		}
 	case TypeAPIRead:
 		if e.Read == nil {
 			errs = append(errs, errors.New("read is required for api.read"))
 			break
 		}
-		oneOf(e.Read.Resource, readResources, "read.resource")
+		if !slices.Contains(readResources, e.Read.Resource) {
+			errs = append(errs, fmt.Errorf("read.resource must be one of %v", readResources))
+		}
 		if e.Read.Status < 100 || e.Read.Status > 599 {
 			errs = append(errs, errors.New("read.status must be an HTTP status code"))
 		}
