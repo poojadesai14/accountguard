@@ -81,8 +81,11 @@ func newAPIFixture(t *testing.T) *apiFixture {
 	// CI scheduling. The timeout test below explicitly sets its own short limit.
 	cfg.Scoring.TimeoutMS = 5000
 	m := metrics.New()
+	// The suspended-key lookup after a scoring failure has a tight production
+	// budget; shared CI runners under the race detector can exceed it.
 	s := &Server{Store: db, Config: cfg, Service: &engine.Service{Store: db, Config: cfg, Metrics: m},
-		IngestToken: testIngestToken, AnalystToken: testAnalystToken, Metrics: m}
+		IngestToken: testIngestToken, AnalystToken: testAnalystToken, Metrics: m,
+		SuspendedCheckTimeout: 5 * time.Second}
 	return &apiFixture{t: t, server: s, handler: s.Routes()}
 }
 

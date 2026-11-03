@@ -21,8 +21,8 @@ import (
 )
 
 const (
-	maxEventBytes         = 1 << 20
-	suspendedCheckTimeout = 50 * time.Millisecond
+	maxEventBytes                = 1 << 20
+	defaultSuspendedCheckTimeout = 50 * time.Millisecond
 	// Below the server's WriteTimeout, so a slow analyst query is cancelled and
 	// answered instead of left running on a closed connection.
 	analystTimeout = 20 * time.Second
@@ -36,6 +36,9 @@ type Server struct {
 	IngestToken  string
 	AnalystToken string
 	Metrics      *metrics.Metrics // optional; serves GET /metrics when set
+	// SuspendedCheckTimeout bounds the suspended-key lookup when scoring fails.
+	// Zero means 50 ms.
+	SuspendedCheckTimeout time.Duration
 }
 
 // Routes returns the handler for every endpoint.
@@ -132,7 +135,11 @@ func (s *Server) failOpen(w http.ResponseWriter, r *http.Request, ev *event.Even
 		Unscored: true, ConfigVersion: s.Config.Version,
 	}
 	if ev.APIKeyID != "" {
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), suspendedCheckTimeout)
+		budget := s.SuspendedCheckTimeout
+		if budget == 0 {
+			budget = defaultSuspendedCheckTimeout
+		}
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), budget)
 		defer cancel()
 		suspended, kerr := store.KeySuspended(ctx, s.Store.Pool, ev.APIKeyID)
 		if kerr != nil {

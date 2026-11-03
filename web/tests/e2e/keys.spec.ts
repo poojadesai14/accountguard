@@ -113,9 +113,9 @@ test("restoring a key stopped for risky signals shows that evidence and is typed
 }) => {
   await signIn(page, "/accounts/acc_acme");
   const line = page.locator(".key-line").first();
-  // The reason is visible before opening anything.
+  // The decision that suspended the key is visible before opening anything.
   await expect(line).toContainText(
-    "key_prod_1 suspended · stopped for young domain",
+    "key_prod_1 suspended · hold 75: new asn, new domain, young domain",
   );
   await line.getByText("Restore access", { exact: true }).click();
   const warning = line.locator(".resolve-warning");

@@ -284,9 +284,9 @@ test("from a decision: decide on the account page, then follow the link to resto
   await expect(page).toHaveURL(
     new RegExp(`/accounts/${account}\\?restore=${account}_key`),
   );
-  // The real API names what the key was stopped for; restoring it is typed.
+  // The key line names the decision that suspended the key; restoring it is typed.
   const line = page.locator(".key-line", { hasText: `${account}_key` });
-  await expect(line).toContainText("stopped for young domain");
+  await expect(line).toContainText("young domain");
   await identity(line, "Owner rotated the key.");
   await line.locator(".resolve-warning").getByRole("textbox").fill(account);
   await line.getByRole("button", { name: "Restore key access" }).click();
