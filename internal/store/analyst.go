@@ -7,8 +7,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/poojadesai14/resend-ato/internal/action"
-	"github.com/poojadesai14/resend-ato/internal/signal"
+	"github.com/poojadesai14/accountguard/internal/action"
+	"github.com/poojadesai14/accountguard/internal/signal"
 )
 
 // Range bounds a query by occurred_at. A nil end is open.

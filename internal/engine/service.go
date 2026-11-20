@@ -7,11 +7,11 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/poojadesai14/resend-ato/internal/config"
-	"github.com/poojadesai14/resend-ato/internal/event"
-	"github.com/poojadesai14/resend-ato/internal/metrics"
-	"github.com/poojadesai14/resend-ato/internal/signal"
-	"github.com/poojadesai14/resend-ato/internal/store"
+	"github.com/poojadesai14/accountguard/internal/config"
+	"github.com/poojadesai14/accountguard/internal/event"
+	"github.com/poojadesai14/accountguard/internal/metrics"
+	"github.com/poojadesai14/accountguard/internal/signal"
+	"github.com/poojadesai14/accountguard/internal/store"
 )
 
 // Service scores events inside one transaction: save event, lock profile, compare,

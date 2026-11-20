@@ -6,7 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/poojadesai14/resend-ato/internal/store"
+	"github.com/poojadesai14/accountguard/internal/store"
 )
 
 // SuspendKey suspends a key on an analyst's authority, whatever its decisions say,

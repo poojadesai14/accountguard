@@ -5,9 +5,9 @@ package engine
 import (
 	"slices"
 
-	"github.com/poojadesai14/resend-ato/internal/action"
-	"github.com/poojadesai14/resend-ato/internal/config"
-	"github.com/poojadesai14/resend-ato/internal/signal"
+	"github.com/poojadesai14/accountguard/internal/action"
+	"github.com/poojadesai14/accountguard/internal/config"
+	"github.com/poojadesai14/accountguard/internal/signal"
 )
 
 // Action is defined in package action, which the store can import to rank actions in SQL.

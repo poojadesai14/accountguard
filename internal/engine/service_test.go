@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/poojadesai14/resend-ato/internal/event"
-	"github.com/poojadesai14/resend-ato/internal/store"
-	"github.com/poojadesai14/resend-ato/migrations"
+	"github.com/poojadesai14/accountguard/internal/event"
+	"github.com/poojadesai14/accountguard/internal/store"
+	"github.com/poojadesai14/accountguard/migrations"
 )
 
 // Integration tests: need TEST_DATABASE_URL (e.g. the docker-compose database). Each test uses

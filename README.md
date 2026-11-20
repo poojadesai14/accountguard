@@ -1,20 +1,20 @@
-# Account Takeover Detection for Resend
+# Account Takeover Detection for an Email API
 
-A long-standing Resend customer is compromised and the attacker starts sending phishing from the customer's
+A long-standing customer of an email-sending API is compromised and the attacker starts sending phishing from the customer's
 verified domain. Reputation won't catch it: SPF, DKIM and DMARC all pass and the account's history is
 spotless. This service notices that the account **has stopped behaving like itself**, tells a takeover
 apart from a legitimate change, and stops the damage **without locking out the real owner**.
 
 | | |
 |---|---|
-| Analyst UI | https://resend-ato.vercel.app (password shared in Slack) |
-| API | `https://resend-ato-api.onrender.com` (`GET /healthz`; free tier, the first request may take ~1 min to wake) |
+| Analyst UI | https://accountguard.vercel.app (password shared in Slack) |
+| API | `https://accountguard-api.onrender.com` (`GET /healthz`; free tier, the first request may take ~1 min to wake) |
 | Video | [Loom walkthrough](https://www.loom.com/share/829bb47c84e140b0bb1cc0c7247837e9) |
 | Hosting | API on Render · Postgres on Supabase · UI on Vercel |
 | Build spec | [SPEC.md](SPEC.md): event format, schema, every rule and endpoint |
 | Deployment | [DEPLOYMENT.md](DEPLOYMENT.md), [web/README.md](web/README.md) |
 
-**In one paragraph:** Resend's send pipeline would call `POST /v1/events` before it queues an email (an
+**In one paragraph:** The email platform's send pipeline would call `POST /v1/events` before it queues an email (an
 assumption; here `cmd/seed` and `cmd/sim` play the pipeline). The service compares the event against a
 per-account baseline using four signals (network, volume, content, account changes), adds up points, and
 answers **allow, flag, hold or block** within a few milliseconds locally. On a hold the service records the
@@ -28,16 +28,15 @@ it, and an analyst UI shows each account's timeline.
 
 ## 1. How the takeover happens
 
-**Most likely vector: a leaked API key.** Resend is API-first. A key is a bearer credential that sits in
+**Most likely vector: a leaked API key.** The platform is API-first. A key is a bearer credential that sits in
 `.env` files, CI variables and server configs, far more exposed than the dashboard password, and the
 dashboard's MFA doesn't protect it.
 
-Grounded in Resend's docs ([API keys](https://resend.com/docs/api-reference/api-keys/create-api-key),
-[SMTP](https://resend.com/docs/send-with-smtp), [API reference index](https://resend.com/docs/llms.txt)):
+Grounded in how a typical API-first email provider handles API keys and SMTP:
 
-1. **Leak.** A `re_…` key ends up public: a committed `.env`, a `NEXT_PUBLIC_` variable shipped in a frontend
+1. **Leak.** An API key ends up public: a committed `.env`, a `NEXT_PUBLIC_` variable shipped in a frontend
    bundle, CI logs, or a malicious npm/pip dependency that reads environment variables. The same key is also
-   the SMTP password (username `resend`), so it sits in WordPress plugins and CMS configs too.
+   the SMTP password, so it sits in WordPress plugins and CMS configs too.
 2. **Recon.** Keys are `full_access` or `sending_access` (optionally limited to one domain). With full access the
    attacker calls *List Domains* to find the verified sending domain, *List Contacts* / *Segments* to get the
    brand's real customer list, and *List Sent Emails* to copy the brand's real templates. Verified in my own account: with a full-access key, `GET /domains`,
@@ -68,7 +67,7 @@ The phishing email itself is held before it is queued (given the pipeline integr
 | Leaked API key (main) | network, content, account changes | - |
 | Leaked SMTP credentials (plugins, CMS configs) | same as above; a protocol switch from HTTP to SMTP would be a cheap extra signal (not scored yet) | client fingerprint |
 | Dashboard login takeover (phished password, no MFA) | new key created and used within minutes, broadcast to the whole list | API-only signals until a key is used |
-| OAuth app or remote MCP server grant ([OAuth](https://resend.com/changelog/oauth-support), [MCP](https://resend.com/docs/mcp-server)): a consent-phished or prompt-injected AI agent with `full_access` | content, account changes | network (the app's own servers) |
+| OAuth app or remote MCP server grant: a consent-phished or prompt-injected AI agent with `full_access` | content, account changes | network (the app's own servers) |
 | Compromised customer server / supply chain | **content only** | network and client: they really are the customer's. **The hard case.** |
 | Abuse through the customer's app (contact form injecting links) | link domains in user-controlled fields | everything except content |
 | Webhook redirection | webhook change shortly before the anomaly | the owner's own alerting |
@@ -114,7 +113,7 @@ Design choices worth calling out:
 
 **Collected but not scored yet:** User-Agent (stored on every event; easy to copy, so supporting evidence
 only) and the source (`api`, `smtp`, `dashboard`). **What I'd add in production (not built):** TLS
-fingerprint (JA3/JA4, needs TLS termination at Resend's edge), payload shape (which
+fingerprint (JA3/JA4, needs TLS termination at the platform's edge), payload shape (which
 optional fields and headers a key always sends; harder to fake than a User-Agent), recipient overlap with
 past recipients, template similarity, protocol switch (HTTP → SMTP), live RDAP domain age, phishing feeds, and
 **outcome signals** (bounce and complaint spikes from webhooks): too slow to stop the first email, but a second
@@ -189,7 +188,7 @@ How legitimate owners get through, and how the attacker doesn't get to train the
   indicator. Measured locally after the simulator run in section 4 (82,809 events), the whole
   `GET /v1/decisions/{id}` round trip takes a median 23 ms for a send linking the attacker's
   `invoice-portal.net` (178 events on 9 other accounts in the window, plus its IP on 28 accounts) and 41 ms for
-  one linking `notion.so` (2,451 events on 128 accounts, plus a shared Azure IP on 65). At Resend's volume a
+  one linking `notion.so` (2,451 events on 128 accounts, plus a shared Azure IP on 65). At production volume a
   popular domain or shared egress IP would match millions of events, and the answer ("on 40,000 accounts")
   carries no signal anyway. What I'd change, in order (none of it built): (1) stop counting at ~500 accounts
   and show "common, ignored"; (2) a rollup table of indicator × account × day with the worst action, written
@@ -262,7 +261,7 @@ against complaint-confirmed takeovers and analyst labels.
 ## 5. Architecture and reliability
 
 ```
-Resend send pipeline ──POST /v1/events──▶ Go service ──▶ Postgres (Supabase)
+Email send pipeline ──POST /v1/events──▶ Go service ──▶ Postgres (Supabase)
   (simulated by cmd/seed, cmd/sim)          │ one transaction:            ▲
                                             │  save event (idempotent)    │
                                             │  lock account profile       │
@@ -336,7 +335,7 @@ sequenceDiagram
   `ato_unscored_total{reason}` counts it. A detector outage must not stop every customer's email. One
   exception: a separate 50 ms lookup still answers `block` (`key_suspended`) for a key that is already
   suspended. In the Oct 30 hosted run this happened to 2 of the first ~600 simulator events under parallel
-  load (p99 27 ms, but rare spikes passed 200 ms); the simulator now resends unscored events and reports
+  load (p99 27 ms, but rare spikes passed 200 ms); the simulator now retries unscored events and reports
   how many.
 - **Shadow mode** (`ATO_MODE=shadow`): compute and store real decisions, always answer allow, never hold or
   suspend; the config version gets a `.mode-shadow` suffix. A key that is already suspended stays blocked,
@@ -401,7 +400,7 @@ On the account page:
   the trigger, its rejections and the holds from the same window, give each its own history, and let an
   analyst resolve one of several incidents on an account.
 - **Mixed incidents.** When some stopped emails were the owner's, the analyst resolves the account as a
-  takeover and the owner resends. Per-email exceptions inside a case would fix that; the API already has
+  takeover and the owner sends it again. Per-email exceptions inside a case would fix that; the API already has
   per-decision actions (`POST /v1/decisions/{id}/actions`) and the owner's per-hold answer
   (`/v1/holds/{id}/owner-response`), so it's a UI and case-model change.
 - **Urgent single release** of one held email, for the same reason.
@@ -429,7 +428,7 @@ keys).
 
 **Production version** (not built, on purpose): Temporal for the hold lifecycle (notify, wait, escalate,
 release or revoke), per-account sharded workers with an in-memory profile cache, Kafka and a columnar store
-for events at Resend's scale, and a circuit breaker capping automatic key suspensions per hour so a bad rule
+for events at production scale, and a circuit breaker capping automatic key suspensions per hour so a bad rule
 can't mass-suspend.
 
 ---
@@ -509,7 +508,7 @@ curl -s localhost:8080/v1/events -H "Authorization: Bearer $INGEST_TOKEN" -d '{
 Event types are `email.send`, `account.change` and `api.read`. Full formats, the schema and every analyst
 endpoint are in [SPEC.md](SPEC.md).
 
-**Assumptions:** Resend's pipeline calls this service before queuing and obeys the answer; it enriches events
+**Assumptions:** The send pipeline calls this service before queuing and obeys the answer; it enriches events
 with ASN data; on hold or block it still returns "queued" to the caller; owner notification happens
 out-of-band, and it drops or releases expired holds as `hold.expire_action` says. Domain age comes from a
 config table (`content.domain_ages`) standing in for live RDAP lookups; an entry is a date or an age

@@ -1,4 +1,4 @@
-module github.com/poojadesai14/resend-ato
+module github.com/poojadesai14/accountguard
 
 go 1.26.0
 

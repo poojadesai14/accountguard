@@ -70,7 +70,7 @@ type Read struct {
 	Status   int    `json:"status"`
 }
 
-// StringList accepts either a JSON string or an array of strings, like Resend's own API.
+// StringList accepts either a JSON string or an array of strings, like common email-sending APIs.
 type StringList []string
 
 func (l *StringList) UnmarshalJSON(b []byte) error {

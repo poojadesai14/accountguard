@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/poojadesai14/resend-ato/internal/event"
+	"github.com/poojadesai14/accountguard/internal/event"
 )
 
 // evalAccount: recent account changes (persistence) and first-ever recon reads. Needs no history.

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/poojadesai14/resend-ato/internal/config"
-	"github.com/poojadesai14/resend-ato/internal/event"
+	"github.com/poojadesai14/accountguard/internal/config"
+	"github.com/poojadesai14/accountguard/internal/event"
 )
 
 func testConfig(t *testing.T) *config.Config {

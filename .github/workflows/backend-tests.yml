@@ -45,7 +45,7 @@ jobs:
       - name: Test with PostgreSQL and race detection
         run: go test -race -count=1 ./...
       - name: Build deployment image
-        run: docker build -t resend-ato:test .
+        run: docker build -t accountguard:test .
 
   dashboard:
     name: Dashboard checks

@@ -12,11 +12,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/poojadesai14/resend-ato/internal/api"
-	"github.com/poojadesai14/resend-ato/internal/config"
-	"github.com/poojadesai14/resend-ato/internal/engine"
-	"github.com/poojadesai14/resend-ato/internal/metrics"
-	"github.com/poojadesai14/resend-ato/internal/store"
+	"github.com/poojadesai14/accountguard/internal/api"
+	"github.com/poojadesai14/accountguard/internal/config"
+	"github.com/poojadesai14/accountguard/internal/engine"
+	"github.com/poojadesai14/accountguard/internal/metrics"
+	"github.com/poojadesai14/accountguard/internal/store"
 )
 
 func main() {

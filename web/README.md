@@ -16,7 +16,7 @@ cp -n .env.example .env.local
 Set the values in `.env.local`:
 
 ```dotenv
-API_BASE_URL=https://resend-ato-api.onrender.com
+API_BASE_URL=https://accountguard-api.onrender.com
 ANALYST_TOKEN=<same analyst token as the Go API>
 UI_PASSWORD=<dashboard password>
 ```
@@ -35,8 +35,7 @@ Open `http://localhost:3000` and sign in with `UI_PASSWORD`.
 Three screens, one job each: the queue says what needs attention now, the
 decision page explains why one email was stopped, and the account page is the
 one place to decide. Every page shows the engine mode once, in the top bar
-(`GET /v1/config`), and the footer keeps the "not an official Resend product"
-note.
+(`GET /v1/config`), and the footer notes that it is a demo.
 
 - `/`: the review queue. One slim row of counts opens each view (to review, on
   hold, keys suspended, healthy), then the decision filter, search (Enter) and
@@ -86,8 +85,8 @@ text and touch targets. Existing data fields and audited actions remain in use.
 Scores are colored by the action the engine took (allow green, flag yellow,
 hold orange, block red), so colors always match the configured thresholds. The
 review queue filters by action (Block, Hold, Flag), not by score band.
-The app is named "ATO Console" and labeled as a take-home demo; it does not use
-Resend's brand, so the public login page can't be mistaken for Resend's own.
+The app is named "ATO Console" and labeled as a demo; it carries no third-party
+branding, so the public login page can't be mistaken for a real provider's.
 
 Times are UTC. The selected range filters decisions by event occurrence time.
 FLAG is an observation: the email is still sent and the service does not
@@ -152,7 +151,7 @@ those dates age past `young_days`.
 
 ## Vercel deployment
 
-Import `poojadesai14/resend-ato` into Vercel and use:
+Import `poojadesai14/accountguard` into Vercel and use:
 
 | Setting                         | Value           |
 | ------------------------------- | --------------- |

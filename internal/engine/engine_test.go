@@ -5,10 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/poojadesai14/resend-ato/internal/config"
-	"github.com/poojadesai14/resend-ato/internal/event"
-	"github.com/poojadesai14/resend-ato/internal/profile"
-	"github.com/poojadesai14/resend-ato/internal/signal"
+	"github.com/poojadesai14/accountguard/internal/config"
+	"github.com/poojadesai14/accountguard/internal/event"
+	"github.com/poojadesai14/accountguard/internal/profile"
+	"github.com/poojadesai14/accountguard/internal/signal"
 )
 
 var now = time.Date(2026, 10, 30, 14, 0, 0, 0, time.UTC)

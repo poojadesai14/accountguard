@@ -6,7 +6,7 @@ test("password gate, signed cookie, return path, logout, and token privacy", asy
 }) => {
   await page.goto("/?q=acme");
   await expect(page).toHaveURL(/\/login\?next=/);
-  await expect(page.getByText("Not an official Resend product")).toBeVisible();
+  await expect(page.getByText("Not a production product")).toBeVisible();
   await page.getByLabel("Workspace password").fill("wrong-password");
   await page.getByRole("button", { name: "Open workspace" }).click();
   await expect(

@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"os"
 
-	"github.com/poojadesai14/resend-ato/internal/store"
-	"github.com/poojadesai14/resend-ato/migrations"
+	"github.com/poojadesai14/accountguard/internal/store"
+	"github.com/poojadesai14/accountguard/migrations"
 )
 
 func main() {
