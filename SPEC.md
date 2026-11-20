@@ -639,9 +639,10 @@ Metrics:
 
 ## 10. Frontend (`/web`, Next.js App Router + Recharts, Vercel)
 
-- Password gate: Next.js middleware checks a cookie set by `/login` against `UI_PASSWORD`.
+- Password gate: `/login` checks `UI_PASSWORD` (min 16 chars; 5 failures per IP lock sign-in for 15 min)
+  and sets a cookie signed with `SESSION_SECRET` (min 32 chars); the Next.js proxy verifies it.
   Server components call the Go API with `ANALYST_TOKEN`; the token never reaches the browser.
-- Env: `API_BASE_URL`, `ANALYST_TOKEN`, `UI_PASSWORD`.
+- Env: `API_BASE_URL`, `ANALYST_TOKEN`, `UI_PASSWORD`, `SESSION_SECRET`.
 
 | Route | Content |
 |---|---|

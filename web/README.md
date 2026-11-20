@@ -18,8 +18,15 @@ Set the values in `.env.local`:
 ```dotenv
 API_BASE_URL=https://accountguard-api.onrender.com
 ANALYST_TOKEN=<same analyst token as the Go API>
-UI_PASSWORD=<dashboard password>
+UI_PASSWORD=<dashboard password, at least 16 characters>
+SESSION_SECRET=<output of: openssl rand -hex 32>
 ```
+
+`SESSION_SECRET` signs the login cookie. The dashboard stays locked if
+`UI_PASSWORD` is shorter than 16 characters or `SESSION_SECRET` is shorter
+than 32. Changing either one signs everyone out. After five wrong passwords
+from one IP address, sign-in is refused for 15 minutes. The count is kept in
+server memory, so each server instance counts separately and a restart resets it.
 
 Preserve an existing `.env.local` if one is already present. Keep it outside
 version control. Start the app:
@@ -98,7 +105,8 @@ or suspensions. Real, empty, error, and loading states are supported; the app
 does not substitute demo data when the API is unavailable.
 
 An eight-hour signed, HttpOnly cookie gates the UI. Production cookies are Secure
-and SameSite=Lax. Changing `UI_PASSWORD` invalidates existing sessions. Server
+and SameSite=Lax. The cookie is signed with `SESSION_SECRET`; changing it or
+`UI_PASSWORD` invalidates existing sessions. Server
 actions also verify authentication and validate action parameters. Next.js
 checks action origins. The owner demo is not a public signed owner link.
 
@@ -161,7 +169,7 @@ Import `poojadesai14/accountguard` into Vercel and use:
 | Production branch for this demo | `main`          |
 | Build command                   | `npm run build` |
 
-Set `API_BASE_URL`, `ANALYST_TOKEN`, and `UI_PASSWORD` in Vercel's server environment.
+Set `API_BASE_URL`, `ANALYST_TOKEN`, `UI_PASSWORD`, and `SESSION_SECRET` in Vercel's server environment.
 Use the analyst token already configured on Render. Do not add a `NEXT_PUBLIC_`
 prefix to these variables. Do not upload `.env.local` to GitHub. This is a
 server-rendered app; do not use static export.
