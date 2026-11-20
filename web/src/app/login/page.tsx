@@ -13,7 +13,6 @@ export default async function LoginPage({
     <main className="login-page">
       <div className="login-brand">
         <span className="brand-name">ATO Console</span>
-        <span>take-home</span>
       </div>
       <section className="login-card">
         <span className="login-symbol">
