@@ -8,9 +8,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/poojadesai14/resend-ato/internal/event"
-	"github.com/poojadesai14/resend-ato/internal/profile"
-	"github.com/poojadesai14/resend-ato/internal/store"
+	"github.com/poojadesai14/accountguard/internal/event"
+	"github.com/poojadesai14/accountguard/internal/profile"
+	"github.com/poojadesai14/accountguard/internal/store"
 )
 
 // Analyst actions on a decision (SPEC §6.2). Owners use the same two outcomes via OwnerRespond.

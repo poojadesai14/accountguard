@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/poojadesai14/resend-ato/internal/store"
+	"github.com/poojadesai14/accountguard/internal/store"
 )
 
 // listAnalystActions pages the audit log of every analyst and owner action, newest first.

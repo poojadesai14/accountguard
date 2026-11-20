@@ -6,7 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/poojadesai14/resend-ato/internal/store"
+	"github.com/poojadesai14/accountguard/internal/store"
 )
 
 // Correction reports what CorrectToTakeover changed.

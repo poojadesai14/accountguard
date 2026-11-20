@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/poojadesai14/resend-ato/internal/action"
+	"github.com/poojadesai14/accountguard/internal/action"
 )
 
 // RelatedAccount is another account that used the same indicator.

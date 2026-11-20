@@ -32,7 +32,7 @@ export default async function WorkspaceLayout({
         </div>
         {children}
         <footer className="page-footer">
-          Resend take-home demo, not an official Resend product · Metadata only,
+          Demo project · Metadata only,
           email content is never shown · Times in UTC
         </footer>
       </main>

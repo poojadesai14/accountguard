@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/poojadesai14/resend-ato/internal/event"
+	"github.com/poojadesai14/accountguard/internal/event"
 	"golang.org/x/net/publicsuffix"
 )
 

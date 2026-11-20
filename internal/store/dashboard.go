@@ -7,8 +7,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/poojadesai14/resend-ato/internal/action"
-	"github.com/poojadesai14/resend-ato/internal/signal"
+	"github.com/poojadesai14/accountguard/internal/action"
+	"github.com/poojadesai14/accountguard/internal/signal"
 )
 
 // DashboardFilter selects and pages the dashboard's rows. The API validates it.

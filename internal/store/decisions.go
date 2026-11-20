@@ -7,7 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/poojadesai14/resend-ato/internal/signal"
+	"github.com/poojadesai14/accountguard/internal/signal"
 )
 
 // Decision is one scored event: the action, the hits behind it, and what

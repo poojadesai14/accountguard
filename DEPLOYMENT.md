@@ -63,7 +63,7 @@ latency and detection quality on real traffic still need staging validation.
 ## Build and run the API image
 
 ```sh
-docker build -t resend-ato:local .
+docker build -t accountguard:local .
 ```
 
 The image contains the server, migration binary, configuration, TLS root
@@ -83,8 +83,8 @@ PORT=8080
 Run migrations as a single release step before starting the API:
 
 ```sh
-docker run --rm --env-file .env.deploy --entrypoint /app/migrate resend-ato:local
-docker run --rm --env-file .env.deploy -p 8080:8080 resend-ato:local
+docker run --rm --env-file .env.deploy --entrypoint /app/migrate accountguard:local
+docker run --rm --env-file .env.deploy -p 8080:8080 accountguard:local
 ```
 
 On a hosting platform, use its secret store instead of an environment file. Set
@@ -154,8 +154,8 @@ the migration URL in `.env.supabase`, then deploy the API. Keep database
 credentials out of Docker build steps.
 
 ```sh
-docker build -t resend-ato:local .
-docker run --rm --env-file .env.supabase --entrypoint /app/migrate resend-ato:local
+docker build -t accountguard:local .
+docker run --rm --env-file .env.supabase --entrypoint /app/migrate accountguard:local
 ```
 
 The Blueprint was validated against Render's published JSON Schema. The image
@@ -169,14 +169,14 @@ against it in shadow mode, with no test events left behind. Supabase's `anon`
 and `authenticated` roles have no usage access to the schema.
 
 1. Open the [Render Dashboard](https://dashboard.render.com/) and connect GitHub.
-   Create a Blueprint from `poojadesai14/resend-ato`, selecting branch
+   Create a Blueprint from `poojadesai14/accountguard`, selecting branch
    `render-deployment` and the root `render.yaml` file.
 2. Render prompts for the three secrets marked `sync: false`. Copy their values
    from the ignored, owner-readable `.env.supabase` file:
    `DATABASE_URL`, `INGEST_TOKEN`, and `ANALYST_TOKEN`.
    The database URL points to the existing Supabase `ato` schema. No additional
    Render database is needed.
-3. Confirm the service plan is **Free** and create `resend-ato-api`. Render
+3. Confirm the service plan is **Free** and create `accountguard-api`. Render
    builds the image and starts the API against the existing database. See
    [free service limits](https://render.com/docs/free).
 4. Open the generated HTTPS service URL and check `/healthz`. Confirm analyst

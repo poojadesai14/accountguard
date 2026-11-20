@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/poojadesai14/resend-ato/internal/store"
+	"github.com/poojadesai14/accountguard/internal/store"
 )
 
 func (f *fixture) keyStatus() (status, reason string) {

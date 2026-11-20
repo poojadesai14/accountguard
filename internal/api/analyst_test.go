@@ -16,13 +16,13 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/poojadesai14/resend-ato/internal/config"
-	"github.com/poojadesai14/resend-ato/internal/engine"
-	"github.com/poojadesai14/resend-ato/internal/event"
-	"github.com/poojadesai14/resend-ato/internal/metrics"
-	"github.com/poojadesai14/resend-ato/internal/profile"
-	"github.com/poojadesai14/resend-ato/internal/store"
-	"github.com/poojadesai14/resend-ato/migrations"
+	"github.com/poojadesai14/accountguard/internal/config"
+	"github.com/poojadesai14/accountguard/internal/engine"
+	"github.com/poojadesai14/accountguard/internal/event"
+	"github.com/poojadesai14/accountguard/internal/metrics"
+	"github.com/poojadesai14/accountguard/internal/profile"
+	"github.com/poojadesai14/accountguard/internal/store"
+	"github.com/poojadesai14/accountguard/migrations"
 )
 
 var testNow = time.Date(2026, 10, 30, 14, 0, 0, 0, time.UTC)

@@ -3,7 +3,7 @@ package signal
 import (
 	"fmt"
 
-	"github.com/poojadesai14/resend-ato/internal/event"
+	"github.com/poojadesai14/accountguard/internal/event"
 )
 
 // evalVelocity: are recipients in the window far above this account's normal hourly volume? (history)

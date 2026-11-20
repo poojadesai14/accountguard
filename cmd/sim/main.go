@@ -25,8 +25,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/poojadesai14/resend-ato/internal/config"
-	"github.com/poojadesai14/resend-ato/internal/event"
+	"github.com/poojadesai14/accountguard/internal/config"
+	"github.com/poojadesai14/accountguard/internal/event"
 )
 
 var (
@@ -78,7 +78,7 @@ func (a *account) add(ev *event.Event, malicious bool) {
 		ev.APIKeyID = a.key
 	}
 	ev.Source = "api"
-	ev.Client = event.Client{UserAgent: "resend-go/2.10.0"}
+	ev.Client = event.Client{UserAgent: "email-sdk-go/2.10.0"}
 	a.events = append(a.events, planned{ev, malicious})
 }
 
@@ -387,10 +387,10 @@ func main() {
 }
 
 // unscoredRetries counts events the server failed open on and that were resent;
-// networkRetries counts resends after a dropped connection or a 5xx.
+// networkRetries counts retries after a dropped connection or a 5xx.
 var unscoredRetries, networkRetries atomic.Int64
 
-// post sends one event. Resending is safe: event_id makes ingestion idempotent,
+// post sends one event. Retrying is safe: event_id makes ingestion idempotent,
 // and a fail-open answer rolls the event back. A few retries absorb latency spikes
 // and dropped connections on a small hosted instance without losing the event.
 func post(c *http.Client, url, token string, ev *event.Event) response {

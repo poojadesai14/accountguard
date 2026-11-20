@@ -6,7 +6,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/poojadesai14/resend-ato/internal/profile"
+	"github.com/poojadesai14/accountguard/internal/profile"
 )
 
 // LockProfile creates the profile if needed and locks its row until the transaction ends,

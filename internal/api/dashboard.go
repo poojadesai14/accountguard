@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/poojadesai14/resend-ato/internal/store"
+	"github.com/poojadesai14/accountguard/internal/store"
 )
 
 // getDashboard serves the triage list: accounts needing attention, flagged

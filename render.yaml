@@ -1,8 +1,8 @@
 services:
   - type: web
-    name: resend-ato-api
+    name: accountguard-api
     runtime: docker
-    repo: https://github.com/poojadesai14/resend-ato
+    repo: https://github.com/poojadesai14/accountguard
     branch: render-deployment
     region: virginia
     plan: free

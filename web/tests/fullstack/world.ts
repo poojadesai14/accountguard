@@ -42,7 +42,7 @@ function send(
     api_key_id: `${account}_key`,
     source: "api",
     network,
-    client: { user_agent: "resend-node:4.0.0" },
+    client: { user_agent: "email-sdk-node:4.0.0" },
     email: {
       from: `Billing <billing@${account}.example>`,
       to: Array.from(

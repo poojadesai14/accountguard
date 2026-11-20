@@ -1,4 +1,4 @@
-# Resend ATO Detection - Build Spec
+# AccountGuard ATO Detection - Build Spec
 
 Companion to [README.md](README.md). The README says **why**; this file says **exactly what to build**.
 If the two disagree, the README's decisions win; fix this file.
@@ -20,7 +20,7 @@ Out of scope (README §7 "kept out on purpose"): Temporal, Redis/Kafka, live RDA
 phishing feeds, TLS fingerprinting, auto-suspension circuit breaker, actually sending held emails.
 
 Assumptions (state in the final README):
-- A1. Resend's send pipeline calls `POST /v1/events` before queuing an email and obeys the returned action.
+- A1. The email platform's send pipeline calls `POST /v1/events` before queuing an email and obeys the returned action.
 - A2. The pipeline enriches each event with ASN data for the source IP (we don't do IP->ASN lookups).
 - A3. On `hold`/`block` the pipeline still returns a normal "queued" response to the API caller.
 - A4. Owner notification is out-of-band (account email / dashboard). The demo only records that it happened.
@@ -87,7 +87,7 @@ One event per email. A batch request produces one event per item.
   "api_key_id": "key_prod_1",
   "source": "api",
   "network": { "ip": "203.0.113.9", "asn": 14061, "asn_org": "DIGITALOCEAN-ASN" },
-  "client": { "user_agent": "resend-node:4.0.0" },
+  "client": { "user_agent": "email-sdk-node:4.0.0" },
   "email": {
     "from": "Acme Billing <billing@acme.com>",
     "to": ["a@example.org"],
@@ -232,10 +232,10 @@ The brand's own other domains (`acmecdn.com`) also match "contains brand". On an
 already in `known_domains`, so they get no `new_domain` points and score 30 alone -> `flag` at most.
 To stop that, any candidate already in `known_domains` is **not** checked for lookalike.
 
-Sender domains are only `From` domains, which Resend requires to be verified. Link, Reply-To and body domains
+Sender domains are only `From` domains, which the platform requires to be verified. Link, Reply-To and body domains
 are never verified, which is why the lookalike check runs on them. If the attacker adds and verifies their own
 lookalike sending domain, that shows up as `account.change` `domain.updated` (§3.4), and the new `From`
-domain is checked against `profile.sender_domains`. (Verify against Resend's docs that a full-access key can
+domain is checked against `profile.sender_domains`. (Verify against the platform's docs that a full-access key can
 add domains through the API.)
 
 Domain age: `content.domain_ages` in config stands in for RDAP. Domains not listed are treated as **not young**.
@@ -538,7 +538,7 @@ Acting on a hold that's not `pending` -> `409`.
   Uses wall clock, unlike signal windows.
   - **drop:** the held email is never delivered. Shown to the owner as failed ("held for security review,
     not confirmed") in the dashboard only, never through the API, so the attacker gets no feedback.
-    The owner can resend.
+    The owner can send it again.
   - **release:** the email is delivered late, as if it had never been held.
   - Default `drop`: if it was a takeover, releasing delivers the phishing anyway. A legitimate owner was
     notified and loses one email at worst.

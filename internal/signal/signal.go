@@ -3,9 +3,9 @@
 package signal
 
 import (
-	"github.com/poojadesai14/resend-ato/internal/config"
-	"github.com/poojadesai14/resend-ato/internal/event"
-	"github.com/poojadesai14/resend-ato/internal/profile"
+	"github.com/poojadesai14/accountguard/internal/config"
+	"github.com/poojadesai14/accountguard/internal/event"
+	"github.com/poojadesai14/accountguard/internal/profile"
 )
 
 const (

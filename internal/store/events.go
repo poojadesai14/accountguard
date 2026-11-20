@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/poojadesai14/resend-ato/internal/event"
+	"github.com/poojadesai14/accountguard/internal/event"
 )
 
 // InsertEvent stores the event's metadata and extracted features (never the body).

@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/poojadesai14/resend-ato/internal/event"
+	"github.com/poojadesai14/accountguard/internal/event"
 )
 
 type hit struct {
@@ -96,7 +96,7 @@ func send(id, account, key string, at time.Time, net event.Network, from string,
 	}
 	return &event.Event{
 		EventID: id, Type: event.TypeEmailSend, OccurredAt: at, AccountID: account, APIKeyID: key,
-		Source: "api", Network: net, Client: event.Client{UserAgent: "resend-node:4.0.0"},
+		Source: "api", Network: net, Client: event.Client{UserAgent: "email-sdk-node:4.0.0"},
 		Email: &event.Email{From: from, To: to, HTML: html.String()},
 	}
 }

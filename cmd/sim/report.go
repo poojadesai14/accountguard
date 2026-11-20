@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/poojadesai14/resend-ato/internal/action"
-	"github.com/poojadesai14/resend-ato/internal/event"
+	"github.com/poojadesai14/accountguard/internal/action"
+	"github.com/poojadesai14/accountguard/internal/event"
 )
 
 // severity ranks an action name from the server; an unknown one ranks as allow.

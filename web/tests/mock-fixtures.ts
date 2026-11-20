@@ -40,7 +40,7 @@ export const event: TimelineRow = {
   ip: "203.0.113.9",
   asn: 14061,
   asn_org: "DIGITALOCEAN-ASN",
-  user_agent: "resend-node:4.0.0",
+  user_agent: "email-sdk-node:4.0.0",
   sender_domain: "acme.com",
   recipient_count: 5,
   link_domains: ["invoice-portal.net"],
