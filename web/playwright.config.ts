@@ -24,6 +24,7 @@ export default defineConfig({
         API_BASE_URL: "http://127.0.0.1:3102",
         ANALYST_TOKEN: "fixture-analyst-token",
         UI_PASSWORD: "dashboard-test-password",
+        SESSION_SECRET: "e2e-only-session-secret-0123456789abcdef",
       },
     },
   ],

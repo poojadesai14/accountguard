@@ -1,12 +1,14 @@
 "use server";
 
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { analystApi } from "@/lib/api";
 import { requireSession } from "@/lib/auth";
 import { plural } from "@/lib/format";
+import { clientKey, loginAttempts } from "@/lib/login-attempts";
 import {
+  authConfig,
   createSession,
   passwordsMatch,
   safeReturnPath,
@@ -24,14 +26,25 @@ export async function login(
   _previous: FormState,
   form: FormData,
 ): Promise<FormState> {
-  const password = process.env.UI_PASSWORD;
-  if (!password)
+  const config = authConfig();
+  if (!config)
     return { error: "Dashboard access has not been configured yet." };
-  if (!passwordsMatch(String(form.get("password") ?? ""), password)) {
+  const requestHeaders = await headers();
+  const client = clientKey(
+    requestHeaders.get("x-forwarded-for"),
+    requestHeaders.get("x-real-ip"),
+  );
+  if (loginAttempts.isLocked(client))
+    return {
+      error: "Too many failed attempts. Try again within 15 minutes.",
+    };
+  if (!passwordsMatch(String(form.get("password") ?? ""), config.password)) {
+    loginAttempts.recordFailure(client);
     await new Promise((resolve) => setTimeout(resolve, 500));
     return { error: "That password doesn't match. Please try again." };
   }
-  (await cookies()).set(SESSION_COOKIE, createSession(password), {
+  loginAttempts.recordSuccess(client);
+  (await cookies()).set(SESSION_COOKIE, createSession(config), {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",

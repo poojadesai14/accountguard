@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { SESSION_COOKIE, verifySession } from "@/lib/session";
+import { authConfig, SESSION_COOKIE, verifySession } from "@/lib/session";
 
 export function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
   if (pathname === "/login") return NextResponse.next();
   if (
-    !verifySession(
-      request.cookies.get(SESSION_COOKIE)?.value,
-      process.env.UI_PASSWORD,
-    )
+    !verifySession(request.cookies.get(SESSION_COOKIE)?.value, authConfig())
   ) {
     const login = new URL("/login", request.url);
     login.searchParams.set("next", pathname + request.nextUrl.search);

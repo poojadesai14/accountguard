@@ -124,7 +124,7 @@ credentials or Supabase table access.
    alone does not reveal fail-open scoring failures. Validate the 200 ms scoring
    budget against hosted Postgres.
 5. Deploy the Next.js analyst UI from the `web` root to Vercel with `API_BASE_URL`,
-   server-only `ANALYST_TOKEN`, and `UI_PASSWORD`. Keep the demo owner-response
+   server-only `ANALYST_TOKEN`, `UI_PASSWORD`, and `SESSION_SECRET`. Keep the demo owner-response
    endpoint behind analyst authentication until signed owner links exist.
 6. Enable enforcement after reviewing detection results and verifying the
    upstream send pipeline honors allow/flag/hold/block. Delivery of held mail and

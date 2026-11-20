@@ -35,6 +35,7 @@ export default defineConfig({
         API_BASE_URL: "http://127.0.0.1:3202",
         ANALYST_TOKEN: "fullstack-analyst-token",
         UI_PASSWORD: "fullstack-password",
+        SESSION_SECRET: "fullstack-only-session-secret-0123456789",
       },
     },
   ],
