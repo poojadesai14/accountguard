@@ -195,19 +195,6 @@ small {
   letter-spacing: -0.2px;
   white-space: nowrap;
 }
-.login-brand > span:not(.brand-name) {
-  display: inline-flex;
-  color: var(--text-secondary);
-  background: #1a1a1a;
-  border: 1px solid #262626;
-  border-radius: 4px;
-  padding: 3px 5px;
-  font-size: 12px;
-  font-family: var(--mono);
-  font-weight: 600;
-  letter-spacing: 0.5px;
-  line-height: 1;
-}
 .nav-item {
   display: flex;
   align-items: center;
