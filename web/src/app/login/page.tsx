@@ -22,8 +22,8 @@ export default async function LoginPage({
         <p className="eyebrow">ANALYST WORKSPACE</p>
         <h1>Sign in</h1>
         <p className="login-description">
-          Analyst console for an account-takeover detection demo. Not a production
-          product.
+          Analyst console for an account-takeover detection demo. Not a
+          production product.
         </p>
         <LoginForm next={safeReturnPath(params.next)} />
         <div className="login-footer">

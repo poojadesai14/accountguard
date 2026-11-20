@@ -32,8 +32,8 @@ export default async function WorkspaceLayout({
         </div>
         {children}
         <footer className="page-footer">
-          Demo project · Metadata only,
-          email content is never shown · Times in UTC
+          Demo project · Metadata only, email content is never shown · Times in
+          UTC
         </footer>
       </main>
     </div>
