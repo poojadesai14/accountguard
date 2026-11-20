@@ -7,7 +7,7 @@ apart from a legitimate change, and stops the damage **without locking out the r
 
 | | |
 |---|---|
-| Analyst UI | https://accountguard.vercel.app (password shared in Slack) |
+| Analyst UI | https://accountguard.vercel.app (demo password: `accountguard-demo-2026`; all data is synthetic) |
 | API | `https://accountguard-api.onrender.com` (`GET /healthz`; free tier, the first request may take ~1 min to wake) |
 | Video | [Loom walkthrough](https://www.loom.com/share/829bb47c84e140b0bb1cc0c7247837e9) |
 | Hosting | API on Render · Postgres on Supabase · UI on Vercel |
